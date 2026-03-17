@@ -37,13 +37,13 @@ const StageMap = ({ angle }: { angle: string }) => {
             <span className="text-[6px] font-black tracking-[1em] uppercase opacity-40">Stage</span>
           </div>
           
-          {/* PIT 2 (Top Right Cutout) */}
-          <div className="absolute -top-0.5 -right-0.5 w-12 h-9 bg-slate-900 border border-slate-700 rounded-bl-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+          {/* PIT 2 (Top Right Cutout) - Moved slightly towards center */}
+          <div className="absolute -top-0.5 right-4 w-12 h-9 bg-slate-900 border border-slate-700 rounded-bl-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
             PIT 2
           </div>
           
-          {/* PIT 1 (Bottom Left Cutout) */}
-          <div className="absolute -bottom-0.5 -left-0.5 w-12 h-9 bg-slate-900 border border-slate-700 rounded-tr-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+          {/* PIT 1 (Bottom Left Cutout) - Moved slightly towards center */}
+          <div className="absolute -bottom-0.5 left-4 w-12 h-9 bg-slate-900 border border-slate-700 rounded-tr-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
             PIT 1
           </div>
         </div>

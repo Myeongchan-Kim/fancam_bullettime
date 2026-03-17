@@ -60,13 +60,13 @@ const InteractiveStageMap = ({ selectedAngle, onAngleSelect }: { selectedAngle: 
             <span className="text-[12px] font-black tracking-[1.5em] uppercase opacity-30">Stage</span>
           </div>
           
-          {/* PIT 2 (Top Right Cutout) */}
-          <div className="absolute -top-1 -right-1 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-bl-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+          {/* PIT 2 (Top Right Cutout) - Moved slightly towards center */}
+          <div className="absolute -top-1 right-8 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-bl-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
             GA PIT 2
           </div>
           
-          {/* PIT 1 (Bottom Left Cutout) */}
-          <div className="absolute -bottom-1 -left-1 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-tr-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+          {/* PIT 1 (Bottom Left Cutout) - Moved slightly towards center */}
+          <div className="absolute -bottom-1 left-8 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-tr-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
             GA PIT 1
           </div>
         </div>
