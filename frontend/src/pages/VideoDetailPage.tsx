@@ -28,22 +28,22 @@ const StageMap = ({ angle }: { angle: string }) => {
         <Compass className="h-5 w-5 text-indigo-400" />
         <span>Camera Position</span>
       </h2>
-      <div className="relative w-48 h-48 mx-auto mt-6 mb-4 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center">
+      <div className="relative w-full h-48 mx-auto mt-6 mb-4 rounded-3xl border-2 border-dashed border-slate-700 flex items-center justify-center overflow-visible">
         
-        {/* Massive Stage with Precise PIT Cutouts - 1.5x wider */}
-        <div className="relative w-72 h-16 flex items-center justify-center scale-110">
+        {/* Massive Stage with Precise PIT Cutouts - Compensated width (+15%) */}
+        <div className="relative w-56 h-16 flex items-center justify-center scale-110">
           {/* Main Stage Body */}
           <div className="absolute w-full h-full bg-slate-700/80 rounded-sm shadow-xl flex items-center justify-center border border-slate-600/50 overflow-hidden">
             <span className="text-[6px] font-black tracking-[2em] uppercase opacity-40">Stage</span>
           </div>
           
-          {/* PIT 2 (Top Right Cutout) - Moved slightly towards center */}
-          <div className="absolute -top-0.5 right-4 w-12 h-9 bg-slate-900 border border-slate-700 rounded-bl-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+          {/* PIT 2 (Top Right Cutout) - Enlarged and more overlap */}
+          <div className="absolute top-0 right-6 w-16 h-12 bg-slate-900 border border-slate-700 rounded-bl-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20 shadow-inner">
             PIT 2
           </div>
           
-          {/* PIT 1 (Bottom Left Cutout) - Moved slightly towards center */}
-          <div className="absolute -bottom-0.5 left-4 w-12 h-9 bg-slate-900 border border-slate-700 rounded-tr-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+          {/* PIT 1 (Bottom Left Cutout) - Enlarged and more overlap */}
+          <div className="absolute bottom-0 left-6 w-16 h-12 bg-slate-900 border border-slate-700 rounded-tr-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20 shadow-inner">
             PIT 1
           </div>
         </div>

@@ -29,10 +29,10 @@ const InteractiveStageMap = ({ selectedAngle, onAngleSelect }: { selectedAngle: 
     selectedAngle === target ? "bg-twice-magenta h-14 shadow-[0_0_20px_#FF1988]" : "bg-slate-800 h-10 hover:bg-twice-apricot";
 
   return (
-    <div className="flex flex-col items-center justify-center w-full py-10 transition-all">
-      <div className="relative w-80 h-80 flex items-center justify-center">
-        {/* Outer Perimeter Ring */}
-        <div className="absolute inset-0 rounded-full border border-slate-800/40 scale-110"></div>
+    <div className="flex flex-col items-center justify-center w-full py-10 transition-all overflow-visible">
+      <div className="relative w-[52rem] h-80 flex items-center justify-center overflow-visible">
+        {/* Outer Perimeter Ring - Widened to accommodate Stage */}
+        <div className="absolute inset-0 rounded-[4rem] border border-slate-800/40 scale-110"></div>
         
         {/* 360 Degree Viewpoint Indicators (Radial Lines) */}
         {[...Array(12)].map((_, i) => (
@@ -53,20 +53,20 @@ const InteractiveStageMap = ({ selectedAngle, onAngleSelect }: { selectedAngle: 
           </div>
         ))}
 
-        {/* Massive Integrated Stage with Precise PIT Layout - 1.5x wider */}
-        <div className="relative w-[42rem] h-32 flex items-center justify-center scale-150">
+        {/* Massive Integrated Stage with Precise PIT Layout - Compensated width (+15%) */}
+        <div className="relative w-[31rem] h-32 flex items-center justify-center scale-150">
           {/* Main Huge Stage Body */}
           <div className="absolute w-full h-full bg-slate-700/80 rounded-lg shadow-2xl flex items-center justify-center border-2 border-slate-600/50 overflow-hidden">
-            <span className="text-[12px] font-black tracking-[2em] uppercase opacity-30">Stage</span>
+            <span className="text-[12px] font-black tracking-[1.5em] uppercase opacity-30">Stage</span>
           </div>
           
-          {/* PIT 2 (Top Right Cutout) - Moved slightly towards center */}
-          <div className="absolute -top-1 right-8 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-bl-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+          {/* PIT 2 (Top Right Cutout) - Enlarged and more overlap */}
+          <div className="absolute top-0 right-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             GA PIT 2
           </div>
           
-          {/* PIT 1 (Bottom Left Cutout) - Moved slightly towards center */}
-          <div className="absolute -bottom-1 left-8 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-tr-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+          {/* PIT 1 (Bottom Left Cutout) - Enlarged and more overlap */}
+          <div className="absolute bottom-0 left-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             GA PIT 1
           </div>
         </div>
@@ -130,7 +130,7 @@ const HomePage = () => {
   return (
     <div className="space-y-12">
       {/* Huge Interactive Map Section (Full Width) */}
-      <section className="flex flex-col items-center justify-center space-y-8 py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-hidden">
+      <section className="flex flex-col items-center justify-center space-y-8 py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative">
         {/* Background Accent */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
 
@@ -144,7 +144,7 @@ const HomePage = () => {
           </p>
         </div>
 
-        <div className="w-full max-w-2xl px-4 flex justify-center">
+        <div className="w-full max-w-full px-4 flex justify-center overflow-visible">
           <InteractiveStageMap selectedAngle={selectedAngle} onAngleSelect={setSelectedAngle} />
         </div>
       </section>
