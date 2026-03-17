@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --color-twice-apricot: #FFAC5F;
+  --color-twice-magenta: #FF1988;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-950 text-white;
+    margin: 0;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+}
+
+@layer components {
+  .twice-gradient {
+    background: linear-gradient(135deg, #FFAC5F 0%, #FF1988 100%);
+  }
+
+  .twice-text-gradient {
+    background: linear-gradient(135deg, #FFAC5F 0%, #FF1988 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+}
