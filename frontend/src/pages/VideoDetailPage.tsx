@@ -31,10 +31,10 @@ const StageMap = ({ angle }: { angle: string }) => {
       <div className="relative w-48 h-48 mx-auto mt-6 mb-4 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center">
         
         {/* Massive Stage with Precise PIT Cutouts */}
-        <div className="relative w-36 h-16 flex items-center justify-center scale-110">
+        <div className="relative w-48 h-16 flex items-center justify-center scale-110">
           {/* Main Stage Body */}
           <div className="absolute w-full h-full bg-slate-700/80 rounded-sm shadow-xl flex items-center justify-center border border-slate-600/50 overflow-hidden">
-            <span className="text-[6px] font-black tracking-[0.8em] uppercase opacity-40">Stage</span>
+            <span className="text-[6px] font-black tracking-[1em] uppercase opacity-40">Stage</span>
           </div>
           
           {/* PIT 2 (Top Right Cutout) */}

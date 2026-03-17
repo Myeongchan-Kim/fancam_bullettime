@@ -54,13 +54,13 @@ const InteractiveStageMap = ({ selectedAngle, onAngleSelect }: { selectedAngle: 
         ))}
 
         {/* Massive Integrated Stage with Precise PIT Layout */}
-        <div className="relative w-72 h-32 flex items-center justify-center scale-150">
+        <div className="relative w-[28rem] h-32 flex items-center justify-center scale-150">
           {/* Main Huge Stage Body */}
           <div className="absolute w-full h-full bg-slate-700/80 rounded-lg shadow-2xl flex items-center justify-center border-2 border-slate-600/50 overflow-hidden">
             <div className="flex flex-col items-center justify-between h-full py-4 opacity-30">
-              <span className="text-[12px] font-black tracking-[1em] uppercase">Stage</span>
-              <span className="text-[12px] font-black tracking-[1em] uppercase">Stage</span>
-              <span className="text-[12px] font-black tracking-[1em] uppercase ml-12">Stage</span>
+              <span className="text-[12px] font-black tracking-[1.5em] uppercase">Stage</span>
+              <span className="text-[12px] font-black tracking-[1.5em] uppercase">Stage</span>
+              <span className="text-[12px] font-black tracking-[1.5em] uppercase ml-24">Stage</span>
             </div>
           </div>
           
