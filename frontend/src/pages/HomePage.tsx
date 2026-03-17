@@ -53,18 +53,26 @@ const InteractiveStageMap = ({ selectedAngle, onAngleSelect }: { selectedAngle: 
           </div>
         ))}
 
-        {/* Enormous Stage Shape - High Visual Impact */}
-        <div className="relative w-64 h-24 flex items-center justify-center z-10 scale-125">
-          {/* Main Stage Bar */}
-          <div className="absolute w-56 h-10 bg-slate-700 rounded-md shadow-2xl flex items-center justify-center border border-slate-600/50">
-            <span className="text-[10px] font-black text-white/40 tracking-[0.6em] uppercase">360 Stage</span>
+        {/* Massive Integrated Stage with Precise PIT Layout */}
+        <div className="relative w-72 h-32 flex items-center justify-center scale-150">
+          {/* Main Huge Stage Body */}
+          <div className="absolute w-full h-full bg-slate-700/80 rounded-lg shadow-2xl flex items-center justify-center border-2 border-slate-600/50 overflow-hidden">
+            <div className="flex flex-col items-center justify-between h-full py-4 opacity-30">
+              <span className="text-[12px] font-black tracking-[1em] uppercase">Stage</span>
+              <span className="text-[12px] font-black tracking-[1em] uppercase">Stage</span>
+              <span className="text-[12px] font-black tracking-[1em] uppercase ml-12">Stage</span>
+            </div>
           </div>
           
-          {/* PIT 2 (Top Right Overlap) */}
-          <div className="absolute -top-3 right-4 w-20 h-14 bg-slate-800/95 border border-slate-700 rounded-md flex items-end justify-center pb-2 text-[6px] text-gray-500 font-bold tracking-widest">PIT 2</div>
+          {/* PIT 2 (Top Right Cutout) */}
+          <div className="absolute -top-1 -right-1 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-bl-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+            GA PIT 2
+          </div>
           
-          {/* PIT 1 (Bottom Left Overlap) */}
-          <div className="absolute -bottom-3 left-4 w-20 h-14 bg-slate-800/95 border border-slate-700 rounded-md flex items-start justify-center pt-2 text-[6px] text-gray-500 font-bold tracking-widest">PIT 1</div>
+          {/* PIT 1 (Bottom Left Cutout) */}
+          <div className="absolute -bottom-1 -left-1 w-24 h-16 bg-[#0f172a] border-2 border-slate-700 rounded-tr-xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20">
+            GA PIT 1
+          </div>
         </div>
       </div>
       

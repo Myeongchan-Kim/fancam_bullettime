@@ -28,20 +28,24 @@ const StageMap = ({ angle }: { angle: string }) => {
         <Compass className="h-5 w-5 text-indigo-400" />
         <span>Camera Position</span>
       </h2>
-      <div className="relative w-40 h-40 mx-auto mt-6 mb-4 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center">
+      <div className="relative w-48 h-48 mx-auto mt-6 mb-4 rounded-full border-2 border-dashed border-slate-600 flex items-center justify-center">
         
-        {/* Enriched Integrated Stage with Overlapping Pits */}
-        <div className="relative w-36 h-16 flex items-center justify-center">
-          {/* Main Long Stage Bar - Enlarged */}
-          <div className="absolute w-32 h-6 bg-slate-700 rounded-sm z-10 flex items-center justify-center shadow-lg border border-slate-600/50">
-            <span className="text-[7px] font-bold text-gray-400 uppercase tracking-widest">Stage</span>
+        {/* Massive Stage with Precise PIT Cutouts */}
+        <div className="relative w-36 h-16 flex items-center justify-center scale-110">
+          {/* Main Stage Body */}
+          <div className="absolute w-full h-full bg-slate-700/80 rounded-sm shadow-xl flex items-center justify-center border border-slate-600/50 overflow-hidden">
+            <span className="text-[6px] font-black tracking-[0.8em] uppercase opacity-40">Stage</span>
           </div>
           
-          {/* PIT 2 (Top Right Overlap) - Enlarged */}
-          <div className="absolute top-0 right-0 w-16 h-10 bg-slate-800/80 border border-slate-700 rounded-sm flex items-end justify-center pb-1 text-[5px] text-gray-600 font-bold">PIT 2</div>
+          {/* PIT 2 (Top Right Cutout) */}
+          <div className="absolute -top-0.5 -right-0.5 w-12 h-9 bg-slate-900 border border-slate-700 rounded-bl-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+            PIT 2
+          </div>
           
-          {/* PIT 1 (Bottom Left Overlap) - Enlarged */}
-          <div className="absolute bottom-0 left-0 w-16 h-10 bg-slate-800/80 border border-slate-700 rounded-sm flex items-start justify-center pt-1 text-[5px] text-gray-600 font-bold">PIT 1</div>
+          {/* PIT 1 (Bottom Left Cutout) */}
+          <div className="absolute -bottom-0.5 -left-0.5 w-12 h-9 bg-slate-900 border border-slate-700 rounded-tr-lg flex items-center justify-center text-[4px] text-gray-600 font-bold tracking-tighter z-20">
+            PIT 1
+          </div>
         </div>
         
         {/* Audience Sections */}
