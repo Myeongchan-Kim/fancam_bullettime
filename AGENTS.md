@@ -13,8 +13,8 @@ The project has reached a functional prototype stage. Fancams are being collecte
   - **Vite 5** is used for compatibility with Node 21.7.2.
   - **Tailwind 4** is configured using `@tailwindcss/vite` plugin and `@import "tailwindcss"` in `index.css`.
   - `package.json` includes `"type": "module"` to support ESM imports.
-  - `HomePage`: Features a large-scale, interactive 360° Dial Stage Map. Redundant hero text removed, and title style moved to header.
-  - `VideoDetailPage`: Implements YouTube embed, Multi-Angle switcher, metadata editing, and an interactive Stage Map for precise coordinate selection/contribution.
+  - `HomePage`: Features a massive 360° Stage Map with rich click-toggle tooltips and immediate video playback. Sidebars show Recently Added and Hot Choices. Angle filtering removed to focus on coordinate-based exploration.
+  - `VideoDetailPage`: Implements YouTube embed, Multi-Angle switcher, full wiki metadata editing, and a 360° dial for precise coordinate selection.
   - Admin Mode: Hidden admin login to review and approve user-contributed coordinates and sync offsets.
 
 - **Crawler:** AI-based 2-step pipeline (`backend/app/crawler/`).

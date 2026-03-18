@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Music, User, Compass, Play, ExternalLink, X } from 'lucide-react';
+import { Search, MapPin, Music, User, Compass, Play, ExternalLink, X, ShieldCheck } from 'lucide-react';
 
 interface Video {
   id: number;
@@ -79,13 +79,9 @@ const MiniVideoList = ({ title, videos, onPlay }: { title: string, videos: Video
 );
 
 const InteractiveStageMap = ({ 
-  selectedAngle, 
-  onAngleSelect, 
   videos,
   onPlayVideo 
 }: { 
-  selectedAngle: string, 
-  onAngleSelect: (angle: string) => void,
   videos: Video[],
   onPlayVideo: (v: Video) => void
 }) => {
@@ -98,16 +94,6 @@ const InteractiveStageMap = ({
     { label: "South (Back)", rotation: 180 },
     { label: "West (Left)", rotation: 270 }
   ];
-
-  const angleCounts = videos.reduce((acc, v) => {
-    if (v.angle && v.angle !== "Unknown" && (v.coordinate_x === null || v.coordinate_y === null)) {
-      acc[v.angle] = (acc[v.angle] || 0) + 1;
-    }
-    return acc;
-  }, {} as Record<string, number>);
-
-  const getLineHighlight = (target: string) => 
-    selectedAngle === target ? "bg-twice-magenta h-16 shadow-[0_0_25px_#FF1988] w-1.5" : "bg-slate-800 h-10 hover:bg-twice-apricot w-1";
 
   return (
     <div className="flex flex-col items-center justify-center w-full transition-all overflow-visible">
@@ -184,32 +170,14 @@ const InteractiveStageMap = ({
           return null;
         })}
 
-        {/* Interactive Main Directions with Fancam Icons */}
-        {mainAngles.map((a) => {
-          const count = angleCounts[a.label] || 0;
-          return (
-            <div key={a.label} className="absolute inset-0 flex justify-center py-1" style={{ transform: `rotate(${a.rotation}deg)` }}>
-              <div className="relative h-full flex flex-col items-center">
-                <button 
-                  onClick={() => onAngleSelect(selectedAngle === a.label ? "" : a.label)}
-                  className={`w-12 h-24 -mt-4 rounded-full transition-all duration-300 cursor-pointer z-30 flex items-start justify-center pt-4 group`}
-                  title={`${a.label}: ${count} videos`}
-                >
-                  <div className={`w-2.5 rounded-full transition-all duration-300 ${selectedAngle === a.label ? 'bg-twice-magenta h-full shadow-[0_0_35px_#FF1988]' : 'bg-slate-800 h-14 group-hover:bg-twice-apricot group-hover:h-16'}`}></div>
-                </button>
-                
-                {count > 0 && (
-                  <div className="absolute top-32 flex flex-col items-center gap-1 group">
-                    <Compass className="w-5 h-5 text-twice-magenta animate-pulse" />
-                    <div className="bg-slate-900/95 border border-twice-magenta/50 text-twice-magenta text-[10px] font-black px-2 py-0.5 rounded-full backdrop-blur-sm opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap shadow-2xl">
-                      {count} Fancams
-                    </div>
-                  </div>
-                )}
-              </div>
+        {/* Main Directions (Static Indicators) */}
+        {mainAngles.map((a) => (
+          <div key={a.label} className="absolute inset-0 flex justify-center py-1 pointer-events-none" style={{ transform: `rotate(${a.rotation}deg)` }}>
+            <div className="relative h-full flex flex-col items-center">
+              <div className="w-1.5 h-10 bg-slate-800 rounded-full mt-4 opacity-50"></div>
             </div>
-          );
-        })}
+          </div>
+        ))}
 
         {/* Optimized Stage with Precise PIT Layout */}
         <div className="relative w-[31rem] h-32 flex items-center justify-center scale-[1.1] z-10 pointer-events-none text-white">
@@ -219,14 +187,6 @@ const InteractiveStageMap = ({
           <div className="absolute top-0 right-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">PIT 2</div>
           <div className="absolute bottom-0 left-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">PIT 1</div>
         </div>
-      </div>
-      
-      <div className="mt-12 min-h-[1.5rem]">
-        {selectedAngle && (
-          <span className="text-twice-magenta font-black uppercase tracking-[0.5em] animate-pulse text-sm">
-            Viewing Angle: {selectedAngle}
-          </span>
-        )}
       </div>
     </div>
   );
@@ -240,7 +200,6 @@ const HomePage = () => {
   const [selectedSong, setSelectedSong] = useState('');
   const [selectedConcert, setSelectedConcert] = useState('');
   const [selectedMember, setSelectedMember] = useState('');
-  const [selectedAngle, setSelectedAngle] = useState('');
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
 
   const members = ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"];
@@ -251,7 +210,7 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
-  }, [selectedSong, selectedConcert, selectedMember, selectedAngle]);
+  }, [selectedSong, selectedConcert, selectedMember]);
 
   const fetchInitialData = async () => {
     try {
@@ -270,7 +229,6 @@ const HomePage = () => {
       if (selectedSong) url += `song_id=${selectedSong}&`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (selectedMember) url += `member=${selectedMember}&`;
-      if (selectedAngle) url += `angle=${encodeURIComponent(selectedAngle)}&`;
       
       const res = await axios.get(url);
       setVideos(res.data);
@@ -282,7 +240,7 @@ const HomePage = () => {
       {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
       
       {/* Huge Interactive Map Section with Sidebar Lists */}
-      <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible">
+      <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
         {/* Background Accent */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
 
@@ -293,8 +251,6 @@ const HomePage = () => {
           {/* Center Map */}
           <div className="flex-1 flex justify-center overflow-visible">
             <InteractiveStageMap 
-              selectedAngle={selectedAngle} 
-              onAngleSelect={setSelectedAngle} 
               videos={videos} 
               onPlayVideo={setActiveVideo}
             />
@@ -354,19 +310,14 @@ const HomePage = () => {
       {/* Video Grid Section */}
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2 text-white text-white">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-white">
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
             <span>{videos.length} Performances Found</span>
           </h2>
           <div className="flex gap-2">
             {/* Active Filters as Pills */}
-            {selectedAngle && (
-              <button onClick={() => setSelectedAngle('')} className="text-[10px] bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 px-2 py-1 rounded-md hover:bg-indigo-600/40 font-bold">
-                Angle: {selectedAngle} ✕
-              </button>
-            )}
             {(selectedSong || selectedConcert || selectedMember) && (
-              <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember(''); setSelectedAngle('')}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All</button>
+              <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember('');}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All</button>
             )}
           </div>
         </div>
@@ -412,7 +363,7 @@ const HomePage = () => {
           <div className="text-center py-32 text-gray-600">
             <Music className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember(''); setSelectedAngle('')}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+            <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember('');}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
           </div>
         )}
       </div>
