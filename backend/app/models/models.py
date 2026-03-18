@@ -26,18 +26,20 @@ class Video(Base):
     # Labeling
     song_id = Column(Integer, ForeignKey("songs.id"))
     concert_id = Column(Integer, ForeignKey("concerts.id"))
-    members = Column(JSON) # List of member names, e.g., ["Sana", "Jihyo"]
+    members = Column(JSON) # List of member names
     
-    # Multi-Angle & Sync (Wiki-driven)
+    # Multi-Angle & Sync
     angle = Column(String, default=AngleType.UNKNOWN)
-    sync_offset = Column(Float, default=0.0) # 곡 시작 지점으로부터의 오프셋 (초)
+    coordinate_x = Column(Float, nullable=True)
+    coordinate_y = Column(Float, nullable=True)
+    sync_offset = Column(Float, default=0.0)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Relationships
     song = relationship("Song", back_populates="videos")
     concert = relationship("Concert", back_populates="videos")
-    suggestions = relationship("AngleSuggestion", back_populates="video")
+    contributions = relationship("Contribution", back_populates="video")
 
 class Song(Base):
     __tablename__ = "songs"
@@ -58,13 +60,25 @@ class Concert(Base):
     
     videos = relationship("Video", back_populates="concert")
 
-class AngleSuggestion(Base):
-    __tablename__ = "angle_suggestions"
+class Contribution(Base):
+    __tablename__ = "contributions"
     id = Column(Integer, primary_key=True, index=True)
     video_id = Column(Integer, ForeignKey("videos.id"))
-    suggested_angle = Column(String)
-    suggested_sync_offset = Column(Float)
+    
+    # Metadata suggestions
+    suggested_title = Column(String, nullable=True)
+    suggested_song_id = Column(Integer, ForeignKey("songs.id"), nullable=True)
+    suggested_concert_id = Column(Integer, ForeignKey("concerts.id"), nullable=True)
+    suggested_members = Column(JSON, nullable=True)
+    
+    # Location & Sync suggestions
+    suggested_angle = Column(String, nullable=True)
+    suggested_coordinate_x = Column(Float, nullable=True)
+    suggested_coordinate_y = Column(Float, nullable=True)
+    suggested_sync_offset = Column(Float, nullable=True)
+    
     user_ip = Column(String) # For basic anti-spam
+    is_processed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    video = relationship("Video", back_populates="suggestions")
+    video = relationship("Video", back_populates="contributions")

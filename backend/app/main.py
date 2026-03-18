@@ -1,13 +1,17 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Request
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime
+import os
+from dotenv import load_dotenv
 
-from app.models.models import Base, Video, Song, Concert, AngleSuggestion
-from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, AngleSuggestionBase, AngleSuggestionCreate, VideoUpdate
+from app.models.models import Base, Video, Song, Concert, Contribution
+from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+load_dotenv()
 
 DATABASE_URL = "sqlite:///./twice_fancam.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -31,6 +35,12 @@ def get_db():
         yield db
     finally:
         db.close()
+
+# Admin Auth 의존성
+def verify_admin(x_admin_key: Optional[str] = Header(None)):
+    if x_admin_key != os.getenv("ADMIN_SECRET_KEY"):
+        raise HTTPException(status_code=403, detail="Admin access denied")
+    return True
 
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
@@ -63,7 +73,7 @@ def get_video(video_id: int, db: Session = Depends(get_db)):
     return video
 
 @app.patch("/api/videos/{video_id}", response_model=VideoDetail)
-def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db)):
+def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     db_video = db.query(Video).filter(Video.id == video_id).first()
     if not db_video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -85,10 +95,10 @@ def get_songs(db: Session = Depends(get_db)):
 def get_concerts(db: Session = Depends(get_db)):
     return db.query(Concert).order_by(Concert.date.desc()).all()
 
-@app.post("/api/videos/{video_id}/suggestions", response_model=AngleSuggestionBase)
-def create_suggestion(
+@app.post("/api/videos/{video_id}/contributions", response_model=ContributionBase)
+def create_contribution(
     video_id: int, 
-    suggestion: AngleSuggestionCreate, 
+    contribution: ContributionCreate, 
     request: Request,
     db: Session = Depends(get_db)
 ):
@@ -97,26 +107,69 @@ def create_suggestion(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    new_suggestion = AngleSuggestion(
+    new_contrib = Contribution(
         video_id=video_id,
-        suggested_angle=suggestion.suggested_angle,
-        suggested_sync_offset=suggestion.suggested_sync_offset,
+        suggested_title=contribution.suggested_title,
+        suggested_song_id=contribution.suggested_song_id,
+        suggested_concert_id=contribution.suggested_concert_id,
+        suggested_members=contribution.suggested_members,
+        suggested_angle=contribution.suggested_angle,
+        suggested_coordinate_x=contribution.suggested_coordinate_x,
+        suggested_coordinate_y=contribution.suggested_coordinate_y,
+        suggested_sync_offset=contribution.suggested_sync_offset,
         user_ip=request.client.host
     )
-    db.add(new_suggestion)
-    
-    # [위키 로직] 동일 영상에 대한 제안이 쌓이면 자동으로 업데이트하는 로직 (나중에 고도화 가능)
-    # 일단은 제안이 오면 바로 비디오 정보를 업데이트하는 방식으로 단순화
-    video.angle = suggestion.suggested_angle
-    video.sync_offset = suggestion.suggested_sync_offset
-    
+    db.add(new_contrib)
     db.commit()
-    db.refresh(new_suggestion)
-    return new_suggestion
+    db.refresh(new_contrib)
+    return new_contrib
 
-@app.get("/api/videos/{video_id}/suggestions", response_model=List[AngleSuggestionBase])
-def get_suggestions(video_id: int, db: Session = Depends(get_db)):
-    return db.query(AngleSuggestion).filter(AngleSuggestion.video_id == video_id).all()
+@app.get("/api/videos/{video_id}/contributions", response_model=List[ContributionBase])
+def get_contributions(video_id: int, db: Session = Depends(get_db)):
+    return db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+
+@app.post("/api/contributions/{contribution_id}/approve", response_model=VideoDetail)
+def approve_contribution(
+    contribution_id: int, 
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
+    if not contrib:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    
+    video = db.query(Video).filter(Video.id == contrib.video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    # Apply all suggested values if they are provided
+    if contrib.suggested_title is not None: video.title = contrib.suggested_title
+    if contrib.suggested_song_id is not None: video.song_id = contrib.suggested_song_id
+    if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
+    if contrib.suggested_members is not None: video.members = contrib.suggested_members
+    if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
+    if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
+    if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
+    if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
+    
+    contrib.is_processed = True
+    db.commit()
+    
+    return db.query(Video).options(joinedload(Video.song), joinedload(Video.concert)).filter(Video.id == video.id).first()
+
+@app.delete("/api/contributions/{contribution_id}", status_code=204)
+def delete_contribution(
+    contribution_id: int, 
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
+    if not contrib:
+        raise HTTPException(status_code=404, detail="Contribution not found")
+    
+    db.delete(contrib)
+    db.commit()
+    return None
 
 if __name__ == "__main__":
     import uvicorn

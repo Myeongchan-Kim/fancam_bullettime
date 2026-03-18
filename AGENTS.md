@@ -6,13 +6,17 @@ The project has reached a functional prototype stage. Fancams are being collecte
 ### Project Architecture
 - **Backend:** FastAPI (Python) using `uv`.
   - Database: SQLite (`twice_fancam.db`) with `Video`, `Song`, `Concert`, `AngleSuggestion` tables.
-  - API endpoints for video listing, filtering, and wiki-style suggestions are fully implemented.
+  - Supports multi-member tagging and precise mapping via `coordinate_x` and `coordinate_y`.
+  - API endpoints for video listing, filtering, and wiki-style suggestions (angle, sync, coordinates) are fully implemented.
+  - Admin features included for approving/deleting user suggestions via `ADMIN_SECRET_KEY` validation.
 - **Frontend:** React (Vite) + TypeScript + Tailwind CSS v4.
   - **Vite 5** is used for compatibility with Node 21.7.2.
   - **Tailwind 4** is configured using `@tailwindcss/vite` plugin and `@import "tailwindcss"` in `index.css`.
-  - `package.json` includes `"type": "module"` to support ESM imports in the config.
-  - `HomePage`: Features an interactive 360° Stage Map as a central hero element for angle-based filtering.
-  - `VideoDetailPage`: Implements YouTube embed, Multi-Angle switcher (related videos), and a visual Stage Map display.
+  - `package.json` includes `"type": "module"` to support ESM imports.
+  - `HomePage`: Features a large-scale, interactive 360° Dial Stage Map with radial viewing lines and real-time fancam markers.
+  - `VideoDetailPage`: Implements YouTube embed, Multi-Angle switcher, metadata editing, and an interactive Stage Map for precise coordinate selection/contribution.
+  - Admin Mode: Hidden admin login to review and approve user-contributed coordinates and sync offsets.
+
 - **Crawler:** AI-based 2-step pipeline (`backend/app/crawler/`).
   - Successfully scraped and labeled initial data from Incheon, Oakland, LA, and Paris.
   - AI Parser (Gemini) effectively filters out non-relevant videos.

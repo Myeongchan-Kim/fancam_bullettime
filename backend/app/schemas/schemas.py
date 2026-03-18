@@ -31,6 +31,8 @@ class VideoBase(BaseModel):
     concert_id: Optional[int]
     members: List[str]
     angle: str
+    coordinate_x: Optional[float] = None
+    coordinate_y: Optional[float] = None
     sync_offset: float
     created_at: datetime
 
@@ -47,17 +49,32 @@ class VideoUpdate(BaseModel):
     concert_id: Optional[int] = None
     members: Optional[List[str]] = None
     angle: Optional[str] = None
+    coordinate_x: Optional[float] = None
+    coordinate_y: Optional[float] = None
     sync_offset: Optional[float] = None
 
-class AngleSuggestionCreate(BaseModel):
-    suggested_angle: str
-    suggested_sync_offset: float
+class ContributionCreate(BaseModel):
+    suggested_title: Optional[str] = None
+    suggested_song_id: Optional[int] = None
+    suggested_concert_id: Optional[int] = None
+    suggested_members: Optional[List[str]] = None
+    suggested_angle: Optional[str] = None
+    suggested_coordinate_x: Optional[float] = None
+    suggested_coordinate_y: Optional[float] = None
+    suggested_sync_offset: Optional[float] = None
 
-class AngleSuggestionBase(BaseModel):
+class ContributionBase(BaseModel):
     id: int
     video_id: int
-    suggested_angle: str
-    suggested_sync_offset: float
+    suggested_title: Optional[str]
+    suggested_song_id: Optional[int]
+    suggested_concert_id: Optional[int]
+    suggested_members: Optional[List[str]]
+    suggested_angle: Optional[str]
+    suggested_coordinate_x: Optional[float]
+    suggested_coordinate_y: Optional[float]
+    suggested_sync_offset: Optional[float]
+    is_processed: bool
     created_at: datetime
 
     class Config:
