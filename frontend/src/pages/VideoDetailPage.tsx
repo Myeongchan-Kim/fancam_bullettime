@@ -388,7 +388,7 @@ const VideoDetailPage = () => {
                     <input className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-twice-magenta"
                       value={editData.title} onChange={e => setEditData({...editData, title: e.target.value})} />
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-3">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Song</label>
                       <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none"
@@ -402,10 +402,15 @@ const VideoDetailPage = () => {
                       <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm outline-none"
                         value={editData.concert_id} onChange={e => setEditData({...editData, concert_id: parseInt(e.target.value)})}>
                         <option value="0">Unknown</option>
-                        {concerts.map(c => <option key={c.id} value={c.id}>{c.city}</option>)}
+                        {concerts.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.city}, {c.country} - {c.venue} ({new Date(c.date).toLocaleDateString()})
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>
+
                   <div className="space-y-2">
                     <label className="text-[10px] font-bold text-gray-500 uppercase ml-1">Members Focus</label>
                     <div className="flex flex-wrap gap-1">
@@ -495,24 +500,28 @@ const VideoDetailPage = () => {
                     value={editData.title} onChange={e => setEditData({...editData, title: e.target.value})} />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Song</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"
-                      value={editData.song_id} onChange={e => setEditData({...editData, song_id: parseInt(e.target.value)})}>
-                      <option value="0">Unknown</option>
-                      {songs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> Concert</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"
-                      value={editData.concert_id} onChange={e => setEditData({...editData, concert_id: parseInt(e.target.value)})}>
-                      <option value="0">Unknown</option>
-                      {concerts.map(c => <option key={c.id} value={c.id}>{c.city}</option>)}
-                    </select>
-                  </div>
+              <div className="space-y-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Song</label>
+                  <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"
+                    value={editData.song_id} onChange={e => setEditData({...editData, song_id: parseInt(e.target.value)})}>
+                    <option value="0">Unknown</option>
+                    {songs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                  </select>
                 </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> Concert</label>
+                  <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none"
+                    value={editData.concert_id} onChange={e => setEditData({...editData, concert_id: parseInt(e.target.value)})}>
+                    <option value="0">Unknown</option>
+                    {concerts.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.city}, {c.country} - {c.venue} ({new Date(c.date).toLocaleDateString()})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
 
                 <div className="space-y-2">
                   <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><User className="h-3 w-3"/> Members</label>
