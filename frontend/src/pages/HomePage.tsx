@@ -86,7 +86,7 @@ const HomePage = () => {
         </div>
 
         {/* Setlist Range Slider at the bottom of Hero */}
-        <div className="w-full mt-10">
+        <div className="w-full mt-10 mb-20">
           <SetlistSlider 
             songs={songs} 
             startOrder={startOrder} 

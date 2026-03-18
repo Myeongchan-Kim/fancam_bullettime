@@ -9,10 +9,9 @@ interface SetlistSliderProps {
 }
 
 const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrder, onChange }) => {
-  // Defensive calculation of min/max orders
   const validSongs = songs.filter(s => typeof s.order === 'number');
   const minOrder = validSongs.length > 0 ? Math.min(...validSongs.map(s => s.order)) : 1;
-  const maxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37; // Fallback to 37 (standard tour size)
+  const maxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
   
   if (songs.length === 0) return (
     <div className="w-full bg-slate-900/60 border-y border-slate-800/50 backdrop-blur-md p-8 text-center text-gray-600 italic">
@@ -23,20 +22,17 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrd
   const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     if (isNaN(val)) return;
-    const value = Math.min(val, endOrder);
-    onChange(value, endOrder);
+    onChange(Math.min(val, endOrder), endOrder);
   };
 
   const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     if (isNaN(val)) return;
-    const value = Math.max(val, startOrder);
-    onChange(startOrder, value);
+    onChange(startOrder, Math.max(val, startOrder));
   };
 
   const getSongName = (order: number) => {
-    const song = songs.find(s => s.order === order);
-    return song ? song.name : `Track ${order}`;
+    return songs.find(s => s.order === order)?.name || `Track ${order}`;
   };
 
   const calculatePercent = (order: number) => {
@@ -47,11 +43,11 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrd
   return (
     <div className="w-full bg-slate-900/60 border-y border-slate-800/50 backdrop-blur-md p-8 relative overflow-hidden group">
       <div className="max-w-5xl mx-auto space-y-10">
-        {/* Header Labeling */}
+        {/* Header Section */}
         <div className="flex justify-between items-end border-b border-white/5 pb-4">
           <div className="space-y-1">
             <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-magenta drop-shadow-[0_0_5px_#FF1988]">Timeline Range</span>
-            <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4">
+            <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4 text-white">
               {startOrder === endOrder ? (
                 <span>#{startOrder.toString().padStart(2, '0')} {getSongName(startOrder)}</span>
               ) : (
@@ -64,69 +60,81 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrd
             </h3>
           </div>
           <div className="text-right bg-slate-800/50 px-4 py-2 rounded-2xl border border-white/5">
-            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block">Selected Window</span>
+            <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block text-white">Selected Window</span>
             <p className="text-sm text-white font-black">{endOrder - startOrder + 1} TRACKS</p>
           </div>
         </div>
 
-        {/* The Slider Component */}
-        <div className="relative h-14 flex items-center px-2">
-          {/* Base Track */}
-          <div className="absolute w-full h-2 bg-slate-950 rounded-full border border-white/5"></div>
+        {/* Slider Component */}
+        <div className="relative h-36 flex items-start mt-4">
+          {/* Base Track - Centered between thumb centers */}
+          <div className="absolute left-[10px] right-[10px] h-1.5 bg-slate-950 rounded-full border border-white/5 top-3"></div>
           
-          {/* Active Segment Highlight */}
+          {/* Active Range Highlight - Precisely positioned */}
           <div 
-            className="absolute h-2 bg-twice-magenta shadow-[0_0_20px_#FF1988] rounded-full z-10 transition-all duration-300"
+            className="absolute h-1.5 bg-twice-magenta shadow-[0_0_20px_#FF1988] rounded-full z-10 transition-all duration-300 top-3 pointer-events-none"
             style={{ 
-              left: `${calculatePercent(startOrder)}%`, 
-              width: `${calculatePercent(endOrder) - calculatePercent(startOrder)}%` 
+              left: `calc(10px + ${calculatePercent(startOrder)} * (100% - 20px) / 100)`, 
+              width: `calc((${calculatePercent(endOrder)} - ${calculatePercent(startOrder)}) * (100% - 20px) / 100)` 
             }}
           ></div>
 
-          {/* Dual Input Overlays */}
+          {/* Dual Inputs */}
           <input
-            type="range" 
-            min={minOrder} 
-            max={maxOrder} 
-            step="1"
-            value={startOrder} 
-            onChange={handleStartChange}
-            className="absolute w-full h-2 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
+            type="range" min={minOrder} max={maxOrder} step="1" value={startOrder} onChange={handleStartChange}
+            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
           />
           <input
-            type="range" 
-            min={minOrder} 
-            max={maxOrder} 
-            step="1"
-            value={endOrder} 
-            onChange={handleEndChange}
-            className="absolute w-full h-2 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-6 [&::-webkit-slider-thumb]:h-6 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
+            type="range" min={minOrder} max={maxOrder} step="1" value={endOrder} onChange={handleEndChange}
+            className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
           />
 
-          {/* Scale Ticks */}
-          <div className="absolute w-full h-full flex justify-between px-1 pointer-events-none pt-8">
-            {songs.map((song) => (
-              song.order % 5 === 0 && (
-                <div key={song.id} className="flex flex-col items-center" style={{ position: 'absolute', left: `${calculatePercent(song.order)}%`, transform: 'translateX(-50%)' }}>
-                  <div className="w-px h-3 bg-slate-700"></div>
-                  <span className="text-[8px] font-black text-gray-600 mt-1">{song.order}</span>
+          {/* Ticker Labels Area - Matches thumb track exactly */}
+          <div className="absolute left-[10px] right-[10px] top-3 bottom-0 pointer-events-none">
+            {songs.map((song) => {
+              const isActive = song.order >= startOrder && song.order <= endOrder;
+              const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
+              
+              return (
+                <div 
+                  key={song.id} 
+                  className="absolute top-0 h-full transition-all duration-500" 
+                  style={{ left: `${calculatePercent(song.order)}%` }}
+                >
+                  <div className={`w-px mx-auto transition-all duration-500 ${
+                    isActive ? 'h-6 bg-twice-magenta shadow-[0_0_8px_#FF1988]' : isMajor ? 'h-4 bg-slate-700' : 'h-2 bg-slate-800'
+                  }`}></div>
+                  
+                  <div 
+                    className={`absolute top-8 left-0 origin-top-left rotate-45 transition-all duration-500 whitespace-nowrap ${
+                      isActive 
+                        ? 'text-white text-[9px] font-black opacity-100 scale-105' 
+                        : isMajor 
+                          ? 'text-gray-500 text-[8px] font-bold opacity-60' 
+                          : 'text-gray-700 text-[7px] font-medium opacity-30'
+                    }`}
+                    style={{ textShadow: isActive ? '0 0 10px rgba(255, 25, 136, 0.4)' : 'none' }}
+                  >
+                    <span className="mr-2 opacity-40 font-mono">#{song.order.toString().padStart(2, '0')}</span>
+                    {song.name}
+                  </div>
                 </div>
-              )
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* Footer Labels */}
-        <div className="grid grid-cols-2 gap-10 pt-4">
-          <div className="space-y-1 group/start overflow-hidden">
-            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block group-hover/start:text-twice-magenta transition-colors text-left">Start Track Name</span>
-            <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg text-left">
+        {/* Footer Info Area */}
+        <div className="grid grid-cols-2 gap-10 pt-8 border-t border-white/5">
+          <div className="space-y-1">
+            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white">Start Track</span>
+            <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg text-white">
               {getSongName(startOrder)}
             </div>
           </div>
-          <div className="space-y-1 group/end text-right overflow-hidden">
-            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block group-hover/end:text-twice-magenta transition-colors text-right">End Track Name</span>
-            <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-right">
+          <div className="space-y-1 text-right">
+            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white text-right">End Track</span>
+            <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-white text-right">
               {getSongName(endOrder)}
             </div>
           </div>
