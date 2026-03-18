@@ -1,4 +1,4 @@
-# TWICE World Tour Archive 🍭
+# TWICE World Tour 360° Fancam Archive 🍭
 
 TWICE 직캠 모음 웹 서비스입니다. 유튜브에 산재해 있는 멤버들의 아름다운 무대 직캠을 한 곳에서 쉽게 찾아보고 감상할 수 있습니다. 특히 최신 월드 투어의 도시별, 곡별 직캠을 체계적으로 분류하여 제공합니다.
 

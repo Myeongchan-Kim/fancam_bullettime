@@ -51,6 +51,33 @@ const VideoPlayerModal = ({ video, onClose }: { video: Video, onClose: () => voi
   );
 };
 
+const MiniVideoList = ({ title, videos, onPlay }: { title: string, videos: Video[], onPlay: (v: Video) => void }) => (
+  <div className="hidden xl:flex flex-col w-64 space-y-4 z-20 self-start mt-10">
+    <h3 className="text-[10px] font-black uppercase tracking-[0.3em] text-gray-500 border-b border-slate-800 pb-3 ml-2 flex items-center gap-2">
+      <div className="w-1.5 h-1.5 rounded-full bg-twice-magenta animate-pulse shadow-[0_0_10px_#FF1988]"></div>
+      {title}
+    </h3>
+    <div className="space-y-4 overflow-y-auto max-h-[35rem] pr-2 custom-scrollbar">
+      {videos.map(v => (
+        <div 
+          key={v.id} 
+          onClick={() => onPlay(v)}
+          className="group flex items-center gap-4 p-2 rounded-2xl bg-slate-800/20 border border-transparent hover:border-slate-700 hover:bg-slate-800/50 transition-all cursor-pointer"
+        >
+          <div className="w-20 h-12 rounded-xl overflow-hidden flex-shrink-0 bg-black shadow-lg">
+            <img src={v.thumbnail_url} className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity" alt="" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-bold text-white truncate group-hover:text-twice-apricot transition-colors">{v.title}</p>
+            <p className="text-[8px] text-gray-500 font-black uppercase tracking-tighter truncate opacity-60 italic">{v.song?.name || 'Fancam'}</p>
+          </div>
+        </div>
+      ))}
+      {videos.length === 0 && <p className="text-[9px] text-gray-700 italic ml-4">Waiting for data...</p>}
+    </div>
+  </div>
+);
+
 const InteractiveStageMap = ({ 
   selectedAngle, 
   onAngleSelect, 
@@ -79,8 +106,11 @@ const InteractiveStageMap = ({
     return acc;
   }, {} as Record<string, number>);
 
+  const getLineHighlight = (target: string) => 
+    selectedAngle === target ? "bg-twice-magenta h-16 shadow-[0_0_25px_#FF1988] w-1.5" : "bg-slate-800 h-10 hover:bg-twice-apricot w-1";
+
   return (
-    <div className="flex flex-col items-center justify-center w-full py-10 transition-all overflow-visible">
+    <div className="flex flex-col items-center justify-center w-full transition-all overflow-visible">
       <div className="relative w-[45rem] aspect-square flex items-center justify-center overflow-visible" onClick={() => setActiveTooltip(null)}>
         {/* Outer Dial Ring Background */}
         <div className="absolute inset-0 rounded-full border-4 border-slate-900 shadow-[inset_0_0_120px_rgba(0,0,0,0.95)] scale-110 bg-slate-900/10 pointer-events-none"></div>
@@ -93,7 +123,7 @@ const InteractiveStageMap = ({
           </div>
         ))}
 
-        {/* Individual Video Coordinate Markers with Click-Toggle Tooltips */}
+        {/* Individual Video Coordinate Markers */}
         {videos.map((v) => {
           if (v.coordinate_x !== null && v.coordinate_y !== null && v.coordinate_x !== undefined && v.coordinate_y !== undefined) {
             const isOpen = activeTooltip === v.id;
@@ -107,13 +137,11 @@ const InteractiveStageMap = ({
                 }}
                 onClick={(e) => e.stopPropagation()}
               >
-                {/* Pulsing Dot (Clickable) */}
                 <div 
                   onClick={() => setActiveTooltip(isOpen ? null : v.id)}
-                  className={`w-5 h-5 bg-twice-magenta rounded-full shadow-[0_0_15px_#FF1988] border-2 border-white/40 animate-pulse cursor-pointer hover:scale-125 transition-transform ${isOpen ? 'scale-125 ring-4 ring-twice-magenta/30' : ''}`}
+                  className={`w-5 h-5 bg-twice-magenta rounded-full shadow-[0_0_15px_#FF1988] border-2 border-white/20 animate-pulse cursor-pointer hover:scale-125 transition-transform ${isOpen ? 'scale-125 ring-4 ring-twice-magenta/30' : ''}`}
                 ></div>
                 
-                {/* Toggleable Rich Tooltip */}
                 {isOpen && (
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in zoom-in-95 duration-200 bg-slate-900 border border-slate-700 w-64 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[60]">
                     <div className="relative aspect-video w-full group/thumb cursor-pointer overflow-hidden" onClick={() => onPlayVideo(v)}>
@@ -147,7 +175,6 @@ const InteractiveStageMap = ({
                         </button>
                       </div>
                     </div>
-                    {/* Tooltip Arrow */}
                     <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-slate-700"></div>
                   </div>
                 )}
@@ -185,25 +212,16 @@ const InteractiveStageMap = ({
         })}
 
         {/* Optimized Stage with Precise PIT Layout */}
-        <div className="relative w-[31rem] h-32 flex items-center justify-center scale-[1.1] z-10 pointer-events-none">
-          {/* Main Huge Stage Body */}
+        <div className="relative w-[31rem] h-32 flex items-center justify-center scale-[1.1] z-10 pointer-events-none text-white">
           <div className="absolute w-full h-full bg-slate-700/80 rounded-lg shadow-2xl flex items-center justify-center border-2 border-slate-600/50 overflow-hidden">
             <span className="text-[12px] font-black tracking-[1.5em] uppercase opacity-30">Stage</span>
           </div>
-          
-          {/* PIT 2 (Top Right Cutout) */}
-          <div className="absolute top-0 right-10 w-28 h-18 bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
-            PIT 2
-          </div>
-          
-          {/* PIT 1 (Bottom Left Cutout) */}
-          <div className="absolute bottom-0 left-10 w-28 h-18 bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[8px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
-            PIT 1
-          </div>
+          <div className="absolute top-0 right-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">PIT 2</div>
+          <div className="absolute bottom-0 left-12 w-32 h-20 bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">PIT 1</div>
         </div>
       </div>
       
-      <div className="mt-12">
+      <div className="mt-12 min-h-[1.5rem]">
         {selectedAngle && (
           <span className="text-twice-magenta font-black uppercase tracking-[0.5em] animate-pulse text-sm">
             Viewing Angle: {selectedAngle}
@@ -263,28 +281,27 @@ const HomePage = () => {
     <div className="space-y-12">
       {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
       
-      {/* Huge Interactive Map Section (Full Width) */}
-      <section className="flex flex-col items-center justify-center space-y-8 py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative">
+      {/* Huge Interactive Map Section with Sidebar Lists */}
+      <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible">
         {/* Background Accent */}
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
 
-        <div className="text-center space-y-3 relative z-10">
-          <h1 className="text-5xl font-black uppercase tracking-tighter italic text-white">
-            <span>THIS IS FOR</span> <br/>
-            <span className="twice-text-gradient">WORLD TOUR</span>
-          </h1>
-          <p className="text-gray-400 text-sm max-w-md mx-auto leading-relaxed">
-            Experience TWICE from every angle. Click any location pin to play immediately or select a cardinal direction to filter.
-          </p>
-        </div>
+        <div className="w-full max-w-[95rem] px-10 flex items-center justify-between gap-10 overflow-visible">
+          {/* Left Sidebar: Recent */}
+          <MiniVideoList title="Recently Added" videos={videos.slice(0, 6)} onPlay={setActiveVideo} />
 
-        <div className="w-full max-w-full px-4 flex justify-center overflow-visible">
-          <InteractiveStageMap 
-            selectedAngle={selectedAngle} 
-            onAngleSelect={setSelectedAngle} 
-            videos={videos} 
-            onPlayVideo={setActiveVideo}
-          />
+          {/* Center Map */}
+          <div className="flex-1 flex justify-center overflow-visible">
+            <InteractiveStageMap 
+              selectedAngle={selectedAngle} 
+              onAngleSelect={setSelectedAngle} 
+              videos={videos} 
+              onPlayVideo={setActiveVideo}
+            />
+          </div>
+
+          {/* Right Sidebar: Trending */}
+          <MiniVideoList title="Hot Choices" videos={videos.slice().reverse().slice(0, 6)} onPlay={setActiveVideo} />
         </div>
       </section>
 
@@ -292,7 +309,7 @@ const HomePage = () => {
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl">
         {/* Concert Filter */}
         <div className="space-y-2">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest">
+          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <MapPin className="h-3 w-3 text-twice-apricot" /> Venue & City
           </label>
           <select 
@@ -306,7 +323,7 @@ const HomePage = () => {
         </div>
         {/* Song Filter */}
         <div className="space-y-2">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest">
+          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <Music className="h-3 w-3 text-twice-magenta" /> Performance Song
           </label>
           <select 
@@ -320,7 +337,7 @@ const HomePage = () => {
         </div>
         {/* Member Filter */}
         <div className="space-y-2">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest">
+          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <User className="h-3 w-3 text-indigo-400" /> Focus Member
           </label>
           <select 
@@ -337,7 +354,7 @@ const HomePage = () => {
       {/* Video Grid Section */}
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-white text-white">
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
             <span>{videos.length} Performances Found</span>
           </h2>
@@ -354,9 +371,9 @@ const HomePage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
           {videos.map(video => (
-            <div key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer" onClick={() => setActiveVideo(video)}>
+            <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
               <div className="aspect-video relative overflow-hidden">
                 <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
                 
@@ -376,7 +393,7 @@ const HomePage = () => {
                 </div>
                 
                 <div className="absolute inset-0 bg-twice-magenta/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <Play className="h-10 w-10 text-white fill-white drop-shadow-2xl scale-75 group-hover:scale-100 transition-transform duration-300" />
+                  <ExternalLink className="h-10 w-10 text-white drop-shadow-2xl scale-75 group-hover:scale-100 transition-transform duration-300" />
                 </div>
               </div>
               <div className="p-4 space-y-2 bg-slate-900/50">
@@ -387,7 +404,7 @@ const HomePage = () => {
                   <span>{video.concert?.city || 'Unknown City'}</span>
                 </div>
               </div>
-            </div>
+            </Link>
           ))}
         </div>
         

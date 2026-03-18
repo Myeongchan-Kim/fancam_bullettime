@@ -14,8 +14,8 @@ function App() {
             <div className="flex items-center justify-between h-16">
               <Link to="/" className="flex items-center space-x-2">
                 <Candy className="h-8 w-8 text-twice-magenta" />
-                <span className="text-xl font-bold uppercase tracking-widest twice-text-gradient">
-                  TWICE World Tour Archive
+                <span className="text-2xl font-black uppercase tracking-tighter italic twice-text-gradient">
+                  TWICE World Tour 360° Fancam Archive
                 </span>
               </Link>
               <div className="flex space-x-4">
@@ -37,7 +37,7 @@ function App() {
         {/* Footer */}
         <footer className="bg-slate-900 border-t border-slate-700 py-8">
           <div className="max-w-7xl mx-auto px-4 text-center text-gray-400 text-sm">
-            <p>© 2026 TWICE World Tour Archive - All stage videos are property of their respective creators.</p>
+            <p>© 2026 TWICE World Tour 360° Fancam Archive - All stage videos are property of their respective creators.</p>
           </div>
         </footer>
       </div>

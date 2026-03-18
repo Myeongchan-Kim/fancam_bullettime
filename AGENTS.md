@@ -1,4 +1,4 @@
-# TWICE World Tour Archive - Shared Agent Memory (GEMINI.md -> AGENTS.md)
+# TWICE World Tour 360° Fancam Archive - Shared Agent Memory (GEMINI.md -> AGENTS.md)
 
 ## Current Status (2026-03-17)
 The project has reached a functional prototype stage. Fancams are being collected via an AI-powered crawler and displayed on a modern React web interface with multi-angle and wiki features.
@@ -13,7 +13,7 @@ The project has reached a functional prototype stage. Fancams are being collecte
   - **Vite 5** is used for compatibility with Node 21.7.2.
   - **Tailwind 4** is configured using `@tailwindcss/vite` plugin and `@import "tailwindcss"` in `index.css`.
   - `package.json` includes `"type": "module"` to support ESM imports.
-  - `HomePage`: Features a large-scale, interactive 360° Dial Stage Map with radial viewing lines and real-time fancam markers.
+  - `HomePage`: Features a large-scale, interactive 360° Dial Stage Map. Redundant hero text removed, and title style moved to header.
   - `VideoDetailPage`: Implements YouTube embed, Multi-Angle switcher, metadata editing, and an interactive Stage Map for precise coordinate selection/contribution.
   - Admin Mode: Hidden admin login to review and approve user-contributed coordinates and sync offsets.
 

@@ -17,7 +17,7 @@ DATABASE_URL = "sqlite:///./twice_fancam.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-app = FastAPI(title="TWICE World Tour Archive API")
+app = FastAPI(title="TWICE World Tour 360° Fancam Archive API")
 
 # CORS 설정
 app.add_middleware(
