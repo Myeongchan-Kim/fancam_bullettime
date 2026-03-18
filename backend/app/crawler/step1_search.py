@@ -25,19 +25,45 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 with open(TOUR_DATA_PATH, "r", encoding="utf-8") as f:
     TOUR_DATA = json.load(f)
 
+MEMBERS = ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"]
+MAIN_SONGS = ["Strategy", "THIS IS FOR", "MAKE ME GO", "SET ME FREE", "FANCY (Rock ver.)"]
+
 def get_video_id(url):
     """유튜브 URL에서 Video ID 추출"""
     if not url: return None
     query = urlparse(url).query
     return parse_qs(query).get("v", [None])[0]
 
-def run_target_search(limit_cities=5):
+def run_deep_dive(target_city=None, limit_videos_per_query=5):
     if not os.path.exists(USER_DATA_DIR):
         print("경고: user_data 폴더가 없습니다. login.py를 먼저 실행하여 로그인해주세요.")
         return
 
-    print(f"Step 1: Target Search Crawler (전역 검색 모드) 시작... (최대 {limit_cities}개 도시)")
     db = SessionLocal()
+    
+    # Target city selection
+    if target_city:
+        target_schedules = [s for s in TOUR_DATA["schedule"] if s["city"].lower() == target_city.lower()]
+        if not target_schedules:
+            print(f"도시 '{target_city}'를 일정에서 찾을 수 없습니다.")
+            return
+    else:
+        # If no city provided, pick a random one from schedule
+        target_schedules = [random.choice(TOUR_DATA["schedule"])]
+    
+    selected_city = target_schedules[0]["city"]
+    print(f"🚀 '{selected_city}' 도시 집중 공략 모드 시작...")
+
+    # Generate search queries based on tips
+    queries = []
+    queries.append(f"TWICE {selected_city} Full Concert")
+    for member in MEMBERS:
+        queries.append(f"TWICE {selected_city} {member} Focus")
+        queries.append(f"TWICE {selected_city} {member} 직캠")
+    for song in MAIN_SONGS:
+        queries.append(f"TWICE {selected_city} {song} Fancam 4K")
+
+    random.shuffle(queries) # To make training more natural
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
@@ -49,29 +75,15 @@ def run_target_search(limit_cities=5):
         
         page = context.pages[0] if context.pages else context.new_page()
 
-        # 검색 대상 도시 선정 (랜덤하게 5개 도시 선택하거나 순차적으로)
-        schedules = TOUR_DATA["schedule"]
-        random.shuffle(schedules)
-        target_schedules = schedules[:limit_cities]
-        
-        # 주요 검색 곡 선정
-        main_songs = ["Strategy", "THIS IS FOR", "MAKE ME GO", "SET ME FREE", "FANCY (Rock ver.)"]
-
-        for schedule in target_schedules:
-            city = schedule["city"]
-            country = schedule["country"]
-            # 해당 도시에서 무작위 곡 하나 선택하여 검색 (너무 많이 검색하면 봇 탐지 가능성 때문)
-            song = random.choice(main_songs)
-            
-            search_query = f"TWICE {city} {song} Fancam 4K"
-            print(f"\n>>> 검색 시도: {search_query} ({country})")
+        for query in queries:
+            print(f"\n🔍 검색어: {query}")
             
             try:
-                page.goto(f"https://www.youtube.com/results?search_query={search_query}")
+                page.goto(f"https://www.youtube.com/results?search_query={query}")
                 page.wait_for_selector("ytd-video-renderer", timeout=15000)
-                time.sleep(2) # 렌더링 안정화 대기
+                time.sleep(2)
                 
-                videos = page.locator("ytd-video-renderer").all()[:5]
+                videos = page.locator("ytd-video-renderer").all()[:limit_videos_per_query]
                 
                 for idx, video in enumerate(videos):
                     try:
@@ -82,26 +94,25 @@ def run_target_search(limit_cities=5):
                         
                         url = "https://www.youtube.com" + href
                         yt_id = get_video_id(url)
-                        
-                        channel_elems = video.locator(".ytd-channel-name a").all()
-                        channel = channel_elems[0].inner_text() if channel_elems else "Unknown"
-                        
                         if not yt_id: continue
                         
                         # 중복 체크
                         if db.query(Video).filter(Video.youtube_id == yt_id).first():
-                            print(f"  [{idx+1}] 이미 존재: {yt_id}")
+                            # print(f"  [{idx+1}] 이미 존재: {yt_id}")
                             continue
 
-                        # AI 파싱 (메타데이터 추출)
+                        channel_elems = video.locator(".ytd-channel-name a").all()
+                        channel = channel_elems[0].inner_text() if channel_elems else "Unknown"
+
+                        # AI 파싱
                         metadata = parse_fancam_metadata(title, channel)
                         if not metadata or not metadata.get("is_valid_fancam"):
-                            print(f"  [{idx+1}] 유효하지 않은 영상 스킵: {title[:30]}...")
+                            print(f"  [{idx+1}] 유효하지 않은 영상 (AI 필터링): {title[:30]}...")
                             continue
 
-                        # DB 매핑 (Song & Concert)
+                        # DB 매핑
                         s_name = metadata.get("song")
-                        c_city = metadata.get("city")
+                        c_city = metadata.get("city") or selected_city # Fallback to target city
                         
                         song_obj = db.query(Song).filter(Song.name == s_name).first()
                         concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
@@ -118,28 +129,29 @@ def run_target_search(limit_cities=5):
                         )
                         db.add(new_video)
                         db.commit()
-                        print(f"  [{idx+1}] DB 저장 성공! (곡: {s_name}, 도시: {c_city})")
+                        print(f"  ✅ DB 저장 성공! [{s_name or 'Full Concert'}] - {title[:40]}...")
                         
-                        # 알고리즘 훈련 (가상 시청 - 짧게)
+                        # 알고리즘 훈련 (짧게 시청)
                         v_page = context.new_page()
                         v_page.goto(url)
                         time.sleep(3)
                         v_page.close()
                         
                     except Exception as e:
-                        print(f"  영상 파싱 에러: {e}")
+                        print(f"  ❌ 영상 처리 중 에러: {e}")
                         continue
                         
             except Exception as e:
-                print(f"도시 {city} 검색 중 에러: {e}")
+                print(f"❌ 쿼리 '{query}' 검색 중 에러: {e}")
                 continue
                 
-            # 도시 간 검색 간격 (봇 탐지 방지)
-            time.sleep(5)
+            time.sleep(random.uniform(2, 5)) # Random delay between queries
             
-        print("\n모든 대상 도시 검색 완료.")
+        print(f"\n✨ '{selected_city}' 집중 공략 완료.")
         db.close()
         context.close()
 
 if __name__ == "__main__":
-    run_target_search(limit_cities=5) # 이번엔 5개 도시만 테스트
+    # If a city argument is passed, use it. Otherwise random.
+    target = sys.argv[1] if len(sys.argv) > 1 else None
+    run_deep_dive(target_city=target)
