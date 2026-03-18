@@ -45,6 +45,7 @@ class Song(Base):
     __tablename__ = "songs"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
+    order = Column(Integer, nullable=True)
     is_solo = Column(Boolean, default=False)
     member_name = Column(String, nullable=True) # if solo
     

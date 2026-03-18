@@ -45,6 +45,8 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
     song_id: Optional[int] = None,
+    start_order: Optional[int] = None,
+    end_order: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
     angle: Optional[str] = None,
@@ -54,6 +56,10 @@ def get_videos(
     
     if song_id:
         query = query.filter(Video.song_id == song_id)
+    
+    if start_order is not None and end_order is not None:
+        query = query.join(Song).filter(Song.order >= start_order, Song.order <= end_order)
+    
     if concert_id:
         query = query.filter(Video.concert_id == concert_id)
     if member:
@@ -89,7 +95,7 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
 
 @app.get("/api/songs", response_model=List[SongBase])
 def get_songs(db: Session = Depends(get_db)):
-    return db.query(Song).all()
+    return db.query(Song).order_by(Song.order).all()
 
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):

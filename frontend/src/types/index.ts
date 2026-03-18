@@ -1,6 +1,7 @@
 export interface Song {
   id: number;
   name: string;
+  order: number;
   is_solo: boolean;
   member_name?: string;
 }

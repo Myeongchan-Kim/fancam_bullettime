@@ -5,6 +5,7 @@ from datetime import datetime
 class SongBase(BaseModel):
     id: int
     name: str
+    order: Optional[int] = None
     is_solo: bool
     member_name: Optional[str] = None
 

@@ -1,21 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Search, MapPin, Music, User, ExternalLink } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import MiniVideoList from '../components/MiniVideoList';
 import StageMap from '../components/StageMap';
+import SetlistSlider from '../components/SetlistSlider';
 
 const HomePage = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   
-  const [selectedSong, setSelectedSong] = useState('');
   const [selectedConcert, setSelectedConcert] = useState('');
   const [selectedMember, setSelectedMember] = useState('');
+  const [startOrder, setStartOrder] = useState(1);
+  const [endOrder, setEndOrder] = useState(1);
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
 
   useEffect(() => {
@@ -23,8 +25,14 @@ const HomePage = () => {
   }, []);
 
   useEffect(() => {
+    if (songs.length > 0 && endOrder === 1) {
+      setEndOrder(songs.length);
+    }
+  }, [songs]);
+
+  useEffect(() => {
     fetchVideos();
-  }, [selectedSong, selectedConcert, selectedMember]);
+  }, [selectedConcert, selectedMember, startOrder, endOrder]);
 
   const fetchInitialData = async () => {
     try {
@@ -40,9 +48,11 @@ const HomePage = () => {
   const fetchVideos = async () => {
     try {
       let url = `${API_BASE_URL}/videos?`;
-      if (selectedSong) url += `song_id=${selectedSong}&`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (selectedMember) url += `member=${selectedMember}&`;
+      if (songs.length > 0) {
+        url += `start_order=${startOrder}&end_order=${endOrder}&`;
+      }
       
       const res = await axios.get(url);
       setVideos(res.data);
@@ -58,8 +68,10 @@ const HomePage = () => {
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
 
         <div className="w-full max-w-[95rem] px-10 flex items-center justify-between gap-10 overflow-visible">
+          {/* Left Sidebar: Recent */}
           <MiniVideoList title="Recently Added" videos={videos.slice(0, 6)} onPlay={setActiveVideo} />
 
+          {/* Center Map */}
           <div className="flex-1 flex justify-center overflow-visible">
             <StageMap 
               angle="Unknown"
@@ -69,13 +81,25 @@ const HomePage = () => {
             />
           </div>
 
+          {/* Right Sidebar: Trending */}
           <MiniVideoList title="Hot Choices" videos={videos.slice().reverse().slice(0, 6)} onPlay={setActiveVideo} />
+        </div>
+
+        {/* Setlist Range Slider at the bottom of Hero */}
+        <div className="w-full mt-10">
+          <SetlistSlider 
+            songs={songs} 
+            startOrder={startOrder} 
+            endOrder={endOrder} 
+            onChange={(s, e) => {setStartOrder(s); setEndOrder(e);}} 
+          />
         </div>
       </section>
 
-      {/* Filter Bar */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl">
-        <div className="space-y-2">
+      {/* Filter Bar (Simplified) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl text-white">
+        {/* Concert Filter */}
+        <div className="space-y-2 text-white">
           <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <MapPin className="h-3 w-3 text-twice-apricot" /> Venue & City
           </label>
@@ -88,20 +112,9 @@ const HomePage = () => {
             {concerts.map(c => <option key={c.id} value={c.id} className="bg-slate-900">{c.city} - {new Date(c.date).toLocaleDateString()}</option>)}
           </select>
         </div>
-        <div className="space-y-2">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
-            <Music className="h-3 w-3 text-twice-magenta" /> Performance Song
-          </label>
-          <select 
-            className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white"
-            value={selectedSong}
-            onChange={(e) => setSelectedSong(e.target.value)}
-          >
-            <option value="">All Songs</option>
-            {songs.map(s => <option key={s.id} value={s.id} className="bg-slate-900">{s.name}</option>)}
-          </select>
-        </div>
-        <div className="space-y-2">
+        
+        {/* Member Filter */}
+        <div className="space-y-2 text-white">
           <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <User className="h-3 w-3 text-indigo-400" /> Focus Member
           </label>
@@ -124,8 +137,9 @@ const HomePage = () => {
             <span>{videos.length} Performances Found</span>
           </h2>
           <div className="flex gap-2">
-            {(selectedSong || selectedConcert || selectedMember) && (
-              <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember('');}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All</button>
+            {/* Active Filters as Pills */}
+            {(selectedConcert || selectedMember || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
+              <button onClick={() => {setSelectedConcert(''); setSelectedMember(''); setStartOrder(1); setEndOrder(songs.length);}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
           </div>
         </div>
@@ -168,7 +182,7 @@ const HomePage = () => {
           <div className="text-center py-32 text-gray-600">
             <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={() => {setSelectedSong(''); setSelectedConcert(''); setSelectedMember('');}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+            <button onClick={() => {setSelectedConcert(''); setSelectedMember(''); setStartOrder(1); setEndOrder(songs.length);}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
           </div>
         )}
       </div>
