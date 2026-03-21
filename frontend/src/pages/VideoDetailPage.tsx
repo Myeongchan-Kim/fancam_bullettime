@@ -246,7 +246,7 @@ const VideoDetailPage = () => {
                   <div className="space-y-3">
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Songs</label>
-                      <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg no-scrollbar">
+                      <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg">
                         {songs.map(s => (
                           <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
                             className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}>
@@ -362,7 +362,7 @@ const VideoDetailPage = () => {
                 <div className="space-y-3">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Songs</label>
-                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg no-scrollbar">
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg">
                       {songs.map(s => (
                         <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
                           className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}>

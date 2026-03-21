@@ -141,16 +141,13 @@ def get_songs(db: Session = Depends(get_db)):
 def get_concerts(db: Session = Depends(get_db)):
     return db.query(Concert).order_by(Concert.date.desc()).all()
 
-import urllib.parse as urlparse
+import re
 
 def get_video_id(url: str):
-    url_data = urlparse.urlparse(url)
-    query = urlparse.parse_qs(url_data.query)
-    if "v" in query:
-        return query["v"][0]
-    elif "youtu.be" in url:
-        return url_data.path.strip("/")
-    return None
+    # Regex to cover standard, mobile, shorts, live, and embed URLs
+    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/)([0-9A-Za-z_-]{11}).*'
+    match = re.search(pattern, url)
+    return match.group(1) if match else None
 
 @app.post("/api/contributions", response_model=ContributionBase)
 def create_general_contribution(
@@ -259,7 +256,8 @@ def approve_contribution(
                 concert_id=contrib.suggested_concert_id
             )
             db.add(video)
-            db.flush()
+            db.commit() # Commit video first to get persistent ID
+            db.refresh(video)
         
         contrib.video_id = video.id
         apply_contribution_to_video(db, video, contrib)

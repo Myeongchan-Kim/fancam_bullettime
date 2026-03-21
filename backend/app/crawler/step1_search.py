@@ -13,47 +13,45 @@ from sqlalchemy.orm import sessionmaker
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from app.models.models import Base, Video, Song, Concert, Contribution
 from app.crawler.ai_parser import parse_fancam_metadata
-from app.models.models import Video, Song, Concert
+
+DATABASE_URL = "sqlite:///./twice_fancam.db"
+USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "user_data")
 
 # 로그 설정
-LOG_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "crawler.log")
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s [%(levelname)s] %(message)s',
-    handlers=[
-        logging.FileHandler(LOG_FILE, encoding='utf-8'),
-        logging.StreamHandler(sys.stdout) # 콘솔에도 동시에 출력 (원치 않으면 삭제 가능)
-    ]
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
-USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "user_data")
-TOUR_DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tour_info.json")
-DATABASE_URL = "sqlite:///./twice_fancam.db"
+# 멤버 및 주요 곡 목록 (검색용)
+MEMBERS = ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"]
+MAIN_SONGS = ["THIS IS FOR", "Strategy", "FANCY", "Feel Special", "I CAN'T STOP ME"]
 
-# DB 세션 설정
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-with open(TOUR_DATA_PATH, "r", encoding="utf-8") as f:
+# Load tour info for city dates
+TOUR_INFO_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "tour_info.json")
+with open(TOUR_INFO_PATH, "r") as f:
     TOUR_DATA = json.load(f)
 
-MEMBERS = ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"]
-MAIN_SONGS = ["Strategy", "THIS IS FOR", "MAKE ME GO", "SET ME FREE", "FANCY (Rock ver.)"]
-
 def get_video_id(url):
-    if not url: return None
-    query = urlparse(url).query
-    return parse_qs(query).get("v", [None])[0]
+    parsed = urlparse(url)
+    if parsed.hostname == 'youtu.be':
+        return parsed.path[1:]
+    if parsed.hostname in ('www.youtube.com', 'youtube.com'):
+        if parsed.path == '/watch':
+            return parse_qs(parsed.query)['v'][0]
+        if parsed.path[:7] == '/embed/':
+            return parsed.path[7:]
+        if parsed.path[:3] == '/v/':
+            return parsed.path[3:]
+    return None
 
 def run_deep_dive(target_city, limit_videos_per_query=5):
-    """특정 도시의 모든 키워드 조합으로 정밀 수집 수행"""
-    if not os.path.exists(USER_DATA_DIR):
-        logger.error("user_data 폴더가 없습니다. login.py를 먼저 실행하여 로그인해주세요.")
-        return
-
+    """특정 도시를 집중적으로 수집하는 로직"""
+    engine = create_engine(DATABASE_URL)
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
+
+    new_video_count = 0
     logger.info(f"🚀 >>> '{target_city}' 집중 공략 시작...")
 
     # Generate search queries
@@ -77,9 +75,8 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
         queries.append(f"TWICE {target_city} {member} 직캠")
     for song in MAIN_SONGS:
         queries.append(f"TWICE {target_city} {song} Fancam 4K")
-
+    
     random.shuffle(queries)
-    new_video_count = 0
 
     with sync_playwright() as p:
         context = p.chromium.launch_persistent_context(
@@ -96,7 +93,7 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                 page.goto(f"https://www.youtube.com/results?search_query={query}")
                 page.wait_for_selector("ytd-video-renderer", timeout=15000)
                 time.sleep(1.5)
-                
+
                 videos = page.locator("ytd-video-renderer").all()[:limit_videos_per_query]
                 for video in videos:
                     try:
@@ -110,50 +107,53 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
 
                         channel_elems = video.locator(".ytd-channel-name a").all()
                         channel = channel_elems[0].inner_text() if channel_elems else "Unknown"
-metadata = parse_fancam_metadata(title, channel)
-if metadata and metadata.get("is_valid_fancam"):
-    song_names = metadata.get("songs", [])
-    c_city = metadata.get("city") or target_city
 
-    song_objs = []
-    for s_name in song_names:
-        song_obj = db.query(Song).filter(Song.name == s_name).first()
-        if song_obj:
-            song_objs.append(song_obj)
+                        metadata = parse_fancam_metadata(title, channel)
+                        if metadata and metadata.get("is_valid_fancam"):
+                            song_names = metadata.get("songs", [])
+                            c_city = metadata.get("city") or target_city
+                            
+                            song_objs = []
+                            for s_name in song_names:
+                                song_obj = db.query(Song).filter(Song.name == s_name).first()
+                                if song_obj:
+                                    song_objs.append(song_obj)
+                                    
+                            concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
 
-    concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
-new_contrib = Contribution(
-    suggested_url=url,
-    suggested_title=title,
-    suggested_song_ids=[s.id for s in song_objs],
-    suggested_concert_id=concert_obj.id if concert_obj else None,
-    suggested_members=metadata.get("members", ["Unknown"]),
-    suggested_angle=metadata.get("angle", "Unknown"),
-    user_ip="crawler"
-)
-db.add(new_contrib)
-db.commit()
-
-new_video_count += 1
-logger.info(f"    ✅ 신규 제보 추가: {title[:40]}...")
+                            new_contrib = Contribution(
+                                suggested_url=url,
+                                suggested_title=title,
+                                suggested_song_ids=[s.id for s in song_objs],
+                                suggested_concert_id=concert_obj.id if concert_obj else None,
+                                suggested_members=metadata.get("members", ["Unknown"]),
+                                suggested_angle=metadata.get("angle", "Unknown"),
+                                user_ip="crawler"
+                            )
+                            db.add(new_contrib)
+                            db.commit()
+                            
+                            new_video_count += 1
+                            logger.info(f"    ✅ 신규 제보 추가: {title[:40]}...")
+                            
                             # Training and Cooldown per video
                             v_page = context.new_page()
                             v_page.goto(url)
                             time.sleep(5) # Watch for 5 seconds for training
                             v_page.close()
-                            
+
                             logger.info("    💤 영상 처리 후 1분 쿨타임 대기 중...")
                             time.sleep(60) # 1 minute cooldown per video
-                    except Exception as e: 
+                    except Exception as e:
                         logger.warning(f"    ⚠️ 개별 영상 처리 오류: {e}")
                         continue
-            except Exception as e: 
+            except Exception as e:
                 logger.error(f"  ❌ 쿼리 수행 오류: {e}")
                 continue
             time.sleep(random.uniform(2, 4))
-        
+
         context.close()
-    
+
     db.close()
     logger.info(f"✨ '{target_city}' 완료. 새 영상 {new_video_count}개 수집됨.")
     return new_video_count
@@ -163,10 +163,10 @@ def run_auto_daemon(interval_minutes=3):
     # 중복 도시 제거 및 목록 추출
     cities = list(set([s["city"] for s in TOUR_DATA["schedule"]]))
     random.shuffle(cities)
-    
+
     logger.info(f"🛰️ TWICE World Tour 360° 크롤러 데몬 시작 (주기: {interval_minutes}분)")
     logger.info(f"대상 도시 목록: {', '.join(cities)}")
-    
+
     while True:
         for city in cities:
             try:

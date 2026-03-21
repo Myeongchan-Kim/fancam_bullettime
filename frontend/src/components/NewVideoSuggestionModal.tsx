@@ -79,7 +79,7 @@ const NewVideoSuggestionModal: React.FC<Props> = ({ songs, concerts, onClose }) 
 
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-gray-500 uppercase tracking-widest">Songs (Optional)</label>
-            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-800 border border-slate-700 rounded-xl no-scrollbar">
+            <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-800 border border-slate-700 rounded-xl">
               {songs.map(s => (
                 <button type="button" key={s.id} onClick={() => toggleSong(s.id)}
                   className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${songIds.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-700 text-gray-400 hover:bg-slate-600'}`}>
