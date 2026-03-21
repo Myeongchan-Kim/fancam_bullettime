@@ -47,9 +47,23 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
 def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution):
     """Apply contribution values to a video and mark as processed."""
     if contrib.suggested_title is not None: video.title = contrib.suggested_title
-    if contrib.suggested_song_id is not None: video.song_id = contrib.suggested_song_id
-    if getattr(contrib, 'suggested_song_ids', None) is not None: 
-        video.songs = db.query(Song).filter(Song.id.in_(contrib.suggested_song_ids)).all()
+    
+    # Sync song updates across both deprecated and new fields
+    if getattr(contrib, 'suggested_song_ids', None) is not None:
+        requested_ids = contrib.suggested_song_ids
+        found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all()
+        # Only apply if all requested songs exist to prevent partial data corruption
+        if len(found_songs) == len(requested_ids):
+            video.songs = found_songs
+            if found_songs:
+                video.song_id = found_songs[0].id
+            else:
+                video.song_id = None
+    elif contrib.suggested_song_id is not None:
+        video.song_id = contrib.suggested_song_id
+        song = db.query(Song).filter(Song.id == contrib.suggested_song_id).first()
+        video.songs = [song] if song else []
+
     if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
     if contrib.suggested_members is not None: video.members = contrib.suggested_members
     if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
@@ -157,8 +171,9 @@ def create_contribution(
     db.refresh(new_contrib)
 
     # AUTO-APPROVE LOGIC:
-    # If the video currently has no songs assigned, auto-approve the first contribution.
-    if len(video.songs) == 0:
+    # If the video currently has no songs assigned, and this contribution provides songs,
+    # auto-approve the first contribution to speed up initial labeling.
+    if len(video.songs) == 0 and contribution.suggested_song_ids:
         apply_contribution_to_video(db, video, new_contrib)
         
     return new_contrib
