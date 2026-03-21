@@ -8,11 +8,10 @@ interface Props {
   adminKey: string;
   songs: Song[];
   concerts: Concert[];
-  videos: Video[];
   onClose: () => void;
 }
 
-const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, concerts, videos, onClose }) => {
+const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, concerts, onClose }) => {
   const [contributions, setContributions] = useState<Contribution[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -83,7 +82,7 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   <div className="flex items-center gap-2">
                     {c.video_id ? (
                       <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded uppercase truncate max-w-[200px]">
-                        Edit: {videos.find(v => v.id === c.video_id)?.title || `#${c.video_id}`}
+                        Edit: {c.video_title || `#${c.video_id}`}
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded uppercase flex items-center gap-1"><Youtube className="w-3 h-3" /> New Fancam</span>

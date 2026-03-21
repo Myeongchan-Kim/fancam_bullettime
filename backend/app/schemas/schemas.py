@@ -72,6 +72,7 @@ class ContributionCreate(BaseModel):
 class ContributionBase(BaseModel):
     id: int
     video_id: Optional[int]
+    video_title: Optional[str] = None
     suggested_url: Optional[str]
     suggested_title: Optional[str]
     suggested_song_id: Optional[int] # Deprecated

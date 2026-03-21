@@ -224,7 +224,12 @@ def get_contributions(video_id: int, db: Session = Depends(get_db)):
 
 @app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
-    return db.query(Contribution).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
+    results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
+    # Populate video_title from relationship
+    for r in results:
+        if r.video:
+            r.video_title = r.video.title
+    return results
 
 @app.post("/api/contributions/{contribution_id}/approve", response_model=VideoDetail)
 def approve_contribution(
