@@ -134,25 +134,32 @@ const StageMap: React.FC<StageMapProps> = ({
               >
                 <div className={`w-5 h-5 bg-twice-magenta rounded-full shadow-[0_0_15px_#FF1988] border-2 border-white/20 animate-pulse cursor-pointer hover:scale-125 transition-transform ${isOpen ? 'scale-125 ring-4 ring-twice-magenta/30' : ''}`}></div>
                 
-                {isOpen && onPlayVideo && (
-                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in zoom-in-95 duration-200 bg-slate-900 border border-slate-700 w-64 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[60]" onClick={(e) => e.stopPropagation()}>
-                    <div className="relative aspect-video w-full group/thumb cursor-pointer overflow-hidden" onClick={() => onPlayVideo(v)}>
-                      <img src={v.thumbnail_url} className="w-full h-full object-cover transition-transform duration-500 group-hover/thumb:scale-110" alt="" />
-                      <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity">
-                        <Play className="h-12 w-12 text-white fill-white shadow-2xl" />
-                      </div>
+                {isOpen && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in zoom-in-95 duration-200 bg-slate-900 border border-slate-700 w-72 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[60]" onClick={(e) => e.stopPropagation()}>
+                    <div className="relative aspect-video w-full overflow-hidden bg-black">
+                      <iframe 
+                        className="w-full h-full"
+                        src={`https://www.youtube.com/embed/${v.youtube_id}?autoplay=1&mute=1&modestbranding=1&rel=0`}
+                        title={v.title}
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowFullScreen
+                      ></iframe>
                     </div>
-                    <div className="p-4 space-y-4 text-left">
-                      <div className="space-y-1">
-                        <h4 className="text-[11px] font-bold text-white line-clamp-2 leading-tight">{v.title}</h4>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight italic opacity-70">{v.songs && v.songs.length > 0 ? v.songs.map(s => s.name).join(', ') : 'Unknown Song'} • {v.concert?.city}</p>
+                    <div className="p-3 space-y-3 text-left">
+                      <div className="space-y-0.5">
+                        <h4 className="text-[10px] font-bold text-white line-clamp-1 leading-tight">{v.title}</h4>
+                        <p className="text-[8px] text-gray-400 font-bold uppercase tracking-tight italic opacity-70">
+                          {v.songs && v.songs.length > 0 ? v.songs.map(s => s.name).join(', ') : 'Unknown Song'} • {v.concert?.city}
+                        </p>
                       </div>
                       <div className="flex gap-2">
-                        <button onClick={() => { onPlayVideo(v); setActiveTooltip(null); }} className="flex-1 bg-twice-magenta hover:bg-twice-magenta/90 text-white text-[10px] font-black py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-twice-magenta/20">
-                          <Play className="h-3 w-3 fill-current" /> PLAY
-                        </button>
-                        <button onClick={() => navigate(`/video/${v.id}`)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-black py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 border border-slate-700">
-                          <ExternalLink className="h-3 w-3" /> DETAIL
+                        {onPlayVideo && (
+                          <button onClick={() => { onPlayVideo(v); setActiveTooltip(null); }} className="flex-1 bg-twice-magenta hover:bg-twice-magenta/90 text-white text-[9px] font-black py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-twice-magenta/20">
+                            <Play className="h-2.5 w-2.5 fill-current" /> FULL SCREEN
+                          </button>
+                        )}
+                        <button onClick={() => navigate(`/video/${v.id}`)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-black py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 border border-slate-700">
+                          <ExternalLink className="h-2.5 w-2.5" /> DETAIL
                         </button>
                       </div>
                     </div>
