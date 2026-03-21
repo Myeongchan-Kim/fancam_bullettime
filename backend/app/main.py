@@ -144,8 +144,8 @@ def get_concerts(db: Session = Depends(get_db)):
 import re
 
 def get_video_id(url: str):
-    # Regex to cover standard, mobile, shorts, live, and embed URLs
-    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/)([0-9A-Za-z_-]{11}).*'
+    # Comprehensive regex for various YouTube URL structures
+    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/|youtu\.be\/)([0-9A-Za-z_-]{11})'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
@@ -256,8 +256,7 @@ def approve_contribution(
                 concert_id=contrib.suggested_concert_id
             )
             db.add(video)
-            db.commit() # Commit video first to get persistent ID
-            db.refresh(video)
+            db.flush() # Ensure ID is generated within the transaction
         
         contrib.video_id = video.id
         apply_contribution_to_video(db, video, contrib)

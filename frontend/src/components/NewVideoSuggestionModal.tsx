@@ -23,8 +23,9 @@ const NewVideoSuggestionModal: React.FC<Props> = ({ songs, concerts, onClose }) 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!url.includes('youtube.com/') && !url.includes('youtu.be/')) {
-      alert('Please enter a valid YouTube URL');
+    const ytIdMatch = url.match(/(?:v=|\/|embed\/|shorts\/|live\/|youtu\.be\/)([0-9A-Za-z_-]{11})/);
+    if (!ytIdMatch) {
+      alert('Please enter a valid YouTube video URL');
       return;
     }
     
