@@ -3,6 +3,7 @@
 ## 🛠️ Core Principles & Mandates
 - **CRITICAL: NEVER DELETE `backend/twice_fancam.db`**. Contains live gathered data.
 - **Branch Strategy:** ALWAYS create a new branch (e.g., `feat/`, `fix/`) for any code changes. NEVER work directly on the `main` branch.
+- **Merge Protocol:** Merging to `main` and deleting feature branches MUST require explicit user approval. NEVER automate `git merge` or branch deletion in a single execution flow.
 - **Always use `uv`** for all Python/Backend operations.
 - **Memory Sharing:** This file is soft-linked (`AGENTS.md -> GEMINI.md -> CLAUDE.md`).
 - **Data Integrity:** Any metadata changes must go through the `Contribution` (wiki) system and require Admin approval.
