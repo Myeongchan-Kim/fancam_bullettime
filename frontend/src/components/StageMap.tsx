@@ -138,9 +138,11 @@ const StageMap: React.FC<StageMapProps> = ({
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-4 animate-in zoom-in-95 duration-200 bg-slate-900 border border-slate-700 w-72 rounded-2xl overflow-hidden shadow-[0_20px_50px_rgba(0,0,0,0.8)] z-[60]" onClick={(e) => e.stopPropagation()}>
                     <div className="relative aspect-video w-full overflow-hidden bg-black">
                       <iframe 
-                        className="w-full h-full"
+                        className="w-full h-full border-0"
+                        frameBorder="0"
                         src={`https://www.youtube.com/embed/${v.youtube_id}?autoplay=1&mute=1&modestbranding=1&rel=0`}
                         title={v.title}
+                        referrerPolicy="strict-origin-when-cross-origin"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                         allowFullScreen
                       ></iframe>
