@@ -141,6 +141,48 @@ def get_songs(db: Session = Depends(get_db)):
 def get_concerts(db: Session = Depends(get_db)):
     return db.query(Concert).order_by(Concert.date.desc()).all()
 
+import urllib.parse as urlparse
+
+def get_video_id(url: str):
+    url_data = urlparse.urlparse(url)
+    query = urlparse.parse_qs(url_data.query)
+    if "v" in query:
+        return query["v"][0]
+    elif "youtu.be" in url:
+        return url_data.path.strip("/")
+    return None
+
+@app.post("/api/contributions", response_model=ContributionBase)
+def create_general_contribution(
+    contribution: ContributionCreate, 
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    if not contribution.suggested_url:
+        raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
+        
+    yt_id = get_video_id(contribution.suggested_url)
+    if not yt_id:
+        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+        
+    existing_video = db.query(Video).filter(Video.youtube_id == yt_id).first()
+    if existing_video:
+        raise HTTPException(status_code=400, detail="Video already exists in the archive")
+        
+    new_contrib = Contribution(
+        suggested_url=contribution.suggested_url,
+        suggested_title=contribution.suggested_title,
+        suggested_song_ids=contribution.suggested_song_ids,
+        suggested_concert_id=contribution.suggested_concert_id,
+        suggested_members=contribution.suggested_members or [],
+        suggested_angle=contribution.suggested_angle or "Unknown",
+        user_ip=request.client.host
+    )
+    db.add(new_contrib)
+    db.commit()
+    db.refresh(new_contrib)
+    return new_contrib
+
 @app.post("/api/videos/{video_id}/contributions", response_model=ContributionBase)
 def create_contribution(
     video_id: int, 
@@ -182,6 +224,10 @@ def create_contribution(
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
     return db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
 
+@app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
+def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
+    return db.query(Contribution).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
+
 @app.post("/api/contributions/{contribution_id}/approve", response_model=VideoDetail)
 def approve_contribution(
     contribution_id: int, 
@@ -192,11 +238,37 @@ def approve_contribution(
     if not contrib:
         raise HTTPException(status_code=404, detail="Contribution not found")
     
-    video = db.query(Video).filter(Video.id == contrib.video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
-    apply_contribution_to_video(db, video, contrib)
+    if contrib.video_id is None:
+        if not contrib.suggested_url:
+            raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
+        yt_id = get_video_id(contrib.suggested_url)
+        if not yt_id:
+            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+            
+        existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
+        if existing:
+            video = existing
+        else:
+            video = Video(
+                youtube_id=yt_id,
+                url=contrib.suggested_url,
+                title=contrib.suggested_title or "Unknown Title",
+                thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
+                members=contrib.suggested_members or [],
+                angle=contrib.suggested_angle or "Unknown",
+                concert_id=contrib.suggested_concert_id
+            )
+            db.add(video)
+            db.flush()
+        
+        contrib.video_id = video.id
+        apply_contribution_to_video(db, video, contrib)
+    else:
+        video = db.query(Video).filter(Video.id == contrib.video_id).first()
+        if not video:
+            raise HTTPException(status_code=404, detail="Video not found")
+        
+        apply_contribution_to_video(db, video, contrib)
     
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
 

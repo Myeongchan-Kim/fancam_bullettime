@@ -122,20 +122,20 @@ if metadata and metadata.get("is_valid_fancam"):
             song_objs.append(song_obj)
 
     concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
+new_contrib = Contribution(
+    suggested_url=url,
+    suggested_title=title,
+    suggested_song_ids=[s.id for s in song_objs],
+    suggested_concert_id=concert_obj.id if concert_obj else None,
+    suggested_members=metadata.get("members", ["Unknown"]),
+    suggested_angle=metadata.get("angle", "Unknown"),
+    user_ip="crawler"
+)
+db.add(new_contrib)
+db.commit()
 
-    new_v = Video(
-        youtube_id=yt_id, title=title, url=url,
-        concert_id=concert_obj.id if concert_obj else None,
-        members=metadata.get("members", ["Unknown"]),
-        category=metadata.get("category", "Unknown"),
-        is_concert=metadata.get("is_valid_fancam", True),
-        thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg"
-    )
-    new_v.songs = song_objs
-    db.add(new_v)
-                            new_video_count += 1
-                            logger.info(f"    ✅ 신규 저장: {title[:40]}...")
-                            
+new_video_count += 1
+logger.info(f"    ✅ 신규 제보 추가: {title[:40]}...")
                             # Training and Cooldown per video
                             v_page = context.new_page()
                             v_page.goto(url)

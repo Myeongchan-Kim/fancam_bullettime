@@ -73,7 +73,8 @@ class Concert(Base):
 class Contribution(Base):
     __tablename__ = "contributions"
     id = Column(Integer, primary_key=True, index=True)
-    video_id = Column(Integer, ForeignKey("videos.id"))
+    video_id = Column(Integer, ForeignKey("videos.id"), nullable=True)
+    suggested_url = Column(String, nullable=True)
     
     # Metadata suggestions
     suggested_title = Column(String, nullable=True)

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Compass, Clock, Send, PlayCircle, Edit3, Save, X, User, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, PlayCircle, Edit3, Save, X, User, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';

@@ -57,6 +57,8 @@ class VideoUpdate(BaseModel):
     sync_offset: Optional[float] = None
 
 class ContributionCreate(BaseModel):
+    video_id: Optional[int] = None
+    suggested_url: Optional[str] = None
     suggested_title: Optional[str] = None
     suggested_song_id: Optional[int] = None # Deprecated
     suggested_song_ids: Optional[List[int]] = None
@@ -69,7 +71,8 @@ class ContributionCreate(BaseModel):
 
 class ContributionBase(BaseModel):
     id: int
-    video_id: int
+    video_id: Optional[int]
+    suggested_url: Optional[str]
     suggested_title: Optional[str]
     suggested_song_id: Optional[int] # Deprecated
     suggested_song_ids: Optional[List[int]]

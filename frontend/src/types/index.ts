@@ -32,7 +32,8 @@ export interface Video {
 
 export interface Contribution {
   id: number;
-  video_id: number;
+  video_id: number | null;
+  suggested_url: string | null;
   suggested_title: string | null;
   suggested_song_ids: number[] | null;
   suggested_concert_id: number | null;

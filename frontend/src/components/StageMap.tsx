@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Compass, Play, ExternalLink, Target } from 'lucide-react';
+import { Play, ExternalLink, Target } from 'lucide-react';
 import { Video } from '../types';
 
 interface StageMapProps {

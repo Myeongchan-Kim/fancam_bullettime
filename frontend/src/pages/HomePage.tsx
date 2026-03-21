@@ -1,13 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Link, useNavigate } from 'react-router-dom';
-import { Search, Music, User, ExternalLink, Compass } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Search, User, ExternalLink, Compass, Youtube } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import MiniVideoList from '../components/MiniVideoList';
 import StageMap from '../components/StageMap';
 import SetlistSlider from '../components/SetlistSlider';
+import NewVideoSuggestionModal from '../components/NewVideoSuggestionModal';
+import AdminPendingContributionsModal from '../components/AdminPendingContributionsModal';
+import { ShieldCheck } from 'lucide-react';
 
 const HomePage = () => {
   const [videos, setVideos] = useState<Video[]>([]);
@@ -19,6 +22,9 @@ const HomePage = () => {
   const [startOrder, setStartOrder] = useState(1);
   const [endOrder, setEndOrder] = useState(1);
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
+  const [showNewVideoModal, setShowNewVideoModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const adminKey = localStorage.getItem('admin_key') || '';
 
   useEffect(() => {
     fetchInitialData();
@@ -62,6 +68,8 @@ const HomePage = () => {
   return (
     <div className="space-y-12">
       {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
+      {showNewVideoModal && <NewVideoSuggestionModal songs={songs} concerts={concerts} onClose={() => setShowNewVideoModal(false)} />}
+      {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(); }} />}
       
       {/* Huge Interactive Map Section with Sidebar Lists */}
       <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
@@ -124,11 +132,19 @@ const HomePage = () => {
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
             <span>{videos.length} Performances Found</span>
           </h2>
-          <div className="flex gap-2">
+          <div className="flex gap-4 items-center">
             {/* Active Filters as Pills */}
             {(selectedConcert || selectedMember || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
               <button onClick={() => {setSelectedConcert(''); setSelectedMember(''); setStartOrder(1); setEndOrder(songs.length);}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
+            {adminKey && (
+              <button onClick={() => setShowAdminModal(true)} className="bg-green-600/20 text-green-400 hover:bg-green-600/40 hover:text-white border border-green-600/50 px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">
+                <ShieldCheck className="h-4 w-4" /> Pending Reviews
+              </button>
+            )}
+            <button onClick={() => setShowNewVideoModal(true)} className="bg-twice-magenta/20 text-twice-apricot hover:bg-twice-magenta/40 hover:text-white border border-twice-magenta/50 px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(255,25,136,0.3)]">
+              <Youtube className="h-4 w-4" /> Suggest Fancam
+            </button>
           </div>
         </div>
 
