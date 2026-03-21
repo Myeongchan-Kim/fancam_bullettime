@@ -145,7 +145,7 @@ import re
 
 def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
-    pattern = r'(?:v=|be\/|eth\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
+    pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
