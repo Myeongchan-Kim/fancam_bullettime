@@ -44,6 +44,22 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
         raise HTTPException(status_code=403, detail="Admin access denied")
     return True
 
+def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution):
+    """Apply contribution values to a video and mark as processed."""
+    if contrib.suggested_title is not None: video.title = contrib.suggested_title
+    if contrib.suggested_song_id is not None: video.song_id = contrib.suggested_song_id
+    if getattr(contrib, 'suggested_song_ids', None) is not None: 
+        video.songs = db.query(Song).filter(Song.id.in_(contrib.suggested_song_ids)).all()
+    if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
+    if contrib.suggested_members is not None: video.members = contrib.suggested_members
+    if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
+    if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
+    if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
+    if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
+    
+    contrib.is_processed = True
+    db.commit()
+
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
     song_id: Optional[int] = None,
@@ -139,6 +155,12 @@ def create_contribution(
     db.add(new_contrib)
     db.commit()
     db.refresh(new_contrib)
+
+    # AUTO-APPROVE LOGIC:
+    # If the video currently has no songs assigned, auto-approve the first contribution.
+    if len(video.songs) == 0:
+        apply_contribution_to_video(db, video, new_contrib)
+        
     return new_contrib
 
 @app.get("/api/videos/{video_id}/contributions", response_model=List[ContributionBase])
@@ -159,19 +181,7 @@ def approve_contribution(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     
-    # Apply all suggested values if they are provided
-    if contrib.suggested_title is not None: video.title = contrib.suggested_title
-    if contrib.suggested_song_id is not None: video.song_id = contrib.suggested_song_id
-    if getattr(contrib, 'suggested_song_ids', None) is not None: video.songs = db.query(Song).filter(Song.id.in_(contrib.suggested_song_ids)).all()
-    if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
-    if contrib.suggested_members is not None: video.members = contrib.suggested_members
-    if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
-    if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
-    if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
-    if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
-    
-    contrib.is_processed = True
-    db.commit()
+    apply_contribution_to_video(db, video, contrib)
     
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
 
