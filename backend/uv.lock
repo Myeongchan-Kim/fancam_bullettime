@@ -59,6 +59,7 @@ dependencies = [
     { name = "beautifulsoup4" },
     { name = "fastapi" },
     { name = "google-generativeai" },
+    { name = "overkill" },
     { name = "playwright" },
     { name = "psycopg2-binary" },
     { name = "pydantic-settings" },
@@ -75,6 +76,7 @@ requires-dist = [
     { name = "beautifulsoup4", specifier = ">=4.14.3" },
     { name = "fastapi", specifier = ">=0.135.1" },
     { name = "google-generativeai", specifier = ">=0.8.6" },
+    { name = "overkill", specifier = ">=0.4.0" },
     { name = "playwright", specifier = ">=1.58.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.11" },
     { name = "pydantic-settings", specifier = ">=2.13.1" },
@@ -610,6 +612,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/fb/df/5bd7a48c256faecd1d36edc13133e51397e41b73bb77e1a69deab746ebac/markupsafe-3.0.3-cp314-cp314t-win32.whl", hash = "sha256:915c04ba3851909ce68ccc2b8e2cd691618c4dc4c4232fb7982bca3f41fd8c3d", size = 14819, upload-time = "2025-09-27T18:37:26.285Z" },
     { url = "https://files.pythonhosted.org/packages/1a/8a/0402ba61a2f16038b48b39bccca271134be00c5c9f0f623208399333c448/markupsafe-3.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4faffd047e07c38848ce017e8725090413cd80cbc23d86e55c587bf979e579c9", size = 15426, upload-time = "2025-09-27T18:37:27.316Z" },
     { url = "https://files.pythonhosted.org/packages/70/bc/6f1c2f612465f5fa89b95bead1f44dcb607670fd42891d8fdcd5d039f4f4/markupsafe-3.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:32001d6a8fc98c8cb5c947787c5d08b0a50663d139f1305bac5885d98d9b40fa", size = 14146, upload-time = "2025-09-27T18:37:28.327Z" },
+]
+
+[[package]]
+name = "overkill"
+version = "0.4.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/32/d3/cac66149813f790ee183181aa7fbe11b351c4aa0476e8c30209f6e45e373/overkill-0.4.0.tar.gz", hash = "sha256:b1114d224feb22e655cdb1259e9457a8c114dc672ff2bf294cde99380d894786", size = 146599, upload-time = "2026-03-19T20:36:19.058Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ac/31/c9d6c1eab09896637830193bf0a5c5eaeec7729681e956e0d95700c057b4/overkill-0.4.0-py3-none-any.whl", hash = "sha256:a594d57297ef7d94aa2f2bb5ff75a98a8e46f43f7386915049bf489237fa5e65", size = 103443, upload-time = "2026-03-19T20:36:17.571Z" },
 ]
 
 [[package]]

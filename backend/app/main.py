@@ -72,7 +72,7 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
     
     contrib.is_processed = True
-    db.commit()
+    # COMMIT REMOVED - Caller must handle transaction atomicity
 
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
@@ -144,8 +144,8 @@ def get_concerts(db: Session = Depends(get_db)):
 import re
 
 def get_video_id(url: str):
-    # Comprehensive regex for various YouTube URL structures
-    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/|youtu\.be\/)([0-9A-Za-z_-]{11})'
+    # Robust regex for various YouTube URL structures and trailing parameters
+    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/|youtu\.be\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
@@ -214,6 +214,7 @@ def create_contribution(
     # auto-approve the first contribution to speed up initial labeling.
     if len(video.songs) == 0 and contribution.suggested_song_ids:
         apply_contribution_to_video(db, video, new_contrib)
+        db.commit()
         
     return new_contrib
 
@@ -266,6 +267,8 @@ def approve_contribution(
             raise HTTPException(status_code=404, detail="Video not found")
         
         apply_contribution_to_video(db, video, contrib)
+    
+    db.commit() # Atomic commit for both potential new video and the contribution update
     
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
 
