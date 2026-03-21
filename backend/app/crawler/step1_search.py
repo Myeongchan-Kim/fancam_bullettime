@@ -131,7 +131,6 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                                 user_ip="crawler"
                             )
                             db.add(new_contrib)
-                            db.commit()
                             
                             new_video_count += 1
                             logger.info(f"    ✅ 신규 제보 추가: {title[:40]}...")
@@ -147,6 +146,7 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                     except Exception as e:
                         logger.warning(f"    ⚠️ 개별 영상 처리 오류: {e}")
                         continue
+                db.commit() # Commit all new contributions for this search query
             except Exception as e:
                 logger.error(f"  ❌ 쿼리 수행 오류: {e}")
                 continue

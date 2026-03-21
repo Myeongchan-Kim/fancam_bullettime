@@ -144,8 +144,8 @@ def get_concerts(db: Session = Depends(get_db)):
 import re
 
 def get_video_id(url: str):
-    # Robust regex for various YouTube URL structures and trailing parameters
-    pattern = r'(?:v=|\/|embed\/|shorts\/|live\/|youtu\.be\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
+    # Robust pattern for 11-char ID preceded by common delimiters
+    pattern = r'(?:v=|be\/|eth\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
@@ -236,41 +236,44 @@ def approve_contribution(
     if not contrib:
         raise HTTPException(status_code=404, detail="Contribution not found")
     
-    if contrib.video_id is None:
-        if not contrib.suggested_url:
-            raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
-        yt_id = get_video_id(contrib.suggested_url)
-        if not yt_id:
-            raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    try:
+        if contrib.video_id is None:
+            if not contrib.suggested_url:
+                raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
+            yt_id = get_video_id(contrib.suggested_url)
+            if not yt_id:
+                raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+                
+            existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
+            if existing:
+                video = existing
+            else:
+                video = Video(
+                    youtube_id=yt_id,
+                    url=contrib.suggested_url,
+                    title=contrib.suggested_title or "Unknown Title",
+                    thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
+                    members=contrib.suggested_members or [],
+                    angle=contrib.suggested_angle or "Unknown",
+                    concert_id=contrib.suggested_concert_id
+                )
+                db.add(video)
+                db.flush() # Ensure ID is generated within the transaction
             
-        existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
-        if existing:
-            video = existing
+            contrib.video_id = video.id
+            apply_contribution_to_video(db, video, contrib)
         else:
-            video = Video(
-                youtube_id=yt_id,
-                url=contrib.suggested_url,
-                title=contrib.suggested_title or "Unknown Title",
-                thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
-                members=contrib.suggested_members or [],
-                angle=contrib.suggested_angle or "Unknown",
-                concert_id=contrib.suggested_concert_id
-            )
-            db.add(video)
-            db.flush() # Ensure ID is generated within the transaction
+            video = db.query(Video).filter(Video.id == contrib.video_id).first()
+            if not video:
+                raise HTTPException(status_code=404, detail="Video not found")
+            
+            apply_contribution_to_video(db, video, contrib)
         
-        contrib.video_id = video.id
-        apply_contribution_to_video(db, video, contrib)
-    else:
-        video = db.query(Video).filter(Video.id == contrib.video_id).first()
-        if not video:
-            raise HTTPException(status_code=404, detail="Video not found")
-        
-        apply_contribution_to_video(db, video, contrib)
-    
-    db.commit() # Atomic commit for both potential new video and the contribution update
-    
-    return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+        db.commit() # Atomic commit for both potential new video and the contribution update
+        return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
 def delete_contribution(
