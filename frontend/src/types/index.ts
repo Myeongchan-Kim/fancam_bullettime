@@ -26,7 +26,7 @@ export interface Video {
   coordinate_y: number | null;
   sync_offset: number;
   created_at: string;
-  song?: Song;
+  songs?: Song[];
   concert?: Concert;
 }
 
@@ -34,7 +34,7 @@ export interface Contribution {
   id: number;
   video_id: number;
   suggested_title: string | null;
-  suggested_song_id: number | null;
+  suggested_song_ids: number[] | null;
   suggested_concert_id: number | null;
   suggested_members: string[] | null;
   suggested_angle: string | null;

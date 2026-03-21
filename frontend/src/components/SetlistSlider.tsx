@@ -1,14 +1,26 @@
 import React from 'react';
-import { Song } from '../types';
+import { Song, Concert } from '../types';
+import { MapPin } from 'lucide-react';
 
 interface SetlistSliderProps {
   songs: Song[];
+  concerts: Concert[];
+  selectedConcert: string;
+  onConcertChange: (val: string) => void;
   startOrder: number;
   endOrder: number;
   onChange: (start: number, end: number) => void;
 }
 
-const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrder, onChange }) => {
+const SetlistSlider: React.FC<SetlistSliderProps> = ({ 
+  songs, 
+  concerts, 
+  selectedConcert, 
+  onConcertChange, 
+  startOrder, 
+  endOrder, 
+  onChange 
+}) => {
   const validSongs = songs.filter(s => typeof s.order === 'number');
   const minOrder = validSongs.length > 0 ? Math.min(...validSongs.map(s => s.order)) : 1;
   const maxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
@@ -45,20 +57,47 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({ songs, startOrder, endOrd
       <div className="max-w-5xl mx-auto space-y-10">
         {/* Header Section */}
         <div className="flex justify-between items-end border-b border-white/5 pb-4">
-          <div className="space-y-1">
-            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-magenta drop-shadow-[0_0_5px_#FF1988]">Timeline Range</span>
-            <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4 text-white">
-              {startOrder === endOrder ? (
-                <span>#{startOrder.toString().padStart(2, '0')} {getSongName(startOrder)}</span>
-              ) : (
-                <>
-                  <span className="text-twice-apricot">#{startOrder.toString().padStart(2, '0')}</span>
-                  <span className="text-gray-600 text-sm normal-case not-italic tracking-normal font-bold px-2">TO</span>
-                  <span className="text-twice-apricot">#{endOrder.toString().padStart(2, '0')}</span>
-                </>
-              )}
-            </h3>
+          <div className="flex gap-12 items-end">
+            {/* Venue & City Integrated Filter */}
+            <div className="space-y-1 min-w-[200px]">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-apricot drop-shadow-[0_0_5px_rgba(255,179,92,0.4)] flex items-center gap-2">
+                <MapPin className="h-3 w-3" /> Venue & City
+              </span>
+              <div className="relative group/select">
+                <select 
+                  className="w-full bg-slate-800/80 border border-slate-700/50 rounded-xl px-4 py-2.5 text-xs focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white font-black italic uppercase tracking-tighter"
+                  value={selectedConcert}
+                  onChange={(e) => onConcertChange(e.target.value)}
+                >
+                  <option value="">ALL CONCERTS</option>
+                  {concerts.map(c => (
+                    <option key={c.id} value={c.id} className="bg-slate-900">
+                      {c.city === 'Other' ? 'OTHER CONTENT / VLOGS' : `${c.city.toUpperCase()} - ${new Date(c.date).toLocaleDateString()}`}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover/select:text-twice-magenta transition-colors">
+                  <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-magenta drop-shadow-[0_0_5px_#FF1988]">Timeline Range</span>
+              <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4 text-white">
+                {startOrder === endOrder ? (
+                  <span>#{startOrder.toString().padStart(2, '0')} {getSongName(startOrder)}</span>
+                ) : (
+                  <>
+                    <span className="text-twice-apricot">#{startOrder.toString().padStart(2, '0')}</span>
+                    <span className="text-gray-600 text-sm normal-case not-italic tracking-normal font-bold px-2">TO</span>
+                    <span className="text-twice-apricot">#{endOrder.toString().padStart(2, '0')}</span>
+                  </>
+                )}
+              </h3>
+            </div>
           </div>
+          
           <div className="text-right bg-slate-800/50 px-4 py-2 rounded-2xl border border-white/5">
             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block text-white">Selected Window</span>
             <p className="text-sm text-white font-black">{endOrder - startOrder + 1} TRACKS</p>

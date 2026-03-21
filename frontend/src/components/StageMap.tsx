@@ -145,7 +145,7 @@ const StageMap: React.FC<StageMapProps> = ({
                     <div className="p-4 space-y-4 text-left">
                       <div className="space-y-1">
                         <h4 className="text-[11px] font-bold text-white line-clamp-2 leading-tight">{v.title}</h4>
-                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight italic opacity-70">{v.song?.name} • {v.concert?.city}</p>
+                        <p className="text-[9px] text-gray-400 font-bold uppercase tracking-tight italic opacity-70">{v.songs && v.songs.length > 0 ? v.songs.map(s => s.name).join(', ') : 'Unknown Song'} • {v.concert?.city}</p>
                       </div>
                       <div className="flex gap-2">
                         <button onClick={() => { onPlayVideo(v); setActiveTooltip(null); }} className="flex-1 bg-twice-magenta hover:bg-twice-magenta/90 text-white text-[10px] font-black py-2.5 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-twice-magenta/20">

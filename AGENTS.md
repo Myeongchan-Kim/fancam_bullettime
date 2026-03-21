@@ -19,8 +19,3 @@
 - **Start Frontend:** `cd frontend && npm run dev`
 - **Run Crawler (Step 1):** `cd backend && uv run app/crawler/step1_search.py`
 
-## 📊 Current State
-- [x] Functional Prototype with AI Crawler & Wiki System.
-- [x] Precise Coordinate Mapping & Instant Playback UI.
-- [ ] **NEXT:** Automate Crawler via Cron/GitHub Actions.
-- [ ] **NEXT:** Implement multi-angle synchronization player logic.

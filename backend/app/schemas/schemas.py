@@ -28,7 +28,7 @@ class VideoBase(BaseModel):
     title: str
     thumbnail_url: str
     url: str
-    song_id: Optional[int]
+    song_id: Optional[int] # Deprecated
     concert_id: Optional[int]
     members: List[str]
     angle: str
@@ -41,12 +41,14 @@ class VideoBase(BaseModel):
         from_attributes = True
 
 class VideoDetail(VideoBase):
-    song: Optional[SongBase]
+    song: Optional[SongBase] # Deprecated
+    songs: List[SongBase] = []
     concert: Optional[ConcertBase]
 
 class VideoUpdate(BaseModel):
     title: Optional[str] = None
-    song_id: Optional[int] = None
+    song_id: Optional[int] = None # Deprecated
+    song_ids: Optional[List[int]] = None
     concert_id: Optional[int] = None
     members: Optional[List[str]] = None
     angle: Optional[str] = None
@@ -56,7 +58,8 @@ class VideoUpdate(BaseModel):
 
 class ContributionCreate(BaseModel):
     suggested_title: Optional[str] = None
-    suggested_song_id: Optional[int] = None
+    suggested_song_id: Optional[int] = None # Deprecated
+    suggested_song_ids: Optional[List[int]] = None
     suggested_concert_id: Optional[int] = None
     suggested_members: Optional[List[str]] = None
     suggested_angle: Optional[str] = None
@@ -68,7 +71,8 @@ class ContributionBase(BaseModel):
     id: int
     video_id: int
     suggested_title: Optional[str]
-    suggested_song_id: Optional[int]
+    suggested_song_id: Optional[int] # Deprecated
+    suggested_song_ids: Optional[List[int]]
     suggested_concert_id: Optional[int]
     suggested_members: Optional[List[str]]
     suggested_angle: Optional[str]

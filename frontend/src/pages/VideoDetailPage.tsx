@@ -2,15 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import { ChevronLeft, Info, Compass, Clock, Send, PlayCircle, Edit3, Save, X, User, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type } from 'lucide-react';
-import { VideoDetail, Song, Concert, Contribution } from '../types';
-import { API_BASE_URL, TWICE_MEMBERS, STAGE_ANGLES } from '../constants';
+import { Video, Song, Concert, Contribution } from '../types';
+import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [video, setVideo] = useState<VideoDetail | null>(null);
-  const [relatedVideos, setRelatedVideos] = useState<VideoDetail[]>([]);
+  const [video, setVideo] = useState<Video | null>(null);
+  const [relatedVideos, setRelatedVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   const [contributions, setContributions] = useState<Contribution[]>([]);
@@ -24,7 +24,7 @@ const VideoDetailPage = () => {
   // Edit/Suggestion Shared State
   const [editData, setEditData] = useState({
     title: '',
-    song_id: 0,
+    song_ids: [] as number[],
     concert_id: 0,
     members: [] as string[],
     coordinate_x: null as number | null,
@@ -47,19 +47,19 @@ const VideoDetailPage = () => {
       setVideo(res.data);
       setEditData({
         title: res.data.title,
-        song_id: res.data.song?.id || 0,
+        song_ids: res.data.songs?.map((s: Song) => s.id) || [],
         concert_id: res.data.concert?.id || 0,
         members: res.data.members || [],
         coordinate_x: res.data.coordinate_x,
         coordinate_y: res.data.coordinate_y,
         sync_offset: res.data.sync_offset
       });
-      
-      if (res.data.song?.id && res.data.concert?.id) {
-        const relatedRes = await axios.get(`${API_BASE_URL}/videos?song_id=${res.data.song.id}&concert_id=${res.data.concert.id}`);
-        setRelatedVideos(relatedRes.data.filter((v: VideoDetail) => v.id !== parseInt(id!)));
-      }
-    } catch (err) { console.error("Error fetching video detail", err); }
+
+      if (res.data.songs?.length > 0 && res.data.concert?.id) {
+        // Fetch related videos based on the first song for simplicity
+        const relatedRes = await axios.get(`${API_BASE_URL}/videos?song_id=${res.data.songs[0].id}&concert_id=${res.data.concert.id}`);
+        setRelatedVideos(relatedRes.data.filter((v: Video) => v.id !== parseInt(id!)));
+      }    } catch (err) { console.error("Error fetching video detail", err); }
   };
 
   const fetchMetadata = async () => {
@@ -85,7 +85,7 @@ const VideoDetailPage = () => {
     try {
       await axios.patch(`${API_BASE_URL}/videos/${id}`, {
         title: editData.title,
-        song_id: editData.song_id || null,
+        song_ids: editData.song_ids.length > 0 ? editData.song_ids : null,
         concert_id: editData.concert_id || null,
         members: editData.members,
         coordinate_x: editData.coordinate_x,
@@ -104,7 +104,7 @@ const VideoDetailPage = () => {
     try {
       await axios.post(`${API_BASE_URL}/videos/${id}/contributions`, {
         suggested_title: editData.title,
-        suggested_song_id: editData.song_id || null,
+        suggested_song_ids: editData.song_ids.length > 0 ? editData.song_ids : null,
         suggested_concert_id: editData.concert_id || null,
         suggested_members: editData.members,
         suggested_coordinate_x: editData.coordinate_x,
@@ -152,6 +152,13 @@ const VideoDetailPage = () => {
     setEditData(prev => ({
       ...prev,
       members: prev.members.includes(m) ? prev.members.filter(name => name !== m) : [...prev.members, m]
+    }));
+  };
+
+  const toggleSong = (s_id: number) => {
+    setEditData(prev => ({
+      ...prev,
+      song_ids: prev.song_ids.includes(s_id) ? prev.song_ids.filter(id => id !== s_id) : [...prev.song_ids, s_id]
     }));
   };
 
@@ -220,7 +227,7 @@ const VideoDetailPage = () => {
                   {video.members?.map(m => (
                     <span key={m} className="bg-twice-magenta px-3 py-1 rounded-full font-bold">{m} Focus</span>
                   ))}
-                  <span className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-1"><Music className="h-3 w-3"/> {video.song?.name || 'Unknown Song'}</span>
+                  <span className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-1"><Music className="h-3 w-3"/> {video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
                   <span className="bg-slate-700 px-3 py-1 rounded-full flex items-center gap-1"><MapPin className="h-3 w-3"/> {video.concert?.city || 'Unknown City'}</span>
                 </div>
               </>
@@ -238,12 +245,15 @@ const VideoDetailPage = () => {
                   </div>
                   <div className="space-y-3">
                     <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Song</label>
-                      <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none text-white"
-                        value={editData.song_id} onChange={e => setEditData({...editData, song_id: parseInt(e.target.value)})}>
-                        <option value="0">Unknown</option>
-                        {songs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                      </select>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Songs</label>
+                      <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg no-scrollbar">
+                        {songs.map(s => (
+                          <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
+                            className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}>
+                            {s.name}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> Concert</label>
@@ -321,7 +331,7 @@ const VideoDetailPage = () => {
                     </div>
                     <div className="space-y-1">
                       {c.suggested_title && c.suggested_title !== video.title && <div className="text-[10px] text-white font-bold truncate">Title: {c.suggested_title}</div>}
-                      {c.suggested_song_id && c.suggested_song_id !== video.song?.id && <div className="text-[10px] text-twice-apricot">Song: {songs.find(s => s.id === c.suggested_song_id)?.name}</div>}
+                      {c.suggested_song_ids && c.suggested_song_ids.length > 0 && <div className="text-[10px] text-twice-apricot">Songs: {c.suggested_song_ids.map(id => songs.find(s => s.id === id)?.name).filter(Boolean).join(", ")}</div>}
                       {c.suggested_members && JSON.stringify(c.suggested_members) !== JSON.stringify(video.members) && <div className="text-[10px] text-twice-magenta">Members: {c.suggested_members.join(", ")}</div>}
                       <div className="text-[10px] text-indigo-400 font-bold">Pos: {c.suggested_coordinate_x?.toFixed(2)}, {c.suggested_coordinate_y?.toFixed(2)} | Sync: {c.suggested_sync_offset}s</div>
                     </div>
@@ -351,12 +361,15 @@ const VideoDetailPage = () => {
 
                 <div className="space-y-3">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Song</label>
-                    <select className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-2 text-xs outline-none text-white"
-                      value={editData.song_id} onChange={e => setEditData({...editData, song_id: parseInt(e.target.value)})}>
-                      <option value="0">Unknown</option>
-                      {songs.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                    </select>
+                    <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><Music className="h-3 w-3"/> Songs</label>
+                    <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto p-2 bg-slate-900 border border-slate-700 rounded-lg no-scrollbar">
+                      {songs.map(s => (
+                        <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
+                          className={`px-2 py-1 rounded-md text-[10px] font-bold transition-all ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-400 hover:bg-slate-700'}`}>
+                          {s.name}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-gray-500 uppercase ml-1 flex items-center gap-1"><MapPin className="h-3 w-3"/> Concert</label>

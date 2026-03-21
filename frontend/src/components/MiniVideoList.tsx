@@ -25,7 +25,7 @@ const MiniVideoList: React.FC<MiniVideoListProps> = ({ title, videos, onPlay }) 
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold text-white truncate group-hover:text-twice-apricot transition-colors">{v.title}</p>
-            <p className="text-[8px] text-gray-500 font-black uppercase tracking-tighter truncate opacity-60 italic">{v.song?.name || 'Fancam'}</p>
+            <p className="text-[8px] text-gray-500 font-black uppercase tracking-tighter truncate opacity-60 italic">{v.songs && v.songs.length > 0 ? v.songs.map((s: any) => s.name).join(', ') : 'Fancam'}</p>
           </div>
         </div>
       ))}

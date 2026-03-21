@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
@@ -10,6 +10,8 @@ from app.models.models import Base, Video, Song, Concert, Contribution
 from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+from app.crawler.recheck_worker import run_recheck_job, recheck_status
 
 load_dotenv()
 
@@ -52,13 +54,13 @@ def get_videos(
     angle: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    query = db.query(Video).options(joinedload(Video.song), joinedload(Video.concert))
+    query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
     
     if song_id:
         query = query.filter(Video.song_id == song_id)
     
     if start_order is not None and end_order is not None:
-        query = query.join(Song).filter(Song.order >= start_order, Song.order <= end_order)
+        query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order).distinct()
     
     if concert_id:
         query = query.filter(Video.concert_id == concert_id)
@@ -73,7 +75,7 @@ def get_videos(
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
-    video = db.query(Video).options(joinedload(Video.song), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    video = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
     return video
@@ -85,13 +87,21 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
         raise HTTPException(status_code=404, detail="Video not found")
     
     update_data = video_update.model_dump(exclude_unset=True)
+    
+    if "song_ids" in update_data:
+        song_ids = update_data.pop("song_ids")
+        if song_ids is not None:
+            db_video.songs = db.query(Song).filter(Song.id.in_(song_ids)).all()
+        else:
+            db_video.songs = []
+
     for key, value in update_data.items():
         setattr(db_video, key, value)
     
     db.commit()
     db.refresh(db_video)
     # Refresh with joined load to return full detail
-    return db.query(Video).options(joinedload(Video.song), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
 
 @app.get("/api/songs", response_model=List[SongBase])
 def get_songs(db: Session = Depends(get_db)):
@@ -116,7 +126,8 @@ def create_contribution(
     new_contrib = Contribution(
         video_id=video_id,
         suggested_title=contribution.suggested_title,
-        suggested_song_id=contribution.suggested_song_id,
+        suggested_song_id=contribution.suggested_song_id, # Deprecated
+        suggested_song_ids=contribution.suggested_song_ids,
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members,
         suggested_angle=contribution.suggested_angle,
@@ -151,6 +162,7 @@ def approve_contribution(
     # Apply all suggested values if they are provided
     if contrib.suggested_title is not None: video.title = contrib.suggested_title
     if contrib.suggested_song_id is not None: video.song_id = contrib.suggested_song_id
+    if getattr(contrib, 'suggested_song_ids', None) is not None: video.songs = db.query(Song).filter(Song.id.in_(contrib.suggested_song_ids)).all()
     if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
     if contrib.suggested_members is not None: video.members = contrib.suggested_members
     if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
@@ -161,7 +173,7 @@ def approve_contribution(
     contrib.is_processed = True
     db.commit()
     
-    return db.query(Video).options(joinedload(Video.song), joinedload(Video.concert)).filter(Video.id == video.id).first()
+    return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
 def delete_contribution(
@@ -176,6 +188,17 @@ def delete_contribution(
     db.delete(contrib)
     db.commit()
     return None
+
+@app.post("/api/admin/recheck/start")
+def start_recheck(background_tasks: BackgroundTasks, admin: bool = Depends(verify_admin)):
+    if recheck_status["status"] == "Running":
+        raise HTTPException(status_code=400, detail="Recheck job is already running")
+    background_tasks.add_task(run_recheck_job)
+    return {"message": "Recheck job started"}
+
+@app.get("/api/admin/recheck/status")
+def get_recheck_status(admin: bool = Depends(verify_admin)):
+    return recheck_status
 
 if __name__ == "__main__":
     import uvicorn

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link, useNavigate } from 'react-router-dom';
-import { Search, MapPin, Music, User, ExternalLink } from 'lucide-react';
+import { Search, Music, User, ExternalLink, Compass } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import VideoPlayerModal from '../components/VideoPlayerModal';
@@ -89,6 +89,9 @@ const HomePage = () => {
         <div className="w-full mt-10 mb-20">
           <SetlistSlider 
             songs={songs} 
+            concerts={concerts}
+            selectedConcert={selectedConcert}
+            onConcertChange={setSelectedConcert}
             startOrder={startOrder} 
             endOrder={endOrder} 
             onChange={(s, e) => {setStartOrder(s); setEndOrder(e);}} 
@@ -97,24 +100,9 @@ const HomePage = () => {
       </section>
 
       {/* Filter Bar (Simplified) */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl text-white">
-        {/* Concert Filter */}
-        <div className="space-y-2 text-white">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
-            <MapPin className="h-3 w-3 text-twice-apricot" /> Venue & City
-          </label>
-          <select 
-            className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white"
-            value={selectedConcert}
-            onChange={(e) => setSelectedConcert(e.target.value)}
-          >
-            <option value="">All Concerts</option>
-            {concerts.map(c => <option key={c.id} value={c.id} className="bg-slate-900">{c.city} - {new Date(c.date).toLocaleDateString()}</option>)}
-          </select>
-        </div>
-        
+      <div className="flex justify-center bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl text-white max-w-2xl mx-auto">
         {/* Member Filter */}
-        <div className="space-y-2 text-white">
+        <div className="space-y-2 text-white w-full max-w-md">
           <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
             <User className="h-3 w-3 text-indigo-400" /> Focus Member
           </label>
@@ -169,7 +157,7 @@ const HomePage = () => {
               <div className="p-4 space-y-2 bg-slate-900/50">
                 <h3 className="font-bold text-sm line-clamp-2 text-white group-hover:text-twice-apricot transition-colors leading-tight">{video.title}</h3>
                 <div className="flex items-center text-[10px] text-gray-500 space-x-2 font-black uppercase tracking-tighter opacity-70">
-                  <span className="truncate max-w-[100px]">{video.song?.name || 'Unknown Song'}</span>
+                  <span className="truncate max-w-[100px]">{video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
                   <span className="opacity-30">•</span>
                   <span>{video.concert?.city || 'Unknown City'}</span>
                 </div>

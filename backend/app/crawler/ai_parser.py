@@ -34,18 +34,20 @@ Here is the Ground Truth Data for the tour:
 - Members: Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu
 
 Rules:
-1. Determine if the video is likely a TWICE fancam from this specific tour.
-2. Extract the 'date', 'city', 'song', and 'member_focus' based on the text.
-3. If the video focuses on a specific member or a sub-unit, list their names in the 'members' array.
-4. If it's a full group fancam with no specific focus, return all 9 members' names in the 'members' array: ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"].
-5. Return the result STRICTLY as a valid JSON object without markdown formatting.
+1. Determine if the video is TWICE-related content (Fancam, Vlog, Airport, Interview, etc.).
+2. If it is a fancam from TWICE's 6th World Tour 'THIS IS FOR', extract the 'date', 'city', 'songs', and 'member_focus' based on the text. Set 'is_valid_fancam' to true.
+3. If it is TWICE-related but NOT a fancam from this specific tour (e.g., vlog, airport, interview, older tour), set 'is_valid_fancam' to true, but explicitly set 'city' to "Other" and 'songs' to [].
+4. If it is NOT related to TWICE at all, set 'is_valid_fancam' to false.
+5. If the video focuses on a specific member or a sub-unit, list their names in the 'members' array.
+6. If it's a full group fancam with no specific focus, return all 9 members' names in the 'members' array: ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"].
+7. Return the result STRICTLY as a valid JSON object without markdown formatting.
 
 Expected JSON schema:
 {{
   "is_valid_fancam": boolean,
   "date": "YYYY-MM-DD" (or null if unknown),
-  "city": "City Name" (or null if unknown),
-  "song": "Song Title from Setlist" (or null),
+  "city": "City Name" (or "Other" if not from this tour),
+  "songs": ["Song Title 1", "Song Title 2"] (Array of strings, empty if none),
   "members": ["Member1", "Member2"] (Array of strings),
   "category": "Group Stage", "Solo Stage", "Encore" or "Unknown"
 }}

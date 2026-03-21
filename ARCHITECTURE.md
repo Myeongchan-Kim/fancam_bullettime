@@ -8,12 +8,15 @@ This document provides a detailed technical breakdown of the project components 
 - **Dependency Management:** `uv`
 - **Database:** SQLite (`backend/twice_fancam.db`)
 - **Models:**
-  - `Video`: The main store of confirmed metadata (URL, coordinates, song, members, etc.).
+  - `Video`: The main store of confirmed metadata (URL, coordinates, members, etc.). Associated with multiple songs.
   - `Song` & `Concert`: Base tables for tour schedule and setlist.
-  - `Contribution`: A buffer table for user-submitted edits (wiki style) before admin approval.
+  - `video_song_association`: Junction table for the many-to-many relationship between `Video` and `Song`.
+  - `Contribution`: A buffer table for user-submitted edits (wiki style). Supports multi-song suggestions.
 - **Key Logic:** 
   - `coordinate_x/y`: Stored as floats (0.0 - 1.0) representing relative position on the square stage map.
   - `members`: Stored as a JSON array to support multiple tags per video.
+  - **"Other" Category:** A virtual concert entry in `Concert` used for non-tour content (Vlogs, Airports, etc.) to allow unified archiving.
+  - **Timeline Filtering:** Queries the association table to return videos that contain *any* song within the user-selected order range.
 
 ## 2. Frontend (Web UI)
 - **Stack:** React 19 + Vite 5 + TypeScript + Tailwind CSS v4.
@@ -26,11 +29,12 @@ This document provides a detailed technical breakdown of the project components 
   - Validated by the `X-Admin-Key` header on protected API requests.
 
 ## 3. Crawler Pipeline
-- **Methodology:** A 2-step AI-powered process.
-- **Tools:** Playwright (for YouTube interaction), `yt-dlp` (metadata), Gemini AI (parsing).
-- **Step 1 (Search):** Iterates through tour cities and setlist to find and label videos. Trains the YouTube algorithm for the specific crawler account.
-- **Step 2 (Recommendation):** Discovers high-quality non-standard titled videos from the trained recommendation feed.
-- **AI Parser:** `backend/app/crawler/ai_parser.py` uses Gemini to convert messy YouTube titles into structured JSON matching our DB schema.
+- **Methodology:** A 2-step AI-powered process with an added re-analysis agent.
+- **Tools:** Playwright (for YouTube interaction), Gemini AI (parsing).
+- **Step 1 (Search):** Iterates through tour cities, specific dates (YYMMDD format), and setlist to find videos.
+- **Step 2 (Recommendation):** Discovers high-quality videos from the trained YouTube recommendation feed.
+- **Recheck Agent:** A manually triggered background worker that uses Gemini to re-analyze existing data and suggest "Other" labels for invalid tour content.
+- **AI Parser:** `backend/app/crawler/ai_parser.py` uses Gemini 2.5 Flash to convert YouTube titles into structured JSON, supporting multi-song extraction.
 
 ## 4. Administrative Workflow
 - Admins can log in using the passcode defined in `ADMIN_SECRET_KEY` (.env).

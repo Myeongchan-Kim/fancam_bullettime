@@ -100,6 +100,7 @@
     { "date": "2026-05-30", "city": "Amsterdam", "country": "Netherlands", "venue": "Ziggo Dome" },
     { "date": "2026-05-31", "city": "Amsterdam", "country": "Netherlands", "venue": "Ziggo Dome" },
     { "date": "2026-06-03", "city": "London", "country": "UK", "venue": "The O2" },
-    { "date": "2026-06-04", "city": "London", "country": "UK", "venue": "The O2" }
+    { "date": "2026-06-04", "city": "London", "country": "UK", "venue": "The O2" },
+    { "date": "9999-12-31", "city": "Other", "country": "Other", "venue": "Other" }
   ]
 }

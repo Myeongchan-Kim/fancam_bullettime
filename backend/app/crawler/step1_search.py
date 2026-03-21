@@ -59,6 +59,19 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
     # Generate search queries
     queries = []
     queries.append(f"TWICE {target_city} Full Concert")
+    
+    # Date-based queries (e.g., "TWICE 260320 Concert")
+    city_dates = [s["date"] for s in TOUR_DATA["schedule"] if s["city"] == target_city and s["date"] != "9999-12-31"]
+    for date_str in city_dates:
+        try:
+            date_obj = datetime.strptime(date_str, "%Y-%m-%d")
+            short_date = date_obj.strftime("%y%m%d") # YYMMDD format
+            queries.append(f"TWICE {short_date} Concert")
+            queries.append(f"TWICE {short_date} Fancam")
+            queries.append(f"TWICE {date_str} Concert")
+        except ValueError:
+            pass
+
     for member in MEMBERS:
         queries.append(f"TWICE {target_city} {member} Focus")
         queries.append(f"TWICE {target_city} {member} 직캠")
@@ -97,24 +110,29 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
 
                         channel_elems = video.locator(".ytd-channel-name a").all()
                         channel = channel_elems[0].inner_text() if channel_elems else "Unknown"
+metadata = parse_fancam_metadata(title, channel)
+if metadata and metadata.get("is_valid_fancam"):
+    song_names = metadata.get("songs", [])
+    c_city = metadata.get("city") or target_city
 
-                        metadata = parse_fancam_metadata(title, channel)
-                        if metadata and metadata.get("is_valid_fancam"):
-                            s_name = metadata.get("song")
-                            c_city = metadata.get("city") or target_city
-                            
-                            song_obj = db.query(Song).filter(Song.name == s_name).first()
-                            concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
+    song_objs = []
+    for s_name in song_names:
+        song_obj = db.query(Song).filter(Song.name == s_name).first()
+        if song_obj:
+            song_objs.append(song_obj)
 
-                            new_v = Video(
-                                youtube_id=yt_id, title=title, url=url,
-                                song_id=song_obj.id if song_obj else None,
-                                concert_id=concert_obj.id if concert_obj else None,
-                                members=metadata.get("members", ["Unknown"]),
-                                thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg"
-                            )
-                            db.add(new_v)
-                            db.commit()
+    concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
+
+    new_v = Video(
+        youtube_id=yt_id, title=title, url=url,
+        concert_id=concert_obj.id if concert_obj else None,
+        members=metadata.get("members", ["Unknown"]),
+        category=metadata.get("category", "Unknown"),
+        is_concert=metadata.get("is_valid_fancam", True),
+        thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg"
+    )
+    new_v.songs = song_objs
+    db.add(new_v)
                             new_video_count += 1
                             logger.info(f"    ✅ 신규 저장: {title[:40]}...")
                             

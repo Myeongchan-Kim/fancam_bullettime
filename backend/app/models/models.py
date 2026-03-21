@@ -1,9 +1,16 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum, JSON
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum, JSON, Table
 from sqlalchemy.orm import relationship, declarative_base
 import datetime
 import enum
 
 Base = declarative_base()
+
+video_song_association = Table(
+    'video_song_association',
+    Base.metadata,
+    Column('video_id', Integer, ForeignKey('videos.id'), primary_key=True),
+    Column('song_id', Integer, ForeignKey('songs.id'), primary_key=True)
+)
 
 class AngleType(str, enum.Enum):
     NORTH = "North (Front)"
@@ -37,7 +44,8 @@ class Video(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
     # Relationships
-    song = relationship("Song", back_populates="videos")
+    song = relationship("Song", back_populates="videos", overlaps="songs,videos_list") # Deprecated
+    songs = relationship("Song", secondary=video_song_association, back_populates="videos_list")
     concert = relationship("Concert", back_populates="videos")
     contributions = relationship("Contribution", back_populates="video")
 
@@ -49,7 +57,8 @@ class Song(Base):
     is_solo = Column(Boolean, default=False)
     member_name = Column(String, nullable=True) # if solo
     
-    videos = relationship("Video", back_populates="song")
+    videos = relationship("Video", back_populates="song", overlaps="songs,videos_list") # Deprecated
+    videos_list = relationship("Video", secondary=video_song_association, back_populates="songs")
 
 class Concert(Base):
     __tablename__ = "concerts"
@@ -68,7 +77,8 @@ class Contribution(Base):
     
     # Metadata suggestions
     suggested_title = Column(String, nullable=True)
-    suggested_song_id = Column(Integer, ForeignKey("songs.id"), nullable=True)
+    suggested_song_id = Column(Integer, ForeignKey("songs.id"), nullable=True) # Deprecated
+    suggested_song_ids = Column(JSON, nullable=True)
     suggested_concert_id = Column(Integer, ForeignKey("concerts.id"), nullable=True)
     suggested_members = Column(JSON, nullable=True)
     

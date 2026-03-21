@@ -28,7 +28,7 @@ const VideoPlayerModal: React.FC<VideoPlayerModalProps> = ({ video, onClose }) =
             <div className="flex gap-2 text-xs text-gray-400 font-bold uppercase tracking-wider">
               <span className="text-twice-magenta">{video.members.join(", ")}</span>
               <span>•</span>
-              <span className="text-twice-apricot">{video.song?.name}</span>
+              <span className="text-twice-apricot">{video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
             </div>
           </div>
           <Link to={`/video/${video.id}`} onClick={onClose} className="flex items-center gap-2 bg-slate-800 hover:bg-slate-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-lg border border-slate-700">
