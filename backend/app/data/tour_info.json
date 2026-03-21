@@ -2,6 +2,7 @@
   "tour_name": "TWICE 6TH WORLD TOUR 'THIS IS FOR'",
   "setlist": {
     "group_acts": [
+      "FOUR (Intro)",
       "THIS IS FOR",
       "Strategy",
       "MAKE ME GO",
@@ -23,6 +24,7 @@
       "What Is Love? (Rock ver.)",
       "YES or YES (Rock ver.)",
       "Dance the Night Away (Rock ver.)",
+      "Feel Special",
       "ONE SPARK",
       "SCIENTIST",
       "LIKEY",
@@ -40,7 +42,7 @@
       { "member": "Chaeyoung", "song": "SHOOT (Firecracker)" },
       { "member": "Tzuyu", "song": "DIVE IN" }
     ],
-    "encore_options": ["Cheer Up", "TT", "Knock Knock", "SIGNAL", "Like OOH-AHH"]
+    "encore_options": ["Cheer Up", "TT", "Knock Knock", "SIGNAL", "Like OOH-AHH", "Heart Shaker", "Talk that Talk"]
   },
   "schedule": [
     { "date": "2025-07-19", "city": "Incheon", "country": "South Korea", "venue": "Inspire Arena" },
