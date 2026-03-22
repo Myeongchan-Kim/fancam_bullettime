@@ -178,6 +178,15 @@ def create_general_contribution(
     db.add(new_contrib)
     db.commit()
     db.refresh(new_contrib)
+
+    # AUTO-APPROVE LOGIC:
+    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+        try:
+            internal_approve_contribution(db, new_contrib.id)
+            db.commit()
+        except Exception as e:
+            print(f"Auto-approve failed for new video: {str(e)}")
+            
     return new_contrib
 
 @app.post("/api/videos/{video_id}/contributions", response_model=ContributionBase)
@@ -210,13 +219,12 @@ def create_contribution(
     db.refresh(new_contrib)
 
     # AUTO-APPROVE LOGIC:
-    # If auto-approve is enabled, the video currently has no songs assigned, and this contribution provides songs,
-    # auto-approve the first contribution to speed up initial labeling.
-    auto_approve_setting = os.getenv("AUTO_APPROVE_FIRST_CONTRIBUTION", "true").lower() == "true"
-    
-    if auto_approve_setting and len(video.songs) == 0 and contribution.suggested_song_ids:
-        apply_contribution_to_video(db, video, new_contrib)
-        db.commit()
+    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+        try:
+            internal_approve_contribution(db, new_contrib.id)
+            db.commit()
+        except Exception as e:
+            print(f"Auto-approve failed: {str(e)}")
         
     return new_contrib
 
