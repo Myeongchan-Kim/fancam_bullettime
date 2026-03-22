@@ -37,8 +37,11 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
-    setVisibleCount(12); // Reset scroll on filter change
   }, [selectedConcert, startOrder, endOrder]);
+
+  useEffect(() => {
+    setVisibleCount(12); // Reset scroll when the dataset changes
+  }, [videos]);
 
   // Infinite Scroll Observer
   useEffect(() => {
@@ -48,7 +51,7 @@ const HomePage = () => {
           setVisibleCount(prev => prev + 12);
         }
       },
-      { threshold: 0.1 }
+      { threshold: 0, rootMargin: '200px' }
     );
 
     const sentinel = document.getElementById('scroll-sentinel');
