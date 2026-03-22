@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Search, ExternalLink, Compass, Youtube } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -12,13 +12,16 @@ import AdminPendingContributionsModal from '../components/AdminPendingContributi
 import { ShieldCheck } from 'lucide-react';
 
 const HomePage = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+
   const [videos, setVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   
-  const [selectedConcert, setSelectedConcert] = useState('');
-  const [startOrder, setStartOrder] = useState(1);
-  const [endOrder, setEndOrder] = useState(1);
+  const selectedConcert = searchParams.get('concert') || '';
+  const startOrder = searchParams.has('start') ? parseInt(searchParams.get('start')!, 10) : 1;
+  const endOrder = searchParams.has('end') ? parseInt(searchParams.get('end')!, 10) : 1;
+
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
@@ -30,11 +33,15 @@ const HomePage = () => {
   }, []);
 
   useEffect(() => {
-    if (songs.length > 0 && endOrder === 1) {
+    if (songs.length > 0 && !searchParams.has('end')) {
       const maxOrder = Math.max(...songs.map(s => s.order || 0));
-      setEndOrder(maxOrder);
+      setSearchParams(prev => {
+        prev.set('start', '1');
+        prev.set('end', maxOrder.toString());
+        return prev;
+      }, { replace: true });
     }
-  }, [songs]);
+  }, [songs, searchParams, setSearchParams]);
 
   useEffect(() => {
     fetchVideos();
@@ -111,10 +118,22 @@ const HomePage = () => {
             songs={songs} 
             concerts={concerts}
             selectedConcert={selectedConcert}
-            onConcertChange={setSelectedConcert}
+            onConcertChange={(val) => {
+              setSearchParams(prev => {
+                if (val) prev.set('concert', val);
+                else prev.delete('concert');
+                return prev;
+              }, { replace: true });
+            }}
             startOrder={startOrder} 
             endOrder={endOrder} 
-            onChange={(s, e) => {setStartOrder(s); setEndOrder(e);}} 
+            onChange={(s, e) => {
+              setSearchParams(prev => {
+                prev.set('start', s.toString());
+                prev.set('end', e.toString());
+                return prev;
+              }, { replace: true });
+            }} 
           />
         </div>
       </section>
@@ -129,7 +148,16 @@ const HomePage = () => {
           <div className="flex gap-4 items-center">
             {/* Active Filters as Pills */}
             {(selectedConcert || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
-              <button onClick={() => {setSelectedConcert(''); setStartOrder(1); setEndOrder(songs.length);}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
+              <button onClick={() => {
+                setSearchParams(prev => {
+                  prev.delete('concert');
+                  prev.set('start', '1');
+                  if (songs.length > 0) {
+                    prev.set('end', Math.max(...songs.map(s => s.order || 0)).toString());
+                  }
+                  return prev;
+                }, { replace: true });
+              }} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (
               <button onClick={() => setShowAdminModal(true)} className="bg-green-600/20 text-green-400 hover:bg-green-600/40 hover:text-white border border-green-600/50 px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">
@@ -187,7 +215,16 @@ const HomePage = () => {
           <div className="text-center py-32 text-gray-600">
             <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={() => {setSelectedConcert(''); setStartOrder(1); setEndOrder(songs.length);}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+            <button onClick={() => {
+              setSearchParams(prev => {
+                prev.delete('concert');
+                prev.set('start', '1');
+                if (songs.length > 0) {
+                  prev.set('end', Math.max(...songs.map(s => s.order || 0)).toString());
+                }
+                return prev;
+              }, { replace: true });
+            }} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
           </div>
         )}
       </div>
