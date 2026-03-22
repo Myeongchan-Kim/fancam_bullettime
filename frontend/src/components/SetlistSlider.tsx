@@ -52,6 +52,18 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
     return ((order - minOrder) / (maxOrder - minOrder)) * 100;
   };
 
+  // Reorder Concerts: Past (DESC) -> Other -> Upcoming (ASC)
+  const now = new Date();
+  const pastConcerts = concerts
+    .filter(c => c.city !== 'Other' && new Date(c.date) <= now)
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+  const futureConcerts = concerts
+    .filter(c => c.city !== 'Other' && new Date(c.date) > now)
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+
+  const otherConcert = concerts.find(c => c.city === 'Other');
+
   return (
     <div className="w-full bg-slate-900/60 border-y border-slate-800/50 backdrop-blur-md p-8 relative overflow-hidden group">
       <div className="max-w-5xl mx-auto space-y-10">
@@ -70,11 +82,32 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                   onChange={(e) => onConcertChange(e.target.value)}
                 >
                   <option value="">ALL CONCERTS</option>
-                  {concerts.map(c => (
-                    <option key={c.id} value={c.id} className="bg-slate-900">
-                      {c.city === 'Other' ? 'OTHER CONTENT / VLOGS' : `${c.city.toUpperCase()} - ${new Date(c.date).toLocaleDateString()}`}
+                  
+                  {/* Past Concerts */}
+                  {pastConcerts.map(c => (
+                    <option key={c.id} value={c.id} className="bg-slate-900 font-bold">
+                      {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
                     </option>
                   ))}
+
+                  {/* Other / Vlogs */}
+                  {otherConcert && (
+                    <option value={otherConcert.id} className="bg-slate-900 text-twice-apricot font-black">
+                      OTHER CONTENT / VLOGS
+                    </option>
+                  )}
+
+                  {/* Upcoming Separator & List */}
+                  {futureConcerts.length > 0 && (
+                    <>
+                      <option disabled className="bg-slate-950 text-gray-600 text-center">────────── UPCOMING ──────────</option>
+                      {futureConcerts.map(c => (
+                        <option key={c.id} value={c.id} className="bg-slate-900 opacity-50 italic">
+                          {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
+                        </option>
+                      ))}
+                    </>
+                  )}
                 </select>
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover/select:text-twice-magenta transition-colors">
                   <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
