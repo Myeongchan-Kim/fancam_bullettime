@@ -23,7 +23,13 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 }) => {
   const validSongs = songs.filter(s => typeof s.order === 'number');
   const minOrder = validSongs.length > 0 ? Math.min(...validSongs.map(s => s.order)) : 1;
-  const maxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
+  const actualMaxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
+  const maxOrder = actualMaxOrder + 1;
+
+  const displaySongs = [
+    ...validSongs,
+    { id: -1, name: "No song tag", order: maxOrder } as Song
+  ];
   
   if (songs.length === 0) return (
     <div className="w-full bg-slate-900/60 border-y border-slate-800/50 backdrop-blur-md p-8 text-center text-gray-600 italic">
@@ -44,6 +50,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   };
 
   const getSongName = (order: number) => {
+    if (order === maxOrder) return "No song tag";
     return songs.find(s => s.order === order)?.name || `Track ${order}`;
   };
 
@@ -165,7 +172,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 
           {/* Ticker Labels Area - Matches thumb track exactly */}
           <div className="absolute left-[10px] right-[10px] top-3 bottom-0 pointer-events-none">
-            {validSongs.map((song) => {
+            {displaySongs.map((song) => {
               const isActive = song.order >= startOrder && song.order <= endOrder;
               const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
               

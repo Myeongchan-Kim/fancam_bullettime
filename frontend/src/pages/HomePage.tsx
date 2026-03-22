@@ -132,6 +132,7 @@ const HomePage = () => {
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (songs.length > 0) {
         url += `start_order=${startOrder}&end_order=${endOrder}&`;
+        if (endOrder > maxSongOrder) url += `untagged=true&`;
       }
       const res = await axios.get(url);
       setVideos(res.data);

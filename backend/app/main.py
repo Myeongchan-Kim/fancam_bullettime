@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import or_, not_
 from typing import List, Optional
 from datetime import datetime
 import os
@@ -94,6 +95,7 @@ def get_videos(
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
     angle: Optional[str] = None,
+    untagged: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
@@ -102,7 +104,17 @@ def get_videos(
         query = query.filter(Video.song_id == song_id)
     
     if start_order is not None and end_order is not None:
-        query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order).distinct()
+        if untagged:
+            query = query.outerjoin(Video.songs).filter(
+                or_(
+                    (Song.order >= start_order) & (Song.order <= end_order),
+                    Song.id == None
+                )
+            ).distinct()
+        else:
+            query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order).distinct()
+    elif untagged:
+        query = query.outerjoin(Video.songs).filter(Song.id == None)
     
     if concert_id:
         query = query.filter(Video.concert_id == concert_id)
