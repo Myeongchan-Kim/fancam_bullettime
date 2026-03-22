@@ -114,13 +114,26 @@ def run_migration():
                 if new_song_exists:
                     # MERGE: Move video associations
                     print(f"Merging '{old_name}' into existing '{new_name}'...")
-                    # Update association table
+                    
+                    # 1. First delete associations from old_song that already exist for new_song
+                    # to avoid duplicate key errors on the composite primary key (video_id, song_id)
+                    from sqlalchemy import delete, select
+                    
+                    subq = select(video_song_association.c.video_id).where(video_song_association.c.song_id == new_song_exists.id)
+                    db.execute(
+                        video_song_association.delete()
+                        .where(video_song_association.c.song_id == old_song.id)
+                        .where(video_song_association.c.video_id.in_(subq))
+                    )
+                    
+                    # 2. Update remaining associations to the new song ID
                     db.execute(
                         video_song_association.update()
                         .where(video_song_association.c.song_id == old_song.id)
                         .values(song_id=new_song_exists.id)
                     )
-                    # Also update deprecated song_id in Video table if any
+                    
+                    # 3. Update deprecated song_id in Video table if any
                     from app.models.models import Video
                     db.query(Video).filter(Video.song_id == old_song.id).update({Video.song_id: new_song_exists.id})
                     

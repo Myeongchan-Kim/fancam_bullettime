@@ -54,6 +54,8 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 
   // Reorder Concerts: Past (DESC) -> Other -> Upcoming (ASC)
   const now = new Date();
+  now.setHours(0, 0, 0, 0);
+
   const pastConcerts = concerts
     .filter(c => c.city !== 'Other' && c.date && new Date(c.date) <= now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
