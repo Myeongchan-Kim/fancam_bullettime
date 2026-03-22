@@ -210,9 +210,11 @@ def create_contribution(
     db.refresh(new_contrib)
 
     # AUTO-APPROVE LOGIC:
-    # If the video currently has no songs assigned, and this contribution provides songs,
+    # If auto-approve is enabled, the video currently has no songs assigned, and this contribution provides songs,
     # auto-approve the first contribution to speed up initial labeling.
-    if len(video.songs) == 0 and contribution.suggested_song_ids:
+    auto_approve_setting = os.getenv("AUTO_APPROVE_FIRST_CONTRIBUTION", "true").lower() == "true"
+    
+    if auto_approve_setting and len(video.songs) == 0 and contribution.suggested_song_ids:
         apply_contribution_to_video(db, video, new_contrib)
         db.commit()
         
