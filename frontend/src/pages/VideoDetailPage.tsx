@@ -5,6 +5,7 @@ import { ChevronLeft, Info, Clock, Send, PlayCircle, Edit3, Save, X, User, Music
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
+import MultiAnglePlayerModal from '../components/MultiAnglePlayerModal';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
@@ -14,6 +15,7 @@ const VideoDetailPage = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   const [contributions, setContributions] = useState<Contribution[]>([]);
+  const [showMultiAngle, setShowMultiAngle] = useState(false);
   
   // Admin State
   const [adminKey, setAdminKey] = useState(localStorage.getItem('admin_key') || '');
@@ -166,6 +168,12 @@ const VideoDetailPage = () => {
 
   return (
     <div className="space-y-6 text-white">
+      {showMultiAngle && video && (
+        <MultiAnglePlayerModal 
+          videos={[video, ...relatedVideos].slice(0, 4)} // Master + up to 3 slaves
+          onClose={() => setShowMultiAngle(false)} 
+        />
+      )}
       <div className="flex justify-between items-center">
         <button onClick={() => navigate(-1)} className="flex items-center text-gray-400 hover:text-white transition-colors">
           <ChevronLeft className="h-5 w-5" />
@@ -424,10 +432,20 @@ const VideoDetailPage = () => {
           </div>
 
           <div className="bg-slate-800 rounded-2xl p-6 border border-slate-700 space-y-4">
-            <h2 className="text-lg font-bold flex items-center space-x-2 text-white">
-              <PlayCircle className="h-5 w-5 text-twice-apricot" />
-              <span>Other Angles</span>
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-bold flex items-center space-x-2 text-white">
+                <PlayCircle className="h-5 w-5 text-twice-apricot" />
+                <span>Other Angles</span>
+              </h2>
+              {relatedVideos.length > 0 && (
+                <button 
+                  onClick={() => setShowMultiAngle(true)}
+                  className="bg-twice-magenta text-white px-3 py-1.5 rounded-lg text-[10px] font-black hover:bg-twice-magenta/80 transition-colors flex items-center gap-1 shadow-[0_0_10px_#FF1988]"
+                >
+                  <PlayCircle className="w-3 h-3" /> SYNC PLAY
+                </button>
+              )}
+            </div>
             <div className="space-y-3">
               {relatedVideos.length > 0 ? relatedVideos.map(rv => (
                 <Link to={`/video/${rv.id}`} key={rv.id} className="flex items-center space-x-3 group bg-slate-900/50 p-2 rounded-lg hover:bg-slate-900 transition-colors border border-transparent hover:border-twice-apricot text-white">
