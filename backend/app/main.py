@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session, joinedload
 from typing import List, Optional
 from datetime import datetime
 import os
+import logging
 from dotenv import load_dotenv
 
 from app.models.models import Base, Video, Song, Concert, Contribution
@@ -14,6 +15,8 @@ from sqlalchemy.orm import sessionmaker
 from app.crawler.recheck_worker import run_recheck_job, recheck_status
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 DATABASE_URL = "sqlite:///./twice_fancam.db"
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
@@ -43,6 +46,15 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
     if x_admin_key != os.getenv("ADMIN_SECRET_KEY"):
         raise HTTPException(status_code=403, detail="Admin access denied")
     return True
+
+def _maybe_auto_approve(db: Session, contribution_id: int):
+    """Internal helper to auto-approve if global setting is enabled."""
+    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+        try:
+            internal_approve_contribution(db, contribution_id)
+            db.commit()
+        except Exception as e:
+            logger.error(f"Auto-approve failed for contribution {contribution_id}: {str(e)}")
 
 def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution):
     """Apply contribution values to a video and mark as processed."""
@@ -179,13 +191,7 @@ def create_general_contribution(
     db.commit()
     db.refresh(new_contrib)
 
-    # AUTO-APPROVE LOGIC:
-    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        try:
-            internal_approve_contribution(db, new_contrib.id)
-            db.commit()
-        except Exception as e:
-            print(f"Auto-approve failed for new video: {str(e)}")
+    _maybe_auto_approve(db, new_contrib.id)
             
     return new_contrib
 
@@ -218,13 +224,7 @@ def create_contribution(
     db.commit()
     db.refresh(new_contrib)
 
-    # AUTO-APPROVE LOGIC:
-    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        try:
-            internal_approve_contribution(db, new_contrib.id)
-            db.commit()
-        except Exception as e:
-            print(f"Auto-approve failed: {str(e)}")
+    _maybe_auto_approve(db, new_contrib.id)
         
     return new_contrib
 
