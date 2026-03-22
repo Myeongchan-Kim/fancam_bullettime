@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
-import { Search, User, ExternalLink, Compass, Youtube } from 'lucide-react';
+import { Search, ExternalLink, Compass, Youtube } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
-import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
+import { API_BASE_URL } from '../constants';
 import VideoPlayerModal from '../components/VideoPlayerModal';
 import StageMap from '../components/StageMap';
 import SetlistSlider from '../components/SetlistSlider';
@@ -17,7 +17,6 @@ const HomePage = () => {
   const [concerts, setConcerts] = useState<Concert[]>([]);
   
   const [selectedConcert, setSelectedConcert] = useState('');
-  const [selectedMember, setSelectedMember] = useState('');
   const [startOrder, setStartOrder] = useState(1);
   const [endOrder, setEndOrder] = useState(1);
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
@@ -37,7 +36,7 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
-  }, [selectedConcert, selectedMember, startOrder, endOrder]);
+  }, [selectedConcert, startOrder, endOrder]);
 
   const fetchInitialData = async () => {
     try {
@@ -54,11 +53,9 @@ const HomePage = () => {
     try {
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
-      if (selectedMember) url += `member=${selectedMember}&`;
       if (songs.length > 0) {
         url += `start_order=${startOrder}&end_order=${endOrder}&`;
       }
-      
       const res = await axios.get(url);
       setVideos(res.data);
     } catch (err) { console.error("Error fetching videos", err); }
@@ -69,7 +66,7 @@ const HomePage = () => {
       {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
       {showNewVideoModal && <NewVideoSuggestionModal songs={songs} concerts={concerts} onClose={() => setShowNewVideoModal(false)} />}
       {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(); }} />}
-      
+
       {/* Huge Interactive Map Section with Sidebar Lists */}
       <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
@@ -99,24 +96,6 @@ const HomePage = () => {
         </div>
       </section>
 
-      {/* Filter Bar (Simplified) */}
-      <div className="flex justify-center bg-slate-800/20 p-6 rounded-3xl border border-slate-800/50 backdrop-blur-sm shadow-xl text-white max-w-2xl mx-auto">
-        {/* Member Filter */}
-        <div className="space-y-2 text-white w-full max-w-md">
-          <label className="text-[11px] font-bold text-gray-500 uppercase ml-2 flex items-center gap-2 tracking-widest text-white">
-            <User className="h-3 w-3 text-indigo-400" /> Focus Member
-          </label>
-          <select 
-            className="w-full bg-slate-900/80 border border-slate-700 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white"
-            value={selectedMember}
-            onChange={(e) => setSelectedMember(e.target.value)}
-          >
-            <option value="">All Members</option>
-            {TWICE_MEMBERS.map(m => <option key={m} value={m} className="bg-slate-900">{m}</option>)}
-          </select>
-        </div>
-      </div>
-
       {/* Video Grid Section */}
       <div className="space-y-6">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
@@ -126,8 +105,8 @@ const HomePage = () => {
           </h2>
           <div className="flex gap-4 items-center">
             {/* Active Filters as Pills */}
-            {(selectedConcert || selectedMember || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
-              <button onClick={() => {setSelectedConcert(''); setSelectedMember(''); setStartOrder(1); setEndOrder(songs.length);}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
+            {(selectedConcert || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
+              <button onClick={() => {setSelectedConcert(''); setStartOrder(1); setEndOrder(songs.length);}} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (
               <button onClick={() => setShowAdminModal(true)} className="bg-green-600/20 text-green-400 hover:bg-green-600/40 hover:text-white border border-green-600/50 px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">
@@ -178,7 +157,7 @@ const HomePage = () => {
           <div className="text-center py-32 text-gray-600">
             <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={() => {setSelectedConcert(''); setSelectedMember(''); setStartOrder(1); setEndOrder(songs.length);}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+            <button onClick={() => {setSelectedConcert(''); setStartOrder(1); setEndOrder(songs.length);}} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
           </div>
         )}
       </div>
