@@ -55,11 +55,11 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   // Reorder Concerts: Past (DESC) -> Other -> Upcoming (ASC)
   const now = new Date();
   const pastConcerts = concerts
-    .filter(c => c.city !== 'Other' && new Date(c.date) <= now)
+    .filter(c => c.city !== 'Other' && c.date && new Date(c.date) <= now)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     
   const futureConcerts = concerts
-    .filter(c => c.city !== 'Other' && new Date(c.date) > now)
+    .filter(c => c.city !== 'Other' && c.date && new Date(c.date) > now)
     .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
   const otherConcert = concerts.find(c => c.city === 'Other');
@@ -163,7 +163,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 
           {/* Ticker Labels Area - Matches thumb track exactly */}
           <div className="absolute left-[10px] right-[10px] top-3 bottom-0 pointer-events-none">
-            {songs.map((song) => {
+            {validSongs.map((song) => {
               const isActive = song.order >= startOrder && song.order <= endOrder;
               const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
               

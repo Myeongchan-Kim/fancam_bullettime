@@ -31,7 +31,8 @@ const HomePage = () => {
 
   useEffect(() => {
     if (songs.length > 0 && endOrder === 1) {
-      setEndOrder(songs.length);
+      const maxOrder = Math.max(...songs.map(s => s.order || 0));
+      setEndOrder(maxOrder);
     }
   }, [songs]);
 
