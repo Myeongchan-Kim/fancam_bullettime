@@ -46,6 +46,19 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
     }
   };
 
+  const handleApproveAll = async () => {
+    if (!window.confirm(`Are you sure you want to approve all ${contributions.length} pending items?`)) return;
+    try {
+      const res = await axios.post(`${API_BASE_URL}/admin/contributions/approve-all`, {}, {
+        headers: { 'X-Admin-Key': adminKey }
+      });
+      alert(res.data.message);
+      fetchPending();
+    } catch (err) {
+      alert('Error approving all');
+    }
+  };
+
   const handleDelete = async (id: number) => {
     if (!window.confirm('Delete this contribution?')) return;
     try {
@@ -62,9 +75,19 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="flex justify-between items-center p-6 border-b border-slate-800">
-          <h2 className="text-xl font-bold text-white flex items-center gap-2">
-            <ShieldCheck className="h-5 w-5 text-green-500" /> Pending Video Suggestions
-          </h2>
+          <div className="flex items-center gap-4">
+            <h2 className="text-xl font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-green-500" /> Pending Video Suggestions
+            </h2>
+            {contributions.length > 0 && (
+              <button 
+                onClick={handleApproveAll}
+                className="px-3 py-1 bg-green-600 hover:bg-green-500 text-white text-[10px] font-black rounded-lg transition-all shadow-lg shadow-green-900/20 uppercase"
+              >
+                Approve All ({contributions.length})
+              </button>
+            )}
+          </div>
           <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors">
             <X className="h-6 w-6" />
           </button>

@@ -231,54 +231,79 @@ def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depen
             r.video_title = r.video.title
     return results
 
+def internal_approve_contribution(db: Session, contribution_id: int):
+    """Internal helper to approve a single contribution. Does NOT commit."""
+    contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
+    if not contrib:
+        raise Exception("Contribution not found")
+    
+    if contrib.video_id is None:
+        if not contrib.suggested_url:
+            raise Exception("suggested_url is required for new videos")
+        yt_id = get_video_id(contrib.suggested_url)
+        if not yt_id:
+            raise Exception("Invalid YouTube URL")
+            
+        existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
+        if existing:
+            video = existing
+        else:
+            video = Video(
+                youtube_id=yt_id,
+                url=contrib.suggested_url,
+                title=contrib.suggested_title or "Unknown Title",
+                thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
+                members=contrib.suggested_members or [],
+                angle=contrib.suggested_angle or "Unknown",
+                concert_id=contrib.suggested_concert_id
+            )
+            db.add(video)
+            db.flush() # Generate ID within transaction
+        
+        contrib.video_id = video.id
+        apply_contribution_to_video(db, video, contrib)
+    else:
+        video = db.query(Video).filter(Video.id == contrib.video_id).first()
+        if not video:
+            raise Exception("Video not found")
+        
+        apply_contribution_to_video(db, video, contrib)
+    
+    return video
+
 @app.post("/api/contributions/{contribution_id}/approve", response_model=VideoDetail)
 def approve_contribution(
     contribution_id: int, 
     db: Session = Depends(get_db),
     admin: bool = Depends(verify_admin)
 ):
-    contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
-    if not contrib:
-        raise HTTPException(status_code=404, detail="Contribution not found")
-    
     try:
-        if contrib.video_id is None:
-            if not contrib.suggested_url:
-                raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
-            yt_id = get_video_id(contrib.suggested_url)
-            if not yt_id:
-                raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-                
-            existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
-            if existing:
-                video = existing
-            else:
-                video = Video(
-                    youtube_id=yt_id,
-                    url=contrib.suggested_url,
-                    title=contrib.suggested_title or "Unknown Title",
-                    thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
-                    members=contrib.suggested_members or [],
-                    angle=contrib.suggested_angle or "Unknown",
-                    concert_id=contrib.suggested_concert_id
-                )
-                db.add(video)
-                db.flush() # Ensure ID is generated within the transaction
-            
-            contrib.video_id = video.id
-            apply_contribution_to_video(db, video, contrib)
-        else:
-            video = db.query(Video).filter(Video.id == contrib.video_id).first()
-            if not video:
-                raise HTTPException(status_code=404, detail="Video not found")
-            
-            apply_contribution_to_video(db, video, contrib)
-        
-        db.commit() # Atomic commit for both potential new video and the contribution update
+        video = internal_approve_contribution(db, contribution_id)
+        db.commit() # Atomic commit
         return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
+
+@app.post("/api/admin/contributions/approve-all")
+def approve_all_contributions(
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    pending = db.query(Contribution).filter(Contribution.is_processed == False).all()
+    count = 0
+    errors = []
+    
+    for contrib in pending:
+        try:
+            internal_approve_contribution(db, contrib.id)
+            count += 1
+        except Exception as e:
+            errors.append(f"ID {contrib.id}: {str(e)}")
+            continue
+            
+    db.commit()
+    return {"message": f"Successfully approved {count} contributions", "errors": errors}
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
 def delete_contribution(
