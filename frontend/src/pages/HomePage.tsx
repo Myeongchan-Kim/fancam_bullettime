@@ -22,6 +22,7 @@ const HomePage = () => {
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
+  const [visibleCount, setVisibleCount] = useState(12);
   const adminKey = localStorage.getItem('admin_key') || '';
 
   useEffect(() => {
@@ -36,7 +37,25 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
+    setVisibleCount(12); // Reset scroll on filter change
   }, [selectedConcert, startOrder, endOrder]);
+
+  // Infinite Scroll Observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && visibleCount < videos.length) {
+          setVisibleCount(prev => prev + 12);
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const sentinel = document.getElementById('scroll-sentinel');
+    if (sentinel) observer.observe(sentinel);
+
+    return () => observer.disconnect();
+  }, [visibleCount, videos.length]);
 
   const fetchInitialData = async () => {
     try {
@@ -120,7 +139,7 @@ const HomePage = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
-          {videos.map(video => (
+          {videos.slice(0, visibleCount).map(video => (
             <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
               <div className="aspect-video relative overflow-hidden">
                 <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
@@ -152,6 +171,13 @@ const HomePage = () => {
             </Link>
           ))}
         </div>
+
+        {/* Scroll Sentinel */}
+        {videos.length > visibleCount && (
+          <div id="scroll-sentinel" className="h-20 flex items-center justify-center">
+            <div className="w-6 h-6 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
+          </div>
+        )}
         
         {videos.length === 0 && (
           <div className="text-center py-32 text-gray-600">
