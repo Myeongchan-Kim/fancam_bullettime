@@ -77,8 +77,8 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
             <p className="text-center text-gray-500 py-10">No pending contributions.</p>
           ) : (
             contributions.map(c => (
-              <div key={c.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-                <div className="flex-1 space-y-2">
+              <div key={c.id} className="bg-slate-800/50 border border-slate-700 rounded-xl p-4 flex flex-col gap-4">
+                <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     {c.video_id ? (
                       <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded uppercase truncate max-w-[200px]">
@@ -91,7 +91,7 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   </div>
                   
                   {c.suggested_url && (
-                    <a href={c.suggested_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-400 hover:underline block truncate">{c.suggested_url}</a>
+                    <a href={c.suggested_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-400 hover:underline block break-all">{c.suggested_url}</a>
                   )}
                   {c.suggested_title && <div className="text-xs text-white font-bold">Title: {c.suggested_title}</div>}
                   {c.suggested_song_ids && c.suggested_song_ids.length > 0 && <div className="text-xs text-twice-apricot">Songs: {c.suggested_song_ids.map(id => songs.find(s => s.id === id)?.name).filter(Boolean).join(", ")}</div>}
@@ -99,11 +99,12 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   {c.suggested_members && c.suggested_members.length > 0 && <div className="text-xs text-twice-magenta">Members: {c.suggested_members.join(", ")}</div>}
                   {c.suggested_angle && <div className="text-xs text-indigo-400">Angle: {c.suggested_angle}</div>}
                 </div>
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => handleApprove(c.id)} className="p-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold">
+                
+                <div className="flex gap-2 pt-3 border-t border-slate-700/50 justify-end">
+                  <button onClick={() => handleApprove(c.id)} className="px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold shadow-lg shadow-green-900/20">
                     <Check className="h-4 w-4" /> Approve
                   </button>
-                  <button onClick={() => handleDelete(c.id)} className="p-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold">
+                  <button onClick={() => handleDelete(c.id)} className="px-4 py-2 bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors flex items-center gap-1 text-xs font-bold shadow-lg shadow-red-900/20">
                     <Trash2 className="h-4 w-4" /> Reject
                   </button>
                 </div>
