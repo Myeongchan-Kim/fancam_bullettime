@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import axios from 'axios';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Search, ExternalLink, Compass, Youtube } from 'lucide-react';
@@ -22,6 +22,7 @@ const HomePage = () => {
   const selectedConcert = searchParams.get('concert') || '';
   const startOrder = parseInt(searchParams.get('start') || '1', 10) || 1;
   const endOrder = parseInt(searchParams.get('end') || maxSongOrder.toString(), 10) || maxSongOrder;
+  const searchQuery = searchParams.get('q') || '';
 
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
@@ -29,13 +30,50 @@ const HomePage = () => {
   const [visibleCount, setVisibleCount] = useState(12);
   const adminKey = localStorage.getItem('admin_key') || '';
 
+  // Local state for the input field to make it snappy
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+
+  // Sync back from searchParams if they change externally (e.g. Back button, reset)
+  useEffect(() => {
+    setLocalSearch(searchQuery);
+  }, [searchQuery]);
+
+  // Debounced effect to sync localSearch TO searchParams
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (localSearch === searchQuery) return;
+      setSearchParams(prev => {
+        if (localSearch.trim()) prev.set('q', localSearch);
+        else prev.delete('q');
+        return prev;
+      }, { replace: true });
+    }, 250);
+    return () => clearTimeout(handler);
+  }, [localSearch, searchQuery, setSearchParams]);
+
+  const filteredVideos = useMemo(() => {
+    if (!searchQuery.trim()) return videos;
+    const lowerQuery = searchQuery.toLowerCase();
+    return videos.filter(v => {
+      return (
+        v.youtube_id?.toLowerCase().includes(lowerQuery) ||
+        v.title?.toLowerCase().includes(lowerQuery) ||
+        v.concert?.city?.toLowerCase().includes(lowerQuery) ||
+        v.concert?.venue?.toLowerCase().includes(lowerQuery) ||
+        v.songs?.some(s => s.name.toLowerCase().includes(lowerQuery))
+      );
+    });
+  }, [videos, searchQuery]);
+
   const resetFilters = () => {
     setSearchParams(prev => {
       prev.delete('concert');
       prev.set('start', '1');
       prev.set('end', maxSongOrder.toString());
+      prev.delete('q');
       return prev;
     }, { replace: true });
+    setLocalSearch(''); // Clear local input immediately
   };
 
   useEffect(() => {
@@ -57,14 +95,14 @@ const HomePage = () => {
   }, [selectedConcert, startOrder, endOrder]);
 
   useEffect(() => {
-    setVisibleCount(12); // Reset scroll when the dataset changes
-  }, [videos]);
+    setVisibleCount(12); // Reset scroll when dataset or search changes
+  }, [videos, searchQuery]);
 
   // Infinite Scroll Observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && visibleCount < videos.length) {
+        if (entries[0].isIntersecting && visibleCount < filteredVideos.length) {
           setVisibleCount(prev => prev + 12);
         }
       },
@@ -75,7 +113,7 @@ const HomePage = () => {
     if (sentinel) observer.observe(sentinel);
 
     return () => observer.disconnect();
-  }, [visibleCount, videos.length]);
+  }, [visibleCount, filteredVideos.length]);
 
   const fetchInitialData = async () => {
     try {
@@ -149,14 +187,27 @@ const HomePage = () => {
 
       {/* Video Grid Section */}
       <div className="space-y-6">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-          <h2 className="text-xl font-bold flex items-center gap-2 text-white">
+        <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-4 gap-4">
+          <h2 className="text-xl font-bold flex items-center gap-2 text-white min-w-max">
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
-            <span>{videos.length} Performances Found</span>
+            <span>{filteredVideos.length} Performances Found</span>
           </h2>
-          <div className="flex gap-4 items-center">
+          
+          {/* Real-time Text Filter */}
+          <div className="flex-1 max-w-md w-full relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+            <input 
+              type="text" 
+              placeholder="Search by title, location, or date..." 
+              value={localSearch}
+              onChange={(e) => setLocalSearch(e.target.value)}
+              className="w-full bg-slate-800/80 border border-slate-700/50 rounded-xl pl-10 pr-4 py-2 text-sm focus:ring-2 focus:ring-twice-magenta outline-none transition-all text-white placeholder-gray-500 shadow-inner"
+            />
+          </div>
+
+          <div className="flex gap-4 items-center flex-wrap justify-end">
             {/* Active Filters as Pills */}
-            {(selectedConcert || (songs.length > 0 && (startOrder !== 1 || endOrder !== maxSongOrder))) && (
+            {(selectedConcert || searchQuery || (songs.length > 0 && (startOrder !== 1 || endOrder !== maxSongOrder))) && (
               <button onClick={resetFilters} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (
@@ -171,7 +222,7 @@ const HomePage = () => {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
-          {videos.slice(0, visibleCount).map(video => (
+          {filteredVideos.slice(0, visibleCount).map(video => (
             <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
               <div className="aspect-video relative overflow-hidden">
                 <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
@@ -205,13 +256,13 @@ const HomePage = () => {
         </div>
 
         {/* Scroll Sentinel */}
-        {videos.length > visibleCount && (
+        {filteredVideos.length > visibleCount && (
           <div id="scroll-sentinel" className="h-20 flex items-center justify-center">
             <div className="w-6 h-6 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
           </div>
         )}
         
-        {videos.length === 0 && (
+        {filteredVideos.length === 0 && (
           <div className="text-center py-32 text-gray-600">
             <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
