@@ -5,7 +5,6 @@ import { Search, User, ExternalLink, Compass, Youtube } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import VideoPlayerModal from '../components/VideoPlayerModal';
-import MiniVideoList from '../components/MiniVideoList';
 import StageMap from '../components/StageMap';
 import SetlistSlider from '../components/SetlistSlider';
 import NewVideoSuggestionModal from '../components/NewVideoSuggestionModal';
@@ -75,24 +74,17 @@ const HomePage = () => {
       <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
         <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
 
-        <div className="w-full max-w-[95rem] px-10 flex items-center justify-between gap-10 overflow-visible">
-          {/* Left Sidebar: Recent */}
-          <MiniVideoList title="Recently Added" videos={videos.slice(0, 6)} onPlay={setActiveVideo} />
-
+        <div className="w-full max-w-[95rem] px-10 flex items-center justify-center overflow-visible">
           {/* Center Map */}
           <div className="flex-1 flex justify-center overflow-visible">
             <StageMap 
-              angle="Unknown"
+              angle="Unknown" 
               videos={videos} 
               onPlayVideo={setActiveVideo}
               sizeClass="w-[45rem]"
             />
           </div>
-
-          {/* Right Sidebar: Trending */}
-          <MiniVideoList title="Hot Choices" videos={videos.slice().reverse().slice(0, 6)} onPlay={setActiveVideo} />
         </div>
-
         {/* Setlist Range Slider at the bottom of Hero */}
         <div className="w-full mt-10 mb-20">
           <SetlistSlider 
