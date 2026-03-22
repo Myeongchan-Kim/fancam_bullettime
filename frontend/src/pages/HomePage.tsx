@@ -18,9 +18,10 @@ const HomePage = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   
+  const maxSongOrder = songs.length > 0 ? Math.max(...songs.map(s => s.order || 0)) : 1;
   const selectedConcert = searchParams.get('concert') || '';
-  const startOrder = searchParams.has('start') ? parseInt(searchParams.get('start')!, 10) : 1;
-  const endOrder = searchParams.has('end') ? parseInt(searchParams.get('end')!, 10) : 1;
+  const startOrder = parseInt(searchParams.get('start') || '1', 10) || 1;
+  const endOrder = parseInt(searchParams.get('end') || maxSongOrder.toString(), 10) || maxSongOrder;
 
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
@@ -28,20 +29,28 @@ const HomePage = () => {
   const [visibleCount, setVisibleCount] = useState(12);
   const adminKey = localStorage.getItem('admin_key') || '';
 
+  const resetFilters = () => {
+    setSearchParams(prev => {
+      prev.delete('concert');
+      prev.set('start', '1');
+      prev.set('end', maxSongOrder.toString());
+      return prev;
+    }, { replace: true });
+  };
+
   useEffect(() => {
     fetchInitialData();
   }, []);
 
   useEffect(() => {
     if (songs.length > 0 && !searchParams.has('end')) {
-      const maxOrder = Math.max(...songs.map(s => s.order || 0));
       setSearchParams(prev => {
         prev.set('start', '1');
-        prev.set('end', maxOrder.toString());
+        prev.set('end', maxSongOrder.toString());
         return prev;
       }, { replace: true });
     }
-  }, [songs, searchParams, setSearchParams]);
+  }, [songs, searchParams, setSearchParams, maxSongOrder]);
 
   useEffect(() => {
     fetchVideos();
@@ -147,17 +156,8 @@ const HomePage = () => {
           </h2>
           <div className="flex gap-4 items-center">
             {/* Active Filters as Pills */}
-            {(selectedConcert || (songs.length > 0 && (startOrder !== 1 || endOrder !== songs.length))) && (
-              <button onClick={() => {
-                setSearchParams(prev => {
-                  prev.delete('concert');
-                  prev.set('start', '1');
-                  if (songs.length > 0) {
-                    prev.set('end', Math.max(...songs.map(s => s.order || 0)).toString());
-                  }
-                  return prev;
-                }, { replace: true });
-              }} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
+            {(selectedConcert || (songs.length > 0 && (startOrder !== 1 || endOrder !== maxSongOrder))) && (
+              <button onClick={resetFilters} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (
               <button onClick={() => setShowAdminModal(true)} className="bg-green-600/20 text-green-400 hover:bg-green-600/40 hover:text-white border border-green-600/50 px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(34,197,94,0.3)]">
@@ -215,16 +215,7 @@ const HomePage = () => {
           <div className="text-center py-32 text-gray-600">
             <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
             <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={() => {
-              setSearchParams(prev => {
-                prev.delete('concert');
-                prev.set('start', '1');
-                if (songs.length > 0) {
-                  prev.set('end', Math.max(...songs.map(s => s.order || 0)).toString());
-                }
-                return prev;
-              }, { replace: true });
-            }} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+            <button onClick={resetFilters} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
           </div>
         )}
       </div>
