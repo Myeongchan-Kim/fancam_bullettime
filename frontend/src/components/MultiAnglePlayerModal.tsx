@@ -20,7 +20,10 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
   const slaveVideos = videos.filter(v => v.id !== masterId);
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
-    setPlayers(prev => ({ ...prev, [videoId]: e.target }));
+    // Only store if the player and its iframe are valid
+    if (e.target && e.target.getIframe()) {
+      setPlayers(prev => ({ ...prev, [videoId]: e.target }));
+    }
   };
 
   useEffect(() => {
@@ -29,19 +32,21 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
       if (!isPlaying || !players[masterId]) return;
       
       const masterPlayer = players[masterId];
-      if (typeof masterPlayer.getCurrentTime !== 'function') return;
+      if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
       const masterTime = masterPlayer.getCurrentTime();
       const masterOffset = masterVideo.sync_offset || 0;
 
       slaveVideos.forEach(slave => {
         const slavePlayer = players[slave.id];
-        if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function') {
+        if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
           const slaveTime = slavePlayer.getCurrentTime();
           const slaveOffset = slave.sync_offset || 0;
           
-          // Calculate expected slave time
-          const targetSlaveTime = masterTime - masterOffset + slaveOffset;
+          // Calculate expected slave time based on absolute concert time
+          // Concert Time = video_local_time + video_start_offset
+          // targetSlaveTime + slaveOffset = masterTime + masterOffset
+          const targetSlaveTime = masterTime + masterOffset - slaveOffset;
           
           // Avoid seeking before video is loaded or if negative target
           if (targetSlaveTime >= 0 && Math.abs(slaveTime - targetSlaveTime) > SYNC_THRESHOLD) {
@@ -62,7 +67,7 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
       setIsPlaying(true);
       slaveVideos.forEach(slave => {
         const slavePlayer = players[slave.id];
-        if (slavePlayer && typeof slavePlayer.playVideo === 'function') {
+        if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
           slavePlayer.playVideo();
         }
       });
@@ -74,7 +79,7 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
       setIsPlaying(false);
       slaveVideos.forEach(slave => {
         const slavePlayer = players[slave.id];
-        if (slavePlayer && typeof slavePlayer.pauseVideo === 'function') {
+        if (slavePlayer && typeof slavePlayer.pauseVideo === 'function' && slavePlayer.getIframe()) {
           slavePlayer.pauseVideo();
         }
       });
@@ -86,10 +91,9 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
     Object.keys(players).forEach(idStr => {
       const id = parseInt(idStr);
       const player = players[id];
-      if (typeof player.mute === 'function') {
+      if (player && typeof player.mute === 'function' && player.getIframe()) {
         if (id === masterId) {
           player.unMute();
-          // Optionally set volume
         } else {
           player.mute();
         }
@@ -100,7 +104,7 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
   const setAsMaster = (id: number) => {
     if (id === masterId) return;
     const oldMasterPlayer = players[masterId];
-    if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function') {
+    if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function' && oldMasterPlayer.getIframe()) {
       oldMasterPlayer.pauseVideo();
     }
     setMasterId(id);
@@ -148,6 +152,7 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
           <div className="flex-1 rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-slate-800 relative group">
             {masterVideo && (
               <YouTube 
+                key={`master-${masterVideo.id}`}
                 videoId={masterVideo.youtube_id} 
                 opts={optsMaster} 
                 onReady={(e) => handleReady(e, masterVideo.id)}
@@ -158,11 +163,15 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
             )}
           </div>
           <div className="mt-4 flex gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
-            <span className="text-twice-magenta">{masterVideo?.members.join(", ")}</span>
+            <span className="text-twice-magenta">{masterVideo?.members?.join(", ") || 'No Members Tagged'}</span>
             <span>•</span>
-            <span className="text-twice-apricot">{masterVideo?.songs && masterVideo.songs.length > 0 ? masterVideo.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
+            <span className="text-twice-apricot">
+              {masterVideo?.songs && masterVideo.songs.length > 0 
+                ? masterVideo.songs.map(s => s.name).join(', ') 
+                : 'Unknown Song'}
+            </span>
             <span>•</span>
-            <span>Offset: {masterVideo?.sync_offset}s</span>
+            <span>Offset: {masterVideo?.sync_offset || 0}s</span>
           </div>
         </div>
 
@@ -178,6 +187,7 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
             >
               <div className="aspect-video relative bg-black">
                 <YouTube 
+                  key={`slave-${video.id}`}
                   videoId={video.youtube_id} 
                   opts={optsSlave} 
                   onReady={(e) => handleReady(e, video.id)}

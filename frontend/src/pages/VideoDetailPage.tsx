@@ -215,7 +215,7 @@ const VideoDetailPage = () => {
           <div className="aspect-video bg-black rounded-2xl overflow-hidden shadow-2xl border border-slate-800">
             <iframe
               width="100%" height="100%"
-              src={`https://www.youtube.com/embed/${video.youtube_id}?autoplay=1&start=${Math.floor(video.sync_offset)}`}
+              src={`https://www.youtube.com/embed/${video.youtube_id}?autoplay=1`}
               title="YouTube video player" frameBorder="0" allowFullScreen
             ></iframe>
           </div>
