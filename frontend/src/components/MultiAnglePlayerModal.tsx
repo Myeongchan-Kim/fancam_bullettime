@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-import { X, Maximize2, VolumeX } from 'lucide-react';
+import { X, Maximize2, VolumeX, ExternalLink } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { Video } from '../types';
 
 interface MultiAnglePlayerModalProps {
@@ -143,11 +144,17 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
 
         {/* Master View (Left/Main) */}
         <div className="flex-1 flex flex-col p-6 pr-0 xl:pr-6 border-b xl:border-b-0 xl:border-r border-slate-800">
-          <div className="flex items-center gap-2 mb-4">
-            <h2 className="text-xl font-black text-white flex items-center gap-2">
-              <span className="bg-twice-magenta text-white px-2 py-1 rounded text-xs">MASTER</span>
-              {masterVideo?.title}
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-black text-white flex items-center gap-2 truncate mr-4">
+              <span className="bg-twice-magenta text-white px-2 py-1 rounded text-xs shrink-0">MASTER</span>
+              <span className="truncate">{masterVideo?.title}</span>
             </h2>
+            <Link 
+              to={`/video/${masterVideo?.id}`} 
+              className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black transition-all shrink-0 border border-slate-700"
+            >
+              <ExternalLink className="h-3 w-3" /> WIKI
+            </Link>
           </div>
           <div className="flex-1 rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-slate-800 relative group">
             {masterVideo && (
@@ -201,7 +208,16 @@ const MultiAnglePlayerModal: React.FC<MultiAnglePlayerModalProps> = ({ videos, o
                 </div>
               </div>
               <div className="p-3">
-                <h4 className="text-xs font-bold text-white line-clamp-1">{video.title}</h4>
+                <div className="flex justify-between items-start gap-2">
+                  <h4 className="text-xs font-bold text-white line-clamp-1 flex-1">{video.title}</h4>
+                  <Link 
+                    to={`/video/${video.id}`} 
+                    onClick={(e) => e.stopPropagation()} 
+                    className="p-1 hover:text-twice-apricot text-gray-500 transition-colors"
+                  >
+                    <ExternalLink className="h-3 w-3" />
+                  </Link>
+                </div>
                 <div className="flex justify-between items-center mt-1">
                    <span className="text-[9px] text-gray-500 font-bold">Offset: {video.sync_offset}s</span>
                    <VolumeX className="w-3 h-3 text-red-400 opacity-50" />
