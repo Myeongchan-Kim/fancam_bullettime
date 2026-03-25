@@ -57,9 +57,9 @@ const VideoDetailPage = () => {
         sync_offset: res.data.sync_offset
       });
 
-      if (res.data.songs?.length > 0 && res.data.concert?.id) {
-        // Fetch related videos based on the first song for simplicity
-        const relatedRes = await axios.get(`${API_BASE_URL}/videos?song_id=${res.data.songs[0].id}&concert_id=${res.data.concert.id}`);
+      if (res.data.concert?.id) {
+        // Fetch all videos from the same concert to allow syncing any angle from the show
+        const relatedRes = await axios.get(`${API_BASE_URL}/videos?concert_id=${res.data.concert.id}`);
         setRelatedVideos(relatedRes.data.filter((v: Video) => v.id !== parseInt(id!)));
       }    } catch (err) { console.error("Error fetching video detail", err); }
   };
@@ -435,7 +435,7 @@ const VideoDetailPage = () => {
             <div className="flex items-center justify-between">
               <h2 className="text-lg font-bold flex items-center space-x-2 text-white">
                 <PlayCircle className="h-5 w-5 text-twice-apricot" />
-                <span>Other Angles</span>
+                <span>More from this Concert</span>
               </h2>
               {relatedVideos.length > 0 && (
                 <button 
@@ -462,7 +462,7 @@ const VideoDetailPage = () => {
                   </div>
                 </Link>
               )) : (
-                <p className="text-sm text-gray-500 italic">No other angles found yet.</p>
+                <p className="text-sm text-gray-500 italic">No other videos found for this concert yet.</p>
               )}
             </div>
           </div>
