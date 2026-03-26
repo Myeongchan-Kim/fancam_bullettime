@@ -136,7 +136,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   return (
     <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-800 flex flex-col xl:flex-row bg-slate-950">
       {/* Master View (Left/Main) */}
-      <div className="flex-1 flex flex-col p-6 pr-0 xl:pr-6 border-b xl:border-b-0 xl:border-r border-slate-800">
+      <div className="flex-none xl:flex-[2] flex flex-col p-6 pr-0 xl:pr-6 border-b xl:border-b-0 xl:border-r border-slate-800">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-black text-white flex items-center gap-2 truncate mr-4">
             <span className="bg-twice-magenta text-white px-2 py-1 rounded text-xs shrink-0">MASTER</span>
@@ -176,7 +176,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       </div>
 
       {/* Slave Views (Right/Sidebar) */}
-      <div className="w-full xl:w-96 flex flex-col p-6 bg-slate-900/50 overflow-y-auto space-y-4 max-h-[600px] xl:max-h-none no-scrollbar">
+      <div className="flex-none xl:flex-1 flex flex-col p-6 bg-slate-900/50 overflow-y-auto space-y-4 max-h-[600px] xl:max-h-none no-scrollbar">
         <h3 className="text-sm font-black text-gray-500 tracking-widest uppercase mb-2">Sync Angles ({slaveVideos.length})</h3>
         
         {slaveVideos.map(video => (
