@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, VolumeX, ExternalLink } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { Video } from '../types';
 
 interface MultiAnglePlayerProps {
@@ -11,6 +11,7 @@ interface MultiAnglePlayerProps {
 const SYNC_THRESHOLD = 0.5; // seconds difference before forcing seek
 
 const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
+  const navigate = useNavigate();
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
@@ -22,10 +23,16 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   // Slave videos that cover the current timeframe
   const slaveVideos = videos.filter(v => {
     if (v.id === masterId) return false;
-    // Buffer for better UX: show if within 2 seconds of range
-    const BUFFER = 2;
-    if (!v.duration || v.duration === 0) return true; // Show always if duration unknown
-    return currentConcertTime >= (v.sync_offset - BUFFER) && currentConcertTime <= (v.sync_offset + v.duration + BUFFER);
+    
+    // If duration is unknown (0), we assume a 5-minute window for filtering purposes
+    // so it doesn't show up at the very beginning if it's an encore song.
+    const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 300; 
+    const BUFFER = 5; // 5 second grace period
+    
+    const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);
+    const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
+    
+    return hasStarted && !hasEnded;
   });
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
@@ -119,6 +126,10 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
     if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function' && oldMasterPlayer.getIframe()) {
       oldMasterPlayer.pauseVideo();
     }
+    
+    // Update the URL to reflect the new master video
+    navigate(`/video/${id}`, { replace: true });
+    
     setMasterId(id);
     setIsPlaying(false);
   };
