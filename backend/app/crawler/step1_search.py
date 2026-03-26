@@ -58,6 +58,81 @@ def timestamp_to_seconds(ts):
         logger.warning(f"Failed to parse timestamp '{ts}': {e}")
         return 0.0
 
+def search_youtube(query: str, limit: int = 5):
+    """유튜브 검색 결과의 URL 목록을 반환"""
+    urls = []
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto(f"https://www.youtube.com/results?search_query={query}")
+            page.wait_for_selector("ytd-video-renderer", timeout=15000)
+            time.sleep(1.5)
+            
+            videos = page.locator("ytd-video-renderer").all()[:limit]
+            for video in videos:
+                title_elem = video.locator("a#video-title")
+                href = title_elem.get_attribute("href")
+                if href:
+                    urls.append("https://www.youtube.com" + href)
+            browser.close()
+        except Exception as e:
+            logger.error(f"Search error: {e}")
+            browser.close()
+    return urls
+
+def get_video_info(url: str):
+    """영상 상세 정보(제목, 길이, 설명, 채널명)를 반환"""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        try:
+            page.goto(url)
+            # 타이틀 셀렉터를 더 정확하게 (첫 번째 항목만)
+            page.wait_for_selector("ytd-watch-metadata h1, #title h1", timeout=20000)
+            title = page.locator("ytd-watch-metadata h1, #title h1").first.inner_text().strip()
+            
+            # 설명란 가져오기
+            description = ""
+            try:
+                # '더보기' 버튼 클릭 시도
+                expand_button = page.locator("#expand, tp-yt-paper-button#expand")
+                if expand_button.count() > 0 and expand_button.first.is_visible():
+                    expand_button.first.click()
+                    time.sleep(0.5)
+                
+                # 여러 가능한 설명란 셀렉터 시도
+                desc_selectors = ["#description-inline-expander", "#description", "ytd-video-secondary-info-renderer #description"]
+                for sel in desc_selectors:
+                    elem = page.locator(sel)
+                    if elem.count() > 0:
+                        description = elem.first.inner_text()
+                        if description: break
+            except Exception as e:
+                logger.warning(f"설명란 추출 실패: {e}")
+            
+            # 길이 추출
+            duration_text = "0:00"
+            try:
+                duration_text = page.evaluate("document.querySelector('.ytp-time-duration').innerText")
+            except:
+                pass
+            duration_sec = timestamp_to_seconds(duration_text)
+            
+            # 채널명
+            channel_name = "Unknown"
+            try:
+                channel_name = page.locator("#owner-and-teaser #channel-name a, .ytd-channel-name a").first.inner_text()
+            except:
+                pass
+                
+            browser.close()
+            return title, duration_sec, description, channel_name
+        except Exception as e:
+            logger.error(f"Error getting video info: {e}")
+            browser.close()
+            return None, 0, "", ""
+
 def run_deep_dive(target_city, limit_videos_per_query=5):
     """특정 도시를 집중적으로 수집하는 로직"""
     engine = create_engine(DATABASE_URL)
