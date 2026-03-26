@@ -1,9 +1,19 @@
 export interface Song {
   id: number;
   name: string;
-  order: number;
+  order?: number | null;
   is_solo: boolean;
   member_name?: string;
+}
+
+export interface ConcertSetlist {
+  id: number;
+  concert_id: number;
+  song_id: number | null;
+  event_name: string | null;
+  start_time: number;
+  display_order: number;
+  song?: Song;
 }
 
 export interface Concert {
@@ -12,6 +22,7 @@ export interface Concert {
   city: string;
   country: string;
   venue: string;
+  setlist?: ConcertSetlist[];
 }
 
 export interface Video {

@@ -21,14 +21,14 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   endOrder, 
   onChange 
 }) => {
-  const validSongs = songs.filter(s => typeof s.order === 'number');
+  const validSongs = songs.filter((s): s is Song & { order: number } => typeof s.order === 'number');
   const minOrder = validSongs.length > 0 ? Math.min(...validSongs.map(s => s.order)) : 1;
   const actualMaxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
   const maxOrder = actualMaxOrder + 1;
 
-  const displaySongs = [
+  const displaySongs: (Song & { order: number })[] = [
     ...validSongs,
-    { id: -1, name: "No song tag", order: maxOrder } as Song
+    { id: -1, name: "No song tag", order: maxOrder, is_solo: false } as Song & { order: number }
   ];
   
   if (songs.length === 0) return (

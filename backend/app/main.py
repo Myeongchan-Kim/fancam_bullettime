@@ -140,13 +140,15 @@ def get_videos(
     if angle:
         query = query.filter(Video.angle == angle)
         
-    return query.order_by(Video.created_at.desc()).all()
+    results = query.order_by(Video.created_at.desc()).all()
+    return results
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
+        
     return video
 
 @app.patch("/api/videos/{video_id}", response_model=VideoDetail)
@@ -273,6 +275,7 @@ def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depen
     for r in results:
         if r.video:
             r.video_title = r.video.title
+            
     return results
 
 def internal_approve_contribution(db: Session, contribution_id: int):

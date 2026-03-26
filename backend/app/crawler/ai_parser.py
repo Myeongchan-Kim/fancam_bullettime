@@ -63,11 +63,30 @@ Expected JSON schema:
 }}
 """
 
+async def parse_fancam_metadata_async(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
+    """(비동기) 유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
+    try:
+        model = genai.GenerativeModel(
+            model_name="gemini-2.0-flash", # 최신 모델 사용
+            system_instruction=create_system_prompt(),
+            generation_config={"response_mime_type": "application/json"}
+        )
+        
+        user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
+        response = await model.generate_content_async(user_prompt)
+        
+        result_json = json.loads(response.text)
+        return result_json
+        
+    except Exception as e:
+        print(f"[AI Parser Async Error] {e}")
+        return None
+
 def parse_fancam_metadata(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-2.5-flash", 
+            model_name="gemini-2.0-flash", 
             system_instruction=create_system_prompt(),
             generation_config={"response_mime_type": "application/json"}
         )

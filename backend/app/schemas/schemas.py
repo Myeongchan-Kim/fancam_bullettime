@@ -6,7 +6,7 @@ class SongBase(BaseModel):
     id: int
     name: str
     order: Optional[int] = None
-    is_solo: bool
+    is_solo: bool = False
     member_name: Optional[str] = None
 
     class Config:

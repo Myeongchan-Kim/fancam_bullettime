@@ -1,9 +1,25 @@
-from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum, JSON, Table
+from sqlalchemy import Column, Integer, String, Float, ForeignKey, DateTime, Boolean, Enum, JSON, Table, TypeDecorator
 from sqlalchemy.orm import relationship, declarative_base
 import datetime
 import enum
+import json
 
 Base = declarative_base()
+
+class JSONEncodedList(TypeDecorator):
+    """Enables JSON storage of lists/dicts in SQLite by automatic string conversion."""
+    impl = String
+    cache_ok = True
+
+    def process_bind_param(self, value, dialect):
+        if value is not None:
+            return json.dumps(value)
+        return None
+
+    def process_result_value(self, value, dialect):
+        if value is not None:
+            return json.loads(value)
+        return []
 
 video_song_association = Table(
     'video_song_association',
@@ -33,7 +49,7 @@ class Video(Base):
     # Labeling
     song_id = Column(Integer, ForeignKey("songs.id"))
     concert_id = Column(Integer, ForeignKey("concerts.id"))
-    members = Column(JSON) # List of member names
+    members = Column(JSONEncodedList) # List of member names
     
     # Multi-Angle & Sync
     angle = Column(String, default=AngleType.UNKNOWN)
@@ -55,7 +71,7 @@ class Song(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
     order = Column(Integer, nullable=True)
-    is_solo = Column(Boolean, default=False)
+    is_solo = Column(Boolean, nullable=False, default=False)
     member_name = Column(String, nullable=True) # if solo
     
     videos = relationship("Video", back_populates="song", overlaps="songs,videos_list") # Deprecated
@@ -101,9 +117,9 @@ class Contribution(Base):
     # Metadata suggestions
     suggested_title = Column(String, nullable=True)
     suggested_song_id = Column(Integer, ForeignKey("songs.id"), nullable=True) # Deprecated
-    suggested_song_ids = Column(JSON, nullable=True)
+    suggested_song_ids = Column(JSONEncodedList, nullable=True)
     suggested_concert_id = Column(Integer, ForeignKey("concerts.id"), nullable=True)
-    suggested_members = Column(JSON, nullable=True)
+    suggested_members = Column(JSONEncodedList, nullable=True)
     suggested_duration = Column(Float, default=9999.0)
     
     # Location & Sync suggestions
