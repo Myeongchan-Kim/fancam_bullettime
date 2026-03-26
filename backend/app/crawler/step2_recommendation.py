@@ -92,9 +92,10 @@ async def run_recommendation_chain_async(depth=15):
         page = context.pages[0] if context.pages else await context.new_page()
         
         # 1. 고품질 콘서트 영상으로 시작점 잡기
+        from urllib.parse import quote
         logger.info("🎯 마스터급 콘서트 영상으로 시작점을 잡습니다...")
         search_query = "TWICE THIS IS FOR World Tour Full Concert 4K"
-        await page.goto(f"https://www.youtube.com/results?search_query={search_query}")
+        await page.goto(f"https://www.youtube.com/results?search_query={quote(search_query)}")
         await page.wait_for_selector("a#video-title", timeout=15000)
         
         first_video = page.locator("a#video-title").first
@@ -185,4 +186,4 @@ async def run_recommendation_chain_async(depth=15):
     logger.info(f"🎉 탐색 완료. 총 {new_video_count}개의 새로운 직캠을 발굴했습니다.")
 
 if __name__ == "__main__":
-    asyncio.run(run_recommendation_chain_async(depth=15))
+    asyncio.run(run_recommendation_chain_async(depth=50))

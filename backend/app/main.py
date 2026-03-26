@@ -106,18 +106,21 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     # COMMIT REMOVED - Caller must handle transaction atomicity
 
 def ensure_list(data):
-    """문자열이 리스트가 될 때까지 반복적으로 파싱하는 안전장치"""
+    """문자열이 리스트가 될 때까지 반복적으로 파싱하는 안전장치 (Iterative)"""
     if data is None:
         return []
-    if isinstance(data, list):
-        return data
-    if isinstance(data, str):
+    current = data
+    # 리스트가 나올 때까지 최대 5번 시도 (보통 1-2번이면 충분)
+    for _ in range(5):
+        if isinstance(current, list):
+            return current
+        if not isinstance(current, str):
+            break
         try:
-            parsed = json.loads(data)
-            return ensure_list(parsed) # 재귀적으로 한 번 더 확인 (이중 인코딩 방지)
-        except:
-            return []
-    return []
+            current = json.loads(current)
+        except (json.JSONDecodeError, TypeError):
+            break
+    return [] if not isinstance(current, list) else current
 
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
