@@ -140,17 +140,22 @@ def get_videos(
 ):
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
     
-    # 1. 콘서트별 커스텀 셋리스트 필터링 로직 (매우 중요)
+    # 1. 콘서트별 커스텀 셋리스트 필터링 로직
     if concert_id and start_order is not None and end_order is not None:
         # 해당 콘서트의 셋리스트가 있는지 확인
-        has_local_setlist = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).first() is not None
+        active_setlist = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).all()
+        has_local_setlist = len(active_setlist) > 0
         
-        if has_local_setlist:
-            # 로컬 셋리스트가 있다면: concert_setlists의 display_order를 기준으로 필터링
-            # 이 범위에 속하는 노래(song_id)들을 먼저 찾음
+        # 만약 전체 범위를 선택한 상태라면 (예: 1번부터 마지막까지), 노래 필터링을 건너뛰고 모든 영상을 보여줌
+        is_full_range = start_order <= 1 and (end_order >= (len(active_setlist) if has_local_setlist else 37))
+
+        if is_full_range:
+            query = query.filter(Video.concert_id == concert_id)
+        elif has_local_setlist:
+            # 로컬 셋리스트 기반 필터링 (범위 좁혔을 때)
             local_songs_subquery = db.query(ConcertSetlist.song_id).filter(
                 ConcertSetlist.concert_id == concert_id,
-                ConcertSetlist.display_order >= (start_order - 1), # 1-based to 0-based
+                ConcertSetlist.display_order >= (start_order - 1),
                 ConcertSetlist.display_order <= (end_order - 1)
             ).subquery()
             
@@ -165,7 +170,7 @@ def get_videos(
                     (Video.song_id.in_(local_songs_subquery))
                 )
         else:
-            # 로컬 셋리스트가 없다면: 기존 글로벌 Song.order 기준 필터링
+            # 로컬 셋리스트가 없는 경우 글로벌 order 기준 (범위 좁혔을 때)
             if untagged:
                 query = query.outerjoin(Video.songs).filter(
                     or_(
