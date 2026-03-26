@@ -33,10 +33,16 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const slaveVideos = useMemo(() => {
     return videos.filter(v => {
       if (v.id === masterId) return false;
-      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 300; 
+
+      // Special Rule: Always show "Full Concert" videos as they are the backbone of syncing
+      const isFullConcert = v.title.toLowerCase().includes('full concert') || v.title.toLowerCase().includes('full show');
+      if (isFullConcert) return true;
+
+      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
       const BUFFER = 5; 
-      const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);
-      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
+
+      const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
+
       return hasStarted && !hasEnded;
     });
   }, [videos, masterId, currentConcertTime]);
