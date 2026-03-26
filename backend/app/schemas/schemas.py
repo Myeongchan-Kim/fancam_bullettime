@@ -28,8 +28,8 @@ class VideoBase(BaseModel):
     title: str
     thumbnail_url: str
     url: str
-    song_id: Optional[int] # Deprecated
-    concert_id: Optional[int]
+    song_id: Optional[int] = None # Deprecated
+    concert_id: Optional[int] = None
     members: List[str]
     angle: str
     coordinate_x: Optional[float] = None
@@ -42,9 +42,9 @@ class VideoBase(BaseModel):
         from_attributes = True
 
 class VideoDetail(VideoBase):
-    song: Optional[SongBase] # Deprecated
+    song: Optional[SongBase] = None # Deprecated
     songs: List[SongBase] = []
-    concert: Optional[ConcertBase]
+    concert: Optional[ConcertBase] = None
 
 class VideoUpdate(BaseModel):
     title: Optional[str] = None
@@ -74,19 +74,19 @@ class ContributionCreate(BaseModel):
 
 class ContributionBase(BaseModel):
     id: int
-    video_id: Optional[int]
+    video_id: Optional[int] = None
     video_title: Optional[str] = None
-    suggested_url: Optional[str]
-    suggested_title: Optional[str]
-    suggested_song_id: Optional[int] # Deprecated
-    suggested_song_ids: Optional[List[int]]
-    suggested_concert_id: Optional[int]
-    suggested_members: Optional[List[str]]
+    suggested_url: Optional[str] = None
+    suggested_title: Optional[str] = None
+    suggested_song_id: Optional[int] = None # Deprecated
+    suggested_song_ids: Optional[List[int]] = None
+    suggested_concert_id: Optional[int] = None
+    suggested_members: Optional[List[str]] = None
     suggested_duration: Optional[float] = None
-    suggested_angle: Optional[str]
-    suggested_coordinate_x: Optional[float]
-    suggested_coordinate_y: Optional[float]
-    suggested_sync_offset: Optional[float]
+    suggested_angle: Optional[str] = None
+    suggested_coordinate_x: Optional[float] = None
+    suggested_coordinate_y: Optional[float] = None
+    suggested_sync_offset: Optional[float] = None
     is_processed: bool
     created_at: datetime
 

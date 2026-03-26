@@ -43,10 +43,23 @@ def get_db():
         db.close()
 
 # Admin Auth 의존성
-def verify_admin(x_admin_key: Optional[str] = Header(None)):
-    if x_admin_key != os.getenv("ADMIN_SECRET_KEY"):
-        raise HTTPException(status_code=403, detail="Admin access denied")
-    return True
+def verify_admin(
+    x_admin_key: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None)
+):
+    admin_pass = os.getenv("ADMIN_SECRET_KEY", "twice360")
+    
+    # Check X-Admin-Key header
+    if x_admin_key == admin_pass:
+        return True
+        
+    # Check Authorization: Bearer <key> header
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        if token == admin_pass:
+            return True
+            
+    raise HTTPException(status_code=403, detail="Admin access denied")
 
 def _maybe_auto_approve(db: Session, contribution_id: int):
     """Internal helper to auto-approve if global setting is enabled."""
@@ -62,9 +75,10 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     if contrib.suggested_title is not None: video.title = contrib.suggested_title
     
     # Sync song updates across both deprecated and new fields
-    if getattr(contrib, 'suggested_song_ids', None) is not None:
-        requested_ids = contrib.suggested_song_ids
-        found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all()
+    suggested_song_ids = getattr(contrib, 'suggested_song_ids', None)
+    if suggested_song_ids is not None and isinstance(suggested_song_ids, list):
+        requested_ids = suggested_song_ids
+        found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all() if requested_ids else []
         # Only apply if all requested songs exist to prevent partial data corruption
         if len(found_songs) == len(requested_ids):
             video.songs = found_songs
@@ -167,6 +181,7 @@ def get_concerts(db: Session = Depends(get_db)):
     return db.query(Concert).order_by(Concert.date.desc()).all()
 
 import re
+import traceback
 
 def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
@@ -306,9 +321,14 @@ def approve_contribution(
     try:
         video = internal_approve_contribution(db, contribution_id)
         db.commit() # Atomic commit
-        return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+        result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+        if not result:
+            raise Exception("Video not found after approval")
+        return result
     except Exception as e:
         db.rollback()
+        logger.error(f"Approval failed for ID {contribution_id}: {str(e)}")
+        logger.error(traceback.format_exc()) # PRINT FULL TRACEBACK
         raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
 
 @app.post("/api/admin/contributions/approve-all")

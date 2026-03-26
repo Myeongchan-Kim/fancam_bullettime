@@ -141,7 +141,24 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                                 if song_obj:
                                     song_objs.append(song_obj)
                                     
-                            concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
+                            # Improved Concert Selection Logic: Use both city and date
+                            c_date_str = metadata.get("date")
+                            concert_obj = None
+                            
+                            if c_date_str:
+                                try:
+                                    # Convert YYYY-MM-DD to datetime for comparison
+                                    c_date = datetime.strptime(c_date_str, "%Y-%m-%d")
+                                    concert_obj = db.query(Concert).filter(
+                                        Concert.city == c_city,
+                                        Concert.date == c_date
+                                    ).first()
+                                except Exception as e:
+                                    logger.warning(f"      ⚠️ 날짜 파싱 실패 ({c_date_str}): {e}")
+
+                            # Fallback: If date-specific concert not found, pick the first one by city
+                            if not concert_obj:
+                                concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
 
                             new_contrib = Contribution(
                                 suggested_url=url,
