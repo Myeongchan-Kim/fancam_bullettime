@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, VolumeX, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
@@ -19,22 +19,33 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Sync internal state when navigating between videos (e.g. clicking back/forward or promo/demote)
+  useEffect(() => {
+    if (videos[0]?.id && videos[0].id !== masterId) {
+      setMasterId(videos[0].id);
+      setIsPlaying(false);
+    }
+  }, [videos[0]?.id]);
+
   const masterVideo = videos.find(v => v.id === masterId) || videos[0];
   
   // Slave videos that cover the current timeframe
-  // Recalculated whenever currentConcertTime or masterId changes
-  const slaveVideos = videos.filter(v => {
-    if (v.id === masterId) return false;
-    
-    // If duration is unknown (0), we assume a 5-minute window
-    const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 300; 
-    const BUFFER = 5; // 5 second grace period
-    
-    const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);
-    const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
-    
-    return hasStarted && !hasEnded;
-  });
+  const slaveVideos = useMemo(() => {
+    return videos.filter(v => {
+      if (v.id === masterId) return false;
+      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 300; 
+      const BUFFER = 5; 
+      const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);
+      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
+      return hasStarted && !hasEnded;
+    });
+  }, [videos, masterId, currentConcertTime]);
+
+  // Keep a ref to the latest slave videos for the stable interval loop
+  const slaveVideosRef = useRef(slaveVideos);
+  useEffect(() => {
+    slaveVideosRef.current = slaveVideos;
+  }, [slaveVideos]);
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
@@ -42,26 +53,23 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
     }
   };
 
-  // Stable sync loop that doesn't restart when visible slave list changes
+  // Stable sync loop
   useEffect(() => {
     syncInterval.current = setInterval(() => {
       const masterPlayer = players[masterId];
       if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
       const masterTime = masterPlayer.getCurrentTime();
-      const masterOffset = masterVideo.sync_offset || 0;
+      const masterOffset = masterVideo?.sync_offset || 0;
       const newConcertTime = masterTime + masterOffset;
       
-      // Update ref for use in interval logic
       currentConcertTimeRef.current = newConcertTime;
-
-      // Update state for UI filtering (frequency: 0.5s is enough for smooth UI)
       setCurrentConcertTime(newConcertTime);
 
       if (!isPlaying) return;
 
-      // Only sync players that are currently in the visible list
-      slaveVideos.forEach(slave => {
+      // Use the ref to get the latest visible slaves without restarting the interval
+      slaveVideosRef.current.forEach(slave => {
         const slavePlayer = players[slave.id];
         if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
           const slaveTime = slavePlayer.getCurrentTime();
@@ -78,7 +86,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
     };
-  }, [players, isPlaying, masterId, slaveVideos.length, masterVideo]); // Use .length to avoid frequent restarts
+  }, [players, isPlaying, masterId, masterVideo]); // Use .length to avoid frequent restarts
 
   // Handle player cleanup only on unmount
   useEffect(() => {
@@ -127,12 +135,15 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
   const setAsMaster = (id: number) => {
     if (id === masterId) return;
+    
+    // Pause current master to avoid overlapping audio
     const oldMasterPlayer = players[masterId];
     if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function' && oldMasterPlayer.getIframe()) {
       oldMasterPlayer.pauseVideo();
     }
-    
-    // Update the URL to reflect the new master video
+
+    // Crucial: Update URL first. This triggers VideoDetailPage to re-fetch,
+    // which eventually updates MultiAnglePlayer's videos prop.
     navigate(`/video/${id}`, { replace: true });
     
     setMasterId(id);
