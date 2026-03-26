@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import or_, not_
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import or_, not_, select
 from typing import List, Optional
 from datetime import datetime
 import os
 import logging
+import json
+import re
+import traceback
 from dotenv import load_dotenv
 
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
@@ -102,6 +105,20 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     contrib.is_processed = True
     # COMMIT REMOVED - Caller must handle transaction atomicity
 
+def ensure_list(data):
+    """문자열이 리스트가 될 때까지 반복적으로 파싱하는 안전장치"""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, str):
+        try:
+            parsed = json.loads(data)
+            return ensure_list(parsed) # 재귀적으로 한 번 더 확인 (이중 인코딩 방지)
+        except:
+            return []
+    return []
+
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
     song_id: Optional[int] = None,
@@ -134,13 +151,14 @@ def get_videos(
     if concert_id:
         query = query.filter(Video.concert_id == concert_id)
     if member:
-        # SQLite JSON text search (e.g. member is "Sana", search for "Sana" in the string representation of JSON)
         from sqlalchemy import String
         query = query.filter(Video.members.cast(String).like(f"%{member}%"))
     if angle:
         query = query.filter(Video.angle == angle)
         
     results = query.order_by(Video.created_at.desc()).all()
+    for v in results:
+        v.members = ensure_list(v.members)
     return results
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
@@ -148,8 +166,10 @@ def get_video(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
-        
+    
+    video.members = ensure_list(video.members)
     return video
+
 
 @app.patch("/api/videos/{video_id}", response_model=VideoDetail)
 def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
@@ -178,16 +198,11 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
 def get_songs(db: Session = Depends(get_db)):
     return db.query(Song).order_by(Song.order).all()
 
-from sqlalchemy.orm import Session, joinedload, selectinload
-
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
     return db.query(Concert).options(
         selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
     ).order_by(Concert.date.desc()).all()
-
-import re
-import traceback
 
 def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
@@ -271,10 +286,13 @@ def get_contributions(video_id: int, db: Session = Depends(get_db)):
 @app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
-    # Populate video_title from relationship
+    # Populate video_title from relationship and apply ensure_list
     for r in results:
         if r.video:
             r.video_title = r.video.title
+        
+        r.suggested_song_ids = ensure_list(r.suggested_song_ids)
+        r.suggested_members = ensure_list(r.suggested_members)
             
     return results
 
