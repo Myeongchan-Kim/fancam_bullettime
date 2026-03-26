@@ -16,6 +16,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
+  const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const masterVideo = videos.find(v => v.id === masterId) || videos[0];
@@ -52,7 +53,13 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
       const masterTime = masterPlayer.getCurrentTime();
       const masterOffset = masterVideo.sync_offset || 0;
-      setCurrentConcertTime(masterTime + masterOffset);
+      const newConcertTime = masterTime + masterOffset;
+      
+      // Optimization: Only update state (trigger re-render) if the second has changed
+      if (Math.floor(newConcertTime) !== Math.floor(currentConcertTimeRef.current)) {
+        setCurrentConcertTime(newConcertTime);
+      }
+      currentConcertTimeRef.current = newConcertTime;
 
       if (!isPlaying) return;
 
@@ -77,6 +84,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
+      setPlayers({}); // Cleanup player references
     };
   }, [players, isPlaying, masterId, slaveVideos, masterVideo]);
 

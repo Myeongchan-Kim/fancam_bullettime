@@ -197,6 +197,7 @@ def create_general_contribution(
         suggested_song_ids=contribution.suggested_song_ids,
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members or [],
+        suggested_duration=contribution.suggested_duration,
         suggested_angle=contribution.suggested_angle or "Unknown",
         user_ip=request.client.host
     )
@@ -227,6 +228,7 @@ def create_contribution(
         suggested_song_ids=contribution.suggested_song_ids,
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members,
+        suggested_duration=contribution.suggested_duration,
         suggested_angle=contribution.suggested_angle,
         suggested_coordinate_x=contribution.suggested_coordinate_x,
         suggested_coordinate_y=contribution.suggested_coordinate_y,

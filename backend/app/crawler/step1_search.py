@@ -47,14 +47,15 @@ def get_video_id(url):
 
 def timestamp_to_seconds(ts):
     if not ts: return 0.0
-    parts = ts.split(':')
     try:
+        parts = ts.split(':')
         if len(parts) == 3: # HH:MM:SS
             return float(int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2]))
         elif len(parts) == 2: # MM:SS
             return float(int(parts[0]) * 60 + int(parts[1]))
         return 0.0
-    except:
+    except Exception as e:
+        logger.warning(f"Failed to parse timestamp '{ts}': {e}")
         return 0.0
 
 def run_deep_dive(target_city, limit_videos_per_query=5):

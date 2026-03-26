@@ -424,6 +424,7 @@ const VideoDetailPage = () => {
                     <div className="space-y-1.5">
                       {c.suggested_title && c.suggested_title !== video.title && <div className="text-[10px] text-white font-bold leading-tight line-clamp-1">Title: {c.suggested_title}</div>}
                       {c.suggested_song_ids && c.suggested_song_ids.length > 0 && <div className="text-[10px] text-twice-apricot font-bold">Songs: {c.suggested_song_ids.map(id => songs.find(s => s.id === id)?.name).filter(Boolean).join(", ")}</div>}
+                      {c.suggested_duration && <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Duration: {Math.floor(c.suggested_duration / 60)}m {Math.floor(c.suggested_duration % 60)}s</div>}
                       <div className="text-[9px] text-indigo-400 font-black tracking-widest uppercase">Pos: {c.suggested_coordinate_x?.toFixed(2)}, {c.suggested_coordinate_y?.toFixed(2)} | Sync: {c.suggested_sync_offset}s</div>
                     </div>
                   </div>
