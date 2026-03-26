@@ -150,16 +150,10 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       {/* Master View (Left/Main) - Strict 2/3 width on large screens */}
       <div className="w-full xl:w-2/3 flex flex-col p-6 pr-0 xl:pr-6 border-b xl:border-b-0 xl:border-r border-slate-800 min-w-0">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-black text-white flex items-center gap-2 truncate mr-4">
+          <h2 className="text-xl font-black text-white flex items-center gap-2 truncate">
             <span className="bg-twice-magenta text-white px-2 py-1 rounded text-xs shrink-0">MASTER</span>
             <span className="truncate">{masterVideo?.title}</span>
           </h2>
-          <Link 
-            to={`/video/${masterVideo?.id}`} 
-            className="flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white px-3 py-1.5 rounded-lg text-[10px] font-black transition-all shrink-0 border border-slate-700"
-          >
-            <ExternalLink className="h-3 w-3" /> WIKI
-          </Link>
         </div>
         <div className="aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-slate-800 relative group">
           {masterVideo && (
