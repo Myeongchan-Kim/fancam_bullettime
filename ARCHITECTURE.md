@@ -1,41 +1,49 @@
 # System Architecture: TWICE World Tour 360° Fancam Archive
 
 ## Overview
-This document provides a detailed technical breakdown of the project components and their internal logic.
+This document provides a detailed technical breakdown of the project components, their internal logic, and the layered architecture.
 
-## 1. Backend & Database
-- **Framework:** FastAPI (Python)
-- **Dependency Management:** `uv`
-- **Database:** SQLite (`backend/twice_fancam.db`)
-- **Models:**
-  - `Video`: The main store of confirmed metadata (URL, coordinates, members, etc.). Associated with multiple songs.
-  - `Song` & `Concert`: Base tables for tour schedule and setlist.
-  - `video_song_association`: Junction table for the many-to-many relationship between `Video` and `Song`.
-  - `Contribution`: A buffer table for user-submitted edits (wiki style). Supports multi-song suggestions.
-- **Key Logic:** 
-  - `coordinate_x/y`: Stored as floats (0.0 - 1.0) representing relative position on the square stage map.
-  - `members`: Stored as a JSON array to support multiple tags per video.
-  - **"Other" Category:** A virtual concert entry in `Concert` used for non-tour content (Vlogs, Airports, etc.) to allow unified archiving.
-  - **Timeline Filtering:** Queries the association table to return videos that contain *any* song within the user-selected order range.
+## 1. Directory Structure & Layers
+The project follows a standard decoupled frontend/backend architecture:
+- `backend/app/`: Core application logic
+  - `api/`: FastAPI route handlers (currently in `main.py`).
+  - `models/`: SQLAlchemy ORM definitions (`models.py`).
+  - `schemas/`: Pydantic models for request/response validation (`schemas.py`).
+  - `crawler/`: AI-powered data collection pipeline.
+  - `data/`: Ground truth JSON files for tour schedules.
+- `frontend/src/`: React application
+  - `components/`: Reusable UI elements (Map, Slider, Modals).
+  - `pages/`: Main view components (Home, Video Detail).
+  - `types/`: Shared TypeScript interfaces.
 
-## 2. Frontend (Web UI)
-- **Stack:** React 19 + Vite 5 + TypeScript + Tailwind CSS v4.
-- **Tailwind Config:** v4 uses `@tailwindcss/vite` plugin. Custom theme colors (`twice-apricot`, `twice-magenta`) are defined as CSS variables in `index.css`.
-- **Interactive Map:**
-  - **HomePage:** A 360° dial map using an `aspect-square` layout for precise coordinate mapping. Click-toggle tooltips show thumbnails and allow instant playback via `VideoPlayerModal`.
-  - **VideoDetailPage:** Includes an editor/contribution form and an interactive map to pin coordinates.
-- **Admin Mode:** 
-  - Controlled by `localStorage.getItem('admin_key')`.
-  - Validated by the `X-Admin-Key` header on protected API requests.
+## 2. Database Design (SQLite)
+- **Engine:** SQLite with WAL mode enabled for concurrent crawler/web access.
+- **ORM Handling:** Custom `JSONEncodedList` TypeDecorator handles automatic serialization between Python lists/dicts and SQLite strings.
+- **Master Tables:**
+  - `Video`: Master store for video metadata, members (JSON), and stage coordinates.
+  - `Song`: Global catalog of songs. Includes `is_solo` flag and `member_name`.
+  - `Concert`: Tour stops with date, city, and venue.
+  - `ConcertSetlist`: **New** - Defines the *actual* sequence of songs for a specific concert. Enables concert-specific timeline navigation.
+- **Relationship Tables:**
+  - `video_song_association`: Many-to-many link between videos and the songs they contain.
+- **Wiki System:**
+  - `Contribution`: Buffer for user/AI submissions. Automatically applied to `Video` upon admin approval.
 
-## 3. Crawler Pipeline
-- **Methodology:** A 2-step AI-powered process with an added re-analysis agent.
-- **Tools:** Playwright (for YouTube interaction), Gemini AI (parsing).
-- **Step 1 (Search):** Iterates through tour cities, specific dates (YYMMDD format), and setlist to find videos.
-- **Step 2 (Recommendation):** Discovers high-quality videos from the trained YouTube recommendation feed.
-- **Recheck Agent:** A manually triggered background worker that uses Gemini to re-analyze existing data and suggest "Other" labels for invalid tour content.
-- **AI Parser:** `backend/app/crawler/ai_parser.py` uses Gemini 2.5 Flash to convert YouTube titles into structured JSON, supporting multi-song extraction.
+## 3. Key Backend Logic
+- **Iterative JSON Parser:** `main.py` uses an iterative `ensure_list` failsafe to handle multi-encoded JSON strings from legacy data or SQLite limitations, ensuring Pydantic validation always succeeds.
+- **Dynamic Timeline Filtering:** 
+  - If a `concert_id` is provided, the API filters videos based on the `display_order` in `ConcertSetlist`.
+  - If no concert or setlist is found, it falls back to the global `Song.order`.
+- **Admin Security:** Simple header-based validation (`X-Admin-Key`) using a secret defined in `.env`.
 
-## 4. Administrative Workflow
-- Admins can log in using the passcode defined in `ADMIN_SECRET_KEY` (.env).
-- User suggestions are reviewed on the video detail page. Admins can preview suggested positions on the map (bounce animation) and approve to update the master record.
+## 4. AI Crawler Pipeline
+- **Methodology:** 3-step autonomous pipeline using Playwright and Gemini 2.0 Flash.
+- **Step 1 (Search):** Targeted keyword search based on tour schedule ground truth.
+- **Step 2 (Chain/Async):** **New** - Asynchronous "Recommendation Chain" that starts from a high-quality full concert video and crawls YouTube's sidebar recommendations to discover hidden gems.
+- **Full Concert Importer:** Automates the extraction of master timelines from "Full Concert" video descriptions using AI, populating `ConcertSetlist` automatically.
+- **AI Parser:** `ai_parser.py` provides async/sync wrappers for Gemini, converting messy YouTube titles and descriptions into clean, structured JSON metadata.
+
+## 5. Frontend UI Components
+- **Stack:** React 19 + TypeScript + Tailwind CSS v4.
+- **Dynamic Setlist Slider:** Adjusts its range and song names based on whether a specific concert (with a setlist) or a global view is selected. Includes "clamping" safety to prevent UI breakage from out-of-bounds URL params.
+- **Interactive Stage Map:** Maps (X, Y) coordinates to a 360° arena layout. Videos are pinned on the map for spatial discovery.
