@@ -22,11 +22,11 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const masterVideo = videos.find(v => v.id === masterId) || videos[0];
   
   // Slave videos that cover the current timeframe
+  // Recalculated whenever currentConcertTime or masterId changes
   const slaveVideos = videos.filter(v => {
     if (v.id === masterId) return false;
     
-    // If duration is unknown (0), we assume a 5-minute window for filtering purposes
-    // so it doesn't show up at the very beginning if it's an encore song.
+    // If duration is unknown (0), we assume a 5-minute window
     const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 300; 
     const BUFFER = 5; // 5 second grace period
     
@@ -37,17 +37,14 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   });
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
-    // Only store if the player and its iframe are valid
     if (e.target && e.target.getIframe()) {
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
     }
   };
 
+  // Stable sync loop that doesn't restart when visible slave list changes
   useEffect(() => {
-    // Start sync loop
     syncInterval.current = setInterval(() => {
-      if (!players[masterId]) return;
-      
       const masterPlayer = players[masterId];
       if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
@@ -55,26 +52,22 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       const masterOffset = masterVideo.sync_offset || 0;
       const newConcertTime = masterTime + masterOffset;
       
-      // Optimization: Only update state (trigger re-render) if the second has changed
-      if (Math.floor(newConcertTime) !== Math.floor(currentConcertTimeRef.current)) {
-        setCurrentConcertTime(newConcertTime);
-      }
+      // Update ref for use in interval logic
       currentConcertTimeRef.current = newConcertTime;
+
+      // Update state for UI filtering (frequency: 0.5s is enough for smooth UI)
+      setCurrentConcertTime(newConcertTime);
 
       if (!isPlaying) return;
 
+      // Only sync players that are currently in the visible list
       slaveVideos.forEach(slave => {
         const slavePlayer = players[slave.id];
         if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
           const slaveTime = slavePlayer.getCurrentTime();
           const slaveOffset = slave.sync_offset || 0;
-          
-          // Calculate expected slave time based on absolute concert time
-          // Concert Time = video_local_time + video_start_offset
-          // targetSlaveTime + slaveOffset = masterTime + masterOffset
           const targetSlaveTime = masterTime + masterOffset - slaveOffset;
           
-          // Avoid seeking before video is loaded or if negative target
           if (targetSlaveTime >= 0 && Math.abs(slaveTime - targetSlaveTime) > SYNC_THRESHOLD) {
             slavePlayer.seekTo(targetSlaveTime, true);
           }
@@ -84,9 +77,13 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
-      setPlayers({}); // Cleanup player references
     };
-  }, [players, isPlaying, masterId, slaveVideos, masterVideo]);
+  }, [players, isPlaying, masterId, slaveVideos.length, masterVideo]); // Use .length to avoid frequent restarts
+
+  // Handle player cleanup only on unmount
+  useEffect(() => {
+    return () => { setPlayers({}); };
+  }, []);
 
   const handlePlay = (e: YouTubeEvent) => {
     // Ensure we only process events from the master player
