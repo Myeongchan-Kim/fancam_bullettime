@@ -280,7 +280,7 @@ def internal_approve_contribution(db: Session, contribution_id: int):
                 thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
                 members=contrib.suggested_members or [],
                 angle=contrib.suggested_angle or "Unknown",
-                duration=contrib.suggested_duration or 0.0,
+                duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
                 concert_id=contrib.suggested_concert_id
             )
             db.add(video)

@@ -35,7 +35,8 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       if (v.id === masterId) return false;
 
       // Special Rule: Always show "Full Concert" videos as they are the backbone of syncing
-      const isFullConcert = v.title.toLowerCase().includes('full concert') || v.title.toLowerCase().includes('full show');
+      const t = v.title.toLowerCase();
+      const isFullConcert = t.includes('full concert') || t.includes('full show') || t.includes('full live') || t.includes('full-concert');
       if (isFullConcert) return true;
 
       const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
