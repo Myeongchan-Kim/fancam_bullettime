@@ -20,8 +20,15 @@ const HomePage = () => {
   
   const maxSongOrder = songs.length > 0 ? Math.max(...songs.map(s => s.order || 0)) : 1;
   const selectedConcert = searchParams.get('concert') || '';
+  
+  // 🛡️ 콘서트별 가변적 최대 곡 수 계산
+  const activeConcertObj = useMemo(() => concerts.find(c => c.id.toString() === selectedConcert), [concerts, selectedConcert]);
+  const effectiveMaxOrder = activeConcertObj?.setlist && activeConcertObj.setlist.length > 0 
+    ? activeConcertObj.setlist.length 
+    : maxSongOrder;
+
   const startOrder = parseInt(searchParams.get('start') || '1', 10) || 1;
-  const endOrder = parseInt(searchParams.get('end') || maxSongOrder.toString(), 10) || maxSongOrder;
+  const endOrder = parseInt(searchParams.get('end') || effectiveMaxOrder.toString(), 10) || effectiveMaxOrder;
   const searchQuery = searchParams.get('q') || '';
 
   const [activeVideo, setActiveVideo] = useState<Video | null>(null);
@@ -84,11 +91,11 @@ const HomePage = () => {
     if (songs.length > 0 && !searchParams.has('end')) {
       setSearchParams(prev => {
         prev.set('start', '1');
-        prev.set('end', maxSongOrder.toString());
+        prev.set('end', effectiveMaxOrder.toString());
         return prev;
       }, { replace: true });
     }
-  }, [songs, searchParams, setSearchParams, maxSongOrder]);
+  }, [songs, searchParams, setSearchParams, effectiveMaxOrder]);
 
   useEffect(() => {
     fetchVideos();
@@ -132,7 +139,7 @@ const HomePage = () => {
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (songs.length > 0) {
         url += `start_order=${startOrder}&end_order=${endOrder}&`;
-        if (endOrder > maxSongOrder) url += `untagged=true&`;
+        if (endOrder >= effectiveMaxOrder) url += `untagged=true&`;
       }
       const res = await axios.get(url);
       setVideos(res.data);
@@ -168,8 +175,16 @@ const HomePage = () => {
             selectedConcert={selectedConcert}
             onConcertChange={(val) => {
               setSearchParams(prev => {
-                if (val) prev.set('concert', val);
-                else prev.delete('concert');
+                if (val) {
+                  prev.set('concert', val);
+                  // 🛡️ 콘서트 변경 시 필터 범위 초기화 (레이스 컨디션 및 범위 오류 방지)
+                  prev.set('start', '1');
+                  prev.delete('end'); 
+                } else {
+                  prev.delete('concert');
+                  prev.set('start', '1');
+                  prev.delete('end');
+                }
                 return prev;
               }, { replace: true });
             }}
@@ -208,7 +223,7 @@ const HomePage = () => {
 
           <div className="flex gap-4 items-center flex-wrap justify-end">
             {/* Active Filters as Pills */}
-            {(selectedConcert || searchQuery || (songs.length > 0 && (startOrder !== 1 || endOrder !== maxSongOrder))) && (
+            {(selectedConcert || searchQuery || (songs.length > 0 && (startOrder !== 1 || endOrder !== effectiveMaxOrder))) && (
               <button onClick={resetFilters} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (

@@ -86,7 +86,7 @@ class Concert(Base):
     venue = Column(String)
     
     videos = relationship("Video", back_populates="concert")
-    setlist = relationship("ConcertSetlist", back_populates="concert", order_by="ConcertSetlist.display_order")
+    setlist = relationship("ConcertSetlist", back_populates="concert", order_by=lambda: ConcertSetlist.display_order)
 
 class ConcertSetlist(Base):
     __tablename__ = "concert_setlists"

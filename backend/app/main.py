@@ -140,23 +140,59 @@ def get_videos(
 ):
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
     
-    if song_id:
-        query = query.filter(Video.song_id == song_id)
-    
-    if start_order is not None and end_order is not None:
+    # 1. 콘서트별 커스텀 셋리스트 필터링 로직 (매우 중요)
+    if concert_id and start_order is not None and end_order is not None:
+        # 해당 콘서트의 셋리스트가 있는지 확인
+        has_local_setlist = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).first() is not None
+        
+        if has_local_setlist:
+            # 로컬 셋리스트가 있다면: concert_setlists의 display_order를 기준으로 필터링
+            # 이 범위에 속하는 노래(song_id)들을 먼저 찾음
+            local_songs_subquery = db.query(ConcertSetlist.song_id).filter(
+                ConcertSetlist.concert_id == concert_id,
+                ConcertSetlist.display_order >= (start_order - 1), # 1-based to 0-based
+                ConcertSetlist.display_order <= (end_order - 1)
+            ).subquery()
+            
+            if untagged:
+                query = query.filter(
+                    (Video.concert_id == concert_id) & 
+                    (or_(Video.song_id.in_(local_songs_subquery), Video.song_id == None))
+                )
+            else:
+                query = query.filter(
+                    (Video.concert_id == concert_id) & 
+                    (Video.song_id.in_(local_songs_subquery))
+                )
+        else:
+            # 로컬 셋리스트가 없다면: 기존 글로벌 Song.order 기준 필터링
+            if untagged:
+                query = query.outerjoin(Video.songs).filter(
+                    or_(
+                        (Song.order >= start_order) & (Song.order <= end_order),
+                        Song.id == None
+                    )
+                )
+            else:
+                query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order)
+            query = query.filter(Video.concert_id == concert_id)
+            
+    elif start_order is not None and end_order is not None:
+        # 콘서트 선택 없이 범위만 지정된 경우 (글로벌 필터)
         if untagged:
             query = query.outerjoin(Video.songs).filter(
                 or_(
                     (Song.order >= start_order) & (Song.order <= end_order),
                     Song.id == None
                 )
-            ).distinct()
+            )
         else:
-            query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order).distinct()
-    elif untagged:
-        query = query.outerjoin(Video.songs).filter(Song.id == None)
-    
-    if concert_id:
+            query = query.join(Video.songs).filter(Song.order >= start_order, Song.order <= end_order)
+
+    # 기타 필터들
+    if song_id:
+        query = query.filter(Video.songs.any(Song.id == song_id))
+    if concert_id and not (start_order and end_order):
         query = query.filter(Video.concert_id == concert_id)
     if member:
         from sqlalchemy import String
@@ -164,7 +200,7 @@ def get_videos(
     if angle:
         query = query.filter(Video.angle == angle)
         
-    results = query.order_by(Video.created_at.desc()).all()
+    results = query.distinct().order_by(Video.created_at.desc()).all()
     for v in results:
         v.members = ensure_list(v.members)
     return results
