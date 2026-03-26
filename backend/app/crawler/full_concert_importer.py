@@ -123,24 +123,26 @@ def run_full_concert_importer(city_name: str = None, limit: int = 5):
                 setlist_entries = db.query(ConcertSetlist).filter(
                     ConcertSetlist.concert_id == concert_obj.id,
                     ConcertSetlist.song_id.isnot(None)
-                ).all()
-                
-                all_song_ids = list(set(entry.song_id for entry in setlist_entries))
+                for url in video_urls:
+                    video_id = get_video_id(url)
+                    if not video_id: continue
 
-                # 4. Contribution 생성
-                new_contrib = Contribution(
-                    suggested_url=url,
-                    suggested_title=title,
-                    suggested_song_ids=json.dumps(all_song_ids),
-                    suggested_concert_id=concert_obj.id,
-                    suggested_members=json.dumps(["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"]),
-                    suggested_duration=duration_sec,
-                    suggested_angle="Full-Concert",
-                    suggested_sync_offset=0.0,
-                    user_ip="full-concert-importer-ai",
-                    is_processed=0
-                )
-                
+                    # 이미 등록된 영상인지 확인 (Video)
+                ...
+                    # 4. Contribution 생성
+                    new_contrib = Contribution(
+                        suggested_url=url,
+                        suggested_title=title,
+                        suggested_song_ids=all_song_ids,
+                        suggested_concert_id=concert_obj.id,
+                        suggested_members=["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"],
+                        suggested_duration=duration_sec,
+                        suggested_angle="Full-Concert",
+                        suggested_sync_offset=0.0,
+                        user_ip="full-concert-importer-ai",
+                        is_processed=0
+                    )
+
                 db.add(new_contrib)
                 db.commit()
                 logger.info(f"✅ 제보 생성 완료: {title} (총 {len(all_song_ids)}곡 매칭됨)")

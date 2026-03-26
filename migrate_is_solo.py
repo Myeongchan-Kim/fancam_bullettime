@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-db_path = "/Users/mckim/projects/tmp/twice_concert_crawling/backend/twice_fancam.db"
+db_path = os.path.join(os.getcwd(), "backend", "twice_fancam.db")
 
 if not os.path.exists(db_path):
     print(f"Database not found at {db_path}")

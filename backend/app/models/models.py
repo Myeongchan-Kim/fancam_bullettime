@@ -19,7 +19,7 @@ class JSONEncodedList(TypeDecorator):
     def process_result_value(self, value, dialect):
         if value is not None:
             return json.loads(value)
-        return []
+        return None
 
 video_song_association = Table(
     'video_song_association',

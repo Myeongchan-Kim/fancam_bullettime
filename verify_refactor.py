@@ -2,14 +2,14 @@ import sys
 import os
 
 # Add backend to path
-sys.path.append("/Users/mckim/projects/tmp/twice_concert_crawling/backend")
+sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models.models import Video, Song, Contribution
 
 # Use absolute path for DB to avoid confusion
-db_path = "/Users/mckim/projects/tmp/twice_concert_crawling/backend/twice_fancam.db"
+db_path = os.path.join(os.getcwd(), "backend", "twice_fancam.db")
 DATABASE_URL = f"sqlite:///{db_path}"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
