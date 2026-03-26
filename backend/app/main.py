@@ -8,7 +8,7 @@ import os
 import logging
 from dotenv import load_dotenv
 
-from app.models.models import Base, Video, Song, Concert, Contribution
+from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
