@@ -31,7 +31,8 @@ const VideoDetailPage = () => {
     members: [] as string[],
     coordinate_x: null as number | null,
     coordinate_y: null as number | null,
-    sync_offset: 0
+    sync_offset: 0,
+    duration: 0
   });
   
   const [isEditing, setIsEditing] = useState(false);
@@ -54,7 +55,8 @@ const VideoDetailPage = () => {
         members: res.data.members || [],
         coordinate_x: res.data.coordinate_x,
         coordinate_y: res.data.coordinate_y,
-        sync_offset: res.data.sync_offset
+        sync_offset: res.data.sync_offset,
+        duration: res.data.duration
       });
 
       if (res.data.concert?.id) {
@@ -92,7 +94,8 @@ const VideoDetailPage = () => {
         members: editData.members,
         coordinate_x: editData.coordinate_x,
         coordinate_y: editData.coordinate_y,
-        sync_offset: editData.sync_offset
+        sync_offset: editData.sync_offset,
+        duration: editData.duration
       }, { headers: { 'X-Admin-Key': adminKey } });
       setIsEditing(false);
       fetchVideoDetail();
@@ -112,6 +115,7 @@ const VideoDetailPage = () => {
         suggested_coordinate_x: editData.coordinate_x,
         suggested_coordinate_y: editData.coordinate_y,
         suggested_sync_offset: editData.sync_offset,
+        suggested_duration: editData.duration,
         suggested_angle: "Unknown"
       });
       alert("Contribution submitted! Thank you for improving the archive.");
@@ -276,6 +280,12 @@ const VideoDetailPage = () => {
                       value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value)})} />
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Video Duration (sec)</label>
+                    <input type="number" step="1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                      value={editData.duration} onChange={(e) => setEditData({...editData, duration: parseFloat(e.target.value)})} />
+                  </div>
+
                   <div className="space-y-2 md:col-span-2">
                     <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1">Members Featured</label>
                     <div className="flex flex-wrap gap-1.5 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-inner">
@@ -348,6 +358,12 @@ const VideoDetailPage = () => {
                   <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Concert Offset (sec)</label>
                   <input type="number" step="0.1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
                     value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value)})} />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Video Duration (sec)</label>
+                  <input type="number" step="1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                    value={editData.duration} onChange={(e) => setEditData({...editData, duration: parseFloat(e.target.value)})} />
                 </div>
               </div>
 

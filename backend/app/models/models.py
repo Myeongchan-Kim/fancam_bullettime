@@ -40,6 +40,7 @@ class Video(Base):
     coordinate_x = Column(Float, nullable=True)
     coordinate_y = Column(Float, nullable=True)
     sync_offset = Column(Float, default=0.0)
+    duration = Column(Float, default=0.0) # in seconds
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
@@ -82,6 +83,7 @@ class Contribution(Base):
     suggested_song_ids = Column(JSON, nullable=True)
     suggested_concert_id = Column(Integer, ForeignKey("concerts.id"), nullable=True)
     suggested_members = Column(JSON, nullable=True)
+    suggested_duration = Column(Float, nullable=True)
     
     # Location & Sync suggestions
     suggested_angle = Column(String, nullable=True)

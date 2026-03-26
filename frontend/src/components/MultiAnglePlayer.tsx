@@ -14,10 +14,19 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
+  const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const masterVideo = videos.find(v => v.id === masterId) || videos[0];
-  const slaveVideos = videos.filter(v => v.id !== masterId);
+  
+  // Slave videos that cover the current timeframe
+  const slaveVideos = videos.filter(v => {
+    if (v.id === masterId) return false;
+    // Buffer for better UX: show if within 2 seconds of range
+    const BUFFER = 2;
+    if (!v.duration || v.duration === 0) return true; // Show always if duration unknown
+    return currentConcertTime >= (v.sync_offset - BUFFER) && currentConcertTime <= (v.sync_offset + v.duration + BUFFER);
+  });
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
     // Only store if the player and its iframe are valid
@@ -29,13 +38,16 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   useEffect(() => {
     // Start sync loop
     syncInterval.current = setInterval(() => {
-      if (!isPlaying || !players[masterId]) return;
+      if (!players[masterId]) return;
       
       const masterPlayer = players[masterId];
       if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
       const masterTime = masterPlayer.getCurrentTime();
       const masterOffset = masterVideo.sync_offset || 0;
+      setCurrentConcertTime(masterTime + masterOffset);
+
+      if (!isPlaying) return;
 
       slaveVideos.forEach(slave => {
         const slavePlayer = players[slave.id];

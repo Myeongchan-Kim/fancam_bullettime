@@ -45,6 +45,18 @@ def get_video_id(url):
             return parsed.path[3:]
     return None
 
+def timestamp_to_seconds(ts):
+    if not ts: return 0.0
+    parts = ts.split(':')
+    try:
+        if len(parts) == 3: # HH:MM:SS
+            return float(int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2]))
+        elif len(parts) == 2: # MM:SS
+            return float(int(parts[0]) * 60 + int(parts[1]))
+        return 0.0
+    except:
+        return 0.0
+
 def run_deep_dive(target_city, limit_videos_per_query=5):
     """특정 도시를 집중적으로 수집하는 로직"""
     engine = create_engine(DATABASE_URL)
@@ -105,6 +117,15 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                         if not yt_id or db.query(Video).filter(Video.youtube_id == yt_id).first():
                             continue
 
+                        # Extract Duration
+                        duration_text = ""
+                        try:
+                            duration_elem = video.locator("ytd-thumbnail-overlay-time-status-renderer span#text")
+                            if duration_elem.count() > 0:
+                                duration_text = duration_elem.first.inner_text().strip()
+                        except: pass
+                        duration_sec = timestamp_to_seconds(duration_text)
+
                         channel_elems = video.locator(".ytd-channel-name a").all()
                         channel = channel_elems[0].inner_text() if channel_elems else "Unknown"
 
@@ -127,6 +148,7 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                                 suggested_song_ids=[s.id for s in song_objs],
                                 suggested_concert_id=concert_obj.id if concert_obj else None,
                                 suggested_members=metadata.get("members", ["Unknown"]),
+                                suggested_duration=duration_sec,
                                 suggested_angle=metadata.get("angle", "Unknown"),
                                 user_ip="crawler"
                             )

@@ -121,6 +121,7 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   {c.suggested_concert_id && <div className="text-xs text-gray-300">Concert: {concerts.find(co => co.id === c.suggested_concert_id)?.city}</div>}
                   {c.suggested_members && c.suggested_members.length > 0 && <div className="text-xs text-twice-magenta">Members: {c.suggested_members.join(", ")}</div>}
                   {c.suggested_angle && <div className="text-xs text-indigo-400">Angle: {c.suggested_angle}</div>}
+                  {c.suggested_duration && <div className="text-xs text-emerald-400 font-mono">Duration: {Math.floor(c.suggested_duration / 60)}m {Math.floor(c.suggested_duration % 60)}s</div>}
                 </div>
                 
                 <div className="flex gap-2 pt-3 border-t border-slate-700/50 justify-end">

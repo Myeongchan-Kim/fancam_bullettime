@@ -35,6 +35,7 @@ class VideoBase(BaseModel):
     coordinate_x: Optional[float] = None
     coordinate_y: Optional[float] = None
     sync_offset: float
+    duration: float
     created_at: datetime
 
     class Config:
@@ -55,6 +56,7 @@ class VideoUpdate(BaseModel):
     coordinate_x: Optional[float] = None
     coordinate_y: Optional[float] = None
     sync_offset: Optional[float] = None
+    duration: Optional[float] = None
 
 class ContributionCreate(BaseModel):
     video_id: Optional[int] = None
@@ -64,6 +66,7 @@ class ContributionCreate(BaseModel):
     suggested_song_ids: Optional[List[int]] = None
     suggested_concert_id: Optional[int] = None
     suggested_members: Optional[List[str]] = None
+    suggested_duration: Optional[float] = None
     suggested_angle: Optional[str] = None
     suggested_coordinate_x: Optional[float] = None
     suggested_coordinate_y: Optional[float] = None
@@ -79,6 +82,7 @@ class ContributionBase(BaseModel):
     suggested_song_ids: Optional[List[int]]
     suggested_concert_id: Optional[int]
     suggested_members: Optional[List[str]]
+    suggested_duration: Optional[float] = None
     suggested_angle: Optional[str]
     suggested_coordinate_x: Optional[float]
     suggested_coordinate_y: Optional[float]

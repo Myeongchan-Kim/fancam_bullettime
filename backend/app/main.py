@@ -83,6 +83,7 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
     if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
     if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
+    if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
     
     contrib.is_processed = True
     # COMMIT REMOVED - Caller must handle transaction atomicity
@@ -277,6 +278,7 @@ def internal_approve_contribution(db: Session, contribution_id: int):
                 thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
                 members=contrib.suggested_members or [],
                 angle=contrib.suggested_angle or "Unknown",
+                duration=contrib.suggested_duration or 0.0,
                 concert_id=contrib.suggested_concert_id
             )
             db.add(video)
