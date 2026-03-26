@@ -120,7 +120,12 @@ def ensure_list(data):
             current = json.loads(current)
         except (json.JSONDecodeError, TypeError):
             break
-    return [] if not isinstance(current, list) else current
+            
+    if not isinstance(current, list):
+        logger.warning(f"⚠️ JSON 데이터 디코딩 실패 (5회 시도): {data}")
+        return []
+        
+    return current
 
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(

@@ -21,10 +21,28 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   endOrder, 
   onChange 
 }) => {
-  const validSongs = songs.filter((s): s is Song & { order: number } => typeof s.order === 'number');
+  // 1. 선택된 콘서트의 셋리스트 정보가 있는지 확인
+  const activeConcert = concerts.find(c => c.id.toString() === selectedConcert);
+  const hasCustomSetlist = activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0;
+
+  // 2. 슬라이더에 표시할 곡 목록 결정 (커스텀 셋리스트 vs 전체 곡 목록)
+  const displaySource = hasCustomSetlist 
+    ? activeConcert.setlist!.map(sl => ({
+        id: sl.song_id || (1000000 + sl.id), // 곡 ID가 없으면 큰 오프셋을 더해 고유값 생성 (React key 용)
+        name: sl.event_name || sl.song?.name || "Unknown Track",
+        order: sl.display_order + 1, // 0-based를 1-based로 변환
+        is_solo: sl.song?.is_solo || false
+      }))
+    : songs.filter((s): s is Song & { order: number } => typeof s.order === 'number');
+
+  const validSongs = displaySource;
   const minOrder = validSongs.length > 0 ? Math.min(...validSongs.map(s => s.order)) : 1;
-  const actualMaxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : 37;
+  const actualMaxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : (songs.length || 37);
   const maxOrder = actualMaxOrder + 1;
+
+  // 🛡️ 안전장치: 현재 공연의 범위를 벗어나는 값이 들어오면 강제로 교정 (화면 뚫림 방지)
+  const clampedStart = Math.max(minOrder, Math.min(startOrder, maxOrder));
+  const clampedEnd = Math.max(minOrder, Math.min(endOrder, maxOrder));
 
   const displaySongs: (Song & { order: number })[] = [
     ...validSongs,
@@ -40,23 +58,27 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   const handleStartChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     if (isNaN(val)) return;
-    onChange(Math.min(val, endOrder), endOrder);
+    onChange(Math.min(val, clampedEnd), clampedEnd);
   };
 
   const handleEndChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = parseInt(e.target.value, 10);
     if (isNaN(val)) return;
-    onChange(startOrder, Math.max(val, startOrder));
+    onChange(clampedStart, Math.max(val, clampedStart));
   };
 
   const getSongName = (order: number) => {
-    if (order === maxOrder) return "No song tag";
-    return songs.find(s => s.order === order)?.name || `Track ${order}`;
+    // 렌더링 시에도 안전한 값을 사용
+    const safeOrder = Math.max(minOrder, Math.min(order, maxOrder));
+    if (safeOrder === maxOrder) return "No song tag";
+    return displaySongs.find(s => s.order === safeOrder)?.name || `Track ${safeOrder}`;
   };
 
   const calculatePercent = (order: number) => {
     if (maxOrder === minOrder) return 0;
-    return ((order - minOrder) / (maxOrder - minOrder)) * 100;
+    // 계산 시에도 0~100 사이로 강제 고정
+    const safeOrder = Math.max(minOrder, Math.min(order, maxOrder));
+    return ((safeOrder - minOrder) / (maxOrder - minOrder)) * 100;
   };
 
   // Reorder Concerts: Past (DESC) -> Other -> Upcoming (ASC)
@@ -93,11 +115,14 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                   <option value="">ALL CONCERTS</option>
                   
                   {/* Past Concerts */}
-                  {pastConcerts.map(c => (
-                    <option key={c.id} value={c.id} className="bg-slate-900 font-bold">
-                      {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
-                    </option>
-                  ))}
+                  {pastConcerts.map(c => {
+                    const hasTimeline = c.setlist && c.setlist.length > 0;
+                    return (
+                      <option key={c.id} value={c.id} className={`bg-slate-900 font-bold ${hasTimeline ? 'text-twice-magenta' : ''}`}>
+                        {hasTimeline ? '✨ ' : ''}{c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()} {hasTimeline ? '(TIMELINE)' : ''}
+                      </option>
+                    );
+                  })}
 
                   {/* Other / Vlogs */}
                   {otherConcert && (
@@ -155,25 +180,25 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
           <div 
             className="absolute h-1.5 bg-twice-magenta shadow-[0_0_20px_#FF1988] rounded-full z-10 transition-all duration-300 top-3 pointer-events-none"
             style={{ 
-              left: `calc(10px + ${calculatePercent(startOrder)} * (100% - 20px) / 100)`, 
-              width: `calc((${calculatePercent(endOrder)} - ${calculatePercent(startOrder)}) * (100% - 20px) / 100)` 
+              left: `calc(10px + ${calculatePercent(clampedStart)} * (100% - 20px) / 100)`, 
+              width: `calc((${calculatePercent(clampedEnd)} - ${calculatePercent(clampedStart)}) * (100% - 20px) / 100)` 
             }}
           ></div>
 
           {/* Dual Inputs */}
           <input
-            type="range" min={minOrder} max={maxOrder} step="1" value={startOrder} onChange={handleStartChange}
+            type="range" min={minOrder} max={maxOrder} step="1" value={clampedStart} onChange={handleStartChange}
             className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
           />
           <input
-            type="range" min={minOrder} max={maxOrder} step="1" value={endOrder} onChange={handleEndChange}
+            type="range" min={minOrder} max={maxOrder} step="1" value={clampedEnd} onChange={handleEndChange}
             className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
           />
 
           {/* Ticker Labels Area - Matches thumb track exactly */}
           <div className="absolute left-[10px] right-[10px] top-3 bottom-0 pointer-events-none">
             {displaySongs.map((song) => {
-              const isActive = song.order >= startOrder && song.order <= endOrder;
+              const isActive = song.order >= clampedStart && song.order <= clampedEnd;
               const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
               
               return (
@@ -210,13 +235,13 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
           <div className="space-y-1">
             <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white">Start Track</span>
             <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg text-white">
-              {getSongName(startOrder)}
+              {getSongName(clampedStart)}
             </div>
           </div>
           <div className="space-y-1 text-right">
             <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white text-right">End Track</span>
             <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-white text-right">
-              {getSongName(endOrder)}
+              {getSongName(clampedEnd)}
             </div>
           </div>
         </div>
