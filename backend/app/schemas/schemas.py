@@ -12,12 +12,25 @@ class SongBase(BaseModel):
     class Config:
         from_attributes = True
 
+class ConcertSetlistBase(BaseModel):
+    id: int
+    concert_id: int
+    song_id: Optional[int] = None
+    event_name: Optional[str] = None
+    start_time: float
+    display_order: int
+    song: Optional[SongBase] = None
+
+    class Config:
+        from_attributes = True
+
 class ConcertBase(BaseModel):
     id: int
     date: datetime
     city: str
     country: str
     venue: str
+    setlist: List[ConcertSetlistBase] = []
 
     class Config:
         from_attributes = True

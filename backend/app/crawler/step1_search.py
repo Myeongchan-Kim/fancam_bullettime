@@ -13,7 +13,7 @@ from sqlalchemy.orm import sessionmaker
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from app.models.models import Base, Video, Song, Concert, Contribution
+from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.ai_parser import parse_fancam_metadata
 
 DATABASE_URL = "sqlite:///./twice_fancam.db"
@@ -160,6 +160,18 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                             if not concert_obj:
                                 concert_obj = db.query(Concert).filter(Concert.city == c_city).first()
 
+                            # Auto-calculate suggested sync_offset if setlist data exists
+                            suggested_offset = 0.0
+                            if concert_obj and song_objs:
+                                first_song_id = song_objs[0].id
+                                setlist_entry = db.query(ConcertSetlist).filter(
+                                    ConcertSetlist.concert_id == concert_obj.id,
+                                    ConcertSetlist.song_id == first_song_id
+                                ).first()
+                                if setlist_entry:
+                                    suggested_offset = setlist_entry.start_time
+                                    logger.info(f"    ⏲️  마스터 타임라인에서 sync_offset 발견: {suggested_offset}s ({song_objs[0].name})")
+
                             new_contrib = Contribution(
                                 suggested_url=url,
                                 suggested_title=title,
@@ -168,6 +180,7 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                                 suggested_members=metadata.get("members", ["Unknown"]),
                                 suggested_duration=duration_sec,
                                 suggested_angle=metadata.get("angle", "Unknown"),
+                                suggested_sync_offset=suggested_offset,
                                 user_ip="crawler"
                             )
                             db.add(new_contrib)

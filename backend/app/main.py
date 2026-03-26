@@ -176,9 +176,13 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
 def get_songs(db: Session = Depends(get_db)):
     return db.query(Song).order_by(Song.order).all()
 
+from sqlalchemy.orm import Session, joinedload, selectinload
+
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
-    return db.query(Concert).order_by(Concert.date.desc()).all()
+    return db.query(Concert).options(
+        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).order_by(Concert.date.desc()).all()
 
 import re
 import traceback

@@ -70,6 +70,27 @@ class Concert(Base):
     venue = Column(String)
     
     videos = relationship("Video", back_populates="concert")
+    setlist = relationship("ConcertSetlist", back_populates="concert", order_by="ConcertSetlist.display_order")
+
+class ConcertSetlist(Base):
+    __tablename__ = "concert_setlists"
+    id = Column(Integer, primary_key=True, index=True)
+    concert_id = Column(Integer, ForeignKey("concerts.id"), index=True)
+    
+    # Linked to Song if it's a performance, nullable for non-song events (Talk, Intro, etc.)
+    song_id = Column(Integer, ForeignKey("songs.id"), nullable=True)
+    
+    # Custom name for events (e.g., "TALK 1", "Photo Time") or fallback title
+    event_name = Column(String, nullable=True) 
+    
+    # Start time in seconds relative to the "Full Concert" version
+    start_time = Column(Float, index=True) 
+    
+    # Order in the setlist
+    display_order = Column(Integer)
+
+    concert = relationship("Concert", back_populates="setlist")
+    song = relationship("Song")
 
 class Contribution(Base):
     __tablename__ = "contributions"
