@@ -43,6 +43,7 @@ class Video(Base):
     id = Column(Integer, primary_key=True, index=True)
     youtube_id = Column(String, unique=True, index=True)
     title = Column(String)
+    description = Column(String, nullable=True) # Full description for AI parsing
     thumbnail_url = Column(String)
     url = Column(String)
     
@@ -57,6 +58,7 @@ class Video(Base):
     coordinate_y = Column(Float, nullable=True)
     sync_offset = Column(Float, default=0.0)
     duration = Column(Float, default=9999.0) # in seconds
+    is_shorts = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
@@ -121,6 +123,7 @@ class Contribution(Base):
     suggested_concert_id = Column(Integer, ForeignKey("concerts.id"), nullable=True)
     suggested_members = Column(JSONEncodedList, nullable=True)
     suggested_duration = Column(Float, default=9999.0)
+    suggested_is_shorts = Column(Boolean, default=False)
     
     # Location & Sync suggestions
     suggested_angle = Column(String, nullable=True)

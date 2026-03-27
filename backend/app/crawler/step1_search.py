@@ -247,21 +247,25 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                                     suggested_offset = setlist_entry.start_time
                                     logger.info(f"    ⏲️  마스터 타임라인에서 sync_offset 발견: {suggested_offset}s ({song_objs[0].name})")
 
+                            is_shorts = "/shorts/" in url or (duration_sec > 0 and duration_sec < 65)
+
                             new_contrib = Contribution(
                                 suggested_url=url,
                                 suggested_title=title,
                                 suggested_song_ids=[s.id for s in song_objs],
                                 suggested_concert_id=concert_obj.id if concert_obj else None,
-                                suggested_members=metadata.get("members", ["Unknown"]),
+                                suggested_members=metadata.get("members", []),
                                 suggested_duration=duration_sec,
-                                suggested_angle=metadata.get("angle", "Unknown"),
+                                suggested_is_shorts=is_shorts, # 쇼츠 여부 저장
+                                suggested_angle="Unknown",
                                 suggested_sync_offset=suggested_offset,
-                                user_ip="crawler"
+                                user_ip="step1-crawler",
+                                is_processed=0
                             )
                             db.add(new_contrib)
-                            
-                            new_video_count += 1
-                            logger.info(f"    ✅ 신규 제보 추가: {title[:40]}...")
+                            db.commit()
+                            logger.info(f"    ✅ 제안 완료 ({'Shorts' if is_shorts else 'Video'}): {title}")
+
                             
                             # Training and Cooldown per video
                             v_page = context.new_page()

@@ -20,6 +20,7 @@ const HomePage = () => {
   
   const maxSongOrder = songs.length > 0 ? Math.max(...songs.map(s => s.order || 0)) : 1;
   const selectedConcert = searchParams.get('concert') || '';
+  const shortsOnly = searchParams.get('shorts') === 'true';
   
   // 🛡️ 콘서트별 가변적 최대 곡 수 계산
   const activeConcertObj = useMemo(() => concerts.find(c => c.id.toString() === selectedConcert), [concerts, selectedConcert]);
@@ -78,6 +79,7 @@ const HomePage = () => {
       prev.set('start', '1');
       prev.set('end', maxSongOrder.toString());
       prev.delete('q');
+      prev.delete('shorts');
       return prev;
     }, { replace: true });
     setLocalSearch(''); // Clear local input immediately
@@ -99,7 +101,7 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
-  }, [selectedConcert, startOrder, endOrder]);
+  }, [selectedConcert, startOrder, endOrder, shortsOnly]);
 
   useEffect(() => {
     setVisibleCount(12); // Reset scroll when dataset or search changes
@@ -137,6 +139,7 @@ const HomePage = () => {
     try {
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
+      if (shortsOnly) url += `shorts_only=true&`;
       if (songs.length > 0) {
         url += `start_order=${startOrder}&end_order=${endOrder}&`;
         if (endOrder >= effectiveMaxOrder) url += `untagged=true&`;
@@ -222,8 +225,15 @@ const HomePage = () => {
           </div>
 
           <div className="flex gap-4 items-center flex-wrap justify-end">
+            <button 
+              onClick={() => setSearchParams(prev => { shortsOnly ? prev.delete('shorts') : prev.set('shorts', 'true'); return prev; }, { replace: true })}
+              className={`px-4 py-2 rounded-xl text-xs font-black tracking-widest uppercase flex items-center gap-2 transition-all border ${shortsOnly ? 'bg-red-600/20 text-red-500 border-red-500/50 shadow-[0_0_15px_rgba(239,68,68,0.3)]' : 'bg-slate-800/50 text-gray-500 border-slate-700 hover:text-white hover:border-slate-500'}`}
+            >
+              <Youtube className="h-4 w-4" /> Shorts Only
+            </button>
+
             {/* Active Filters as Pills */}
-            {(selectedConcert || searchQuery || (songs.length > 0 && (startOrder !== 1 || endOrder !== effectiveMaxOrder))) && (
+            {(selectedConcert || searchQuery || shortsOnly || (songs.length > 0 && (startOrder !== 1 || endOrder !== effectiveMaxOrder))) && (
               <button onClick={resetFilters} className="text-[10px] text-gray-500 hover:text-white underline font-bold uppercase tracking-tighter">Clear All Filters</button>
             )}
             {adminKey && (
@@ -249,6 +259,11 @@ const HomePage = () => {
                   {video.members?.length > 3 && <span className="bg-black/60 text-white px-2 py-0.5 text-[8px] font-bold rounded">+{video.members.length - 3}</span>}
                 </div>
                 <div className="absolute bottom-2 left-2 flex gap-1">
+                  {video.is_shorts && (
+                    <span className="bg-red-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
+                      <Youtube className="h-2 w-2" /> SHORTS
+                    </span>
+                  )}
                   {video.angle !== "Unknown" && (
                     <span className="bg-indigo-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
                       <Compass className="h-2 w-2" /> {video.angle.split(' ')[0]}

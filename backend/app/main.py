@@ -134,13 +134,18 @@ def get_videos(
     end_order: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
-    angle: Optional[str] = None,
     untagged: bool = Query(False),
+    shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
-    
+
+    # 0. 쇼츠 전용 필터링
+    if shorts_only:
+        query = query.filter(Video.is_shorts == True)
+
     # 1. 콘서트별 커스텀 셋리스트 필터링 로직
+
     if concert_id and start_order is not None and end_order is not None:
         # 해당 콘서트의 셋리스트가 있는지 확인
         active_setlist = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).all()

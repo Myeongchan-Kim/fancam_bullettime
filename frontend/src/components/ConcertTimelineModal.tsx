@@ -1,4 +1,5 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
 import { X, Clock, Music } from 'lucide-react';
 import { Concert } from '../types';
 
@@ -14,9 +15,10 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-300">
-      <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden">
+  // Use createPortal to render the modal at the document root to avoid parent clipping/z-index issues
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-in fade-in duration-300">
+      <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] w-full max-w-2xl max-h-[85vh] shadow-2xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="p-8 border-b border-slate-800 flex justify-between items-center bg-slate-900/50">
           <div className="space-y-1">
@@ -66,7 +68,8 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
           <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic">Timeline data is used for precise multi-angle synchronization.</p>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

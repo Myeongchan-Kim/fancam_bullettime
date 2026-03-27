@@ -24,16 +24,14 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 }) => {
   const [showTimeline, setShowTimeline] = useState(false);
 
-  // 1. 선택된 콘서트의 셋리스트 정보가 있는지 확인
   const activeConcert = concerts.find(c => c.id.toString() === selectedConcert);
   const hasCustomSetlist = activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0;
 
-  // 2. 슬라이더에 표시할 곡 목록 결정 (커스텀 셋리스트 vs 전체 곡 목록)
   const displaySource = hasCustomSetlist 
     ? activeConcert.setlist!.map(sl => ({
-        id: sl.song_id || (1000000 + sl.id), // 곡 ID가 없으면 큰 오프셋을 더해 고유값 생성 (React key 용)
+        id: sl.song_id || (1000000 + sl.id), 
         name: sl.event_name || sl.song?.name || "Unknown Track",
-        order: sl.display_order + 1, // 0-based를 1-based로 변환
+        order: sl.display_order + 1, 
         is_solo: sl.song?.is_solo || false
       }))
     : songs.filter((s): s is Song & { order: number } => typeof s.order === 'number');
@@ -43,7 +41,6 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   const actualMaxOrder = validSongs.length > 0 ? Math.max(...validSongs.map(s => s.order)) : (songs.length || 37);
   const maxOrder = actualMaxOrder + 1;
 
-  // 🛡️ 안전장치: 현재 공연의 범위를 벗어나는 값이 들어오면 강제로 교정 (화면 뚫림 방지)
   const clampedStart = Math.max(minOrder, Math.min(startOrder, maxOrder));
   const clampedEnd = Math.max(minOrder, Math.min(endOrder, maxOrder));
 
@@ -71,7 +68,6 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   };
 
   const getSongName = (order: number) => {
-    // 렌더링 시에도 안전한 값을 사용
     const safeOrder = Math.max(minOrder, Math.min(order, maxOrder));
     if (safeOrder === maxOrder) return "No song tag";
     return displaySongs.find(s => s.order === safeOrder)?.name || `Track ${safeOrder}`;
@@ -79,12 +75,10 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 
   const calculatePercent = (order: number) => {
     if (maxOrder === minOrder) return 0;
-    // 계산 시에도 0~100 사이로 강제 고정
     const safeOrder = Math.max(minOrder, Math.min(order, maxOrder));
     return ((safeOrder - minOrder) / (maxOrder - minOrder)) * 100;
   };
 
-  // Reorder Concerts: Past (DESC) -> Other -> Upcoming (ASC)
   const now = new Date();
   now.setHours(0, 0, 0, 0);
 
@@ -101,97 +95,82 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   return (
     <div className="w-full bg-slate-900/60 border-y border-slate-800/50 backdrop-blur-md p-8 relative overflow-hidden group">
       <div className="max-w-5xl mx-auto space-y-10">
-        {/* Header Section */}
         <div className="flex justify-between items-end border-b border-white/5 pb-4">
           <div className="flex gap-12 items-end">
-            {/* Venue & City Integrated Filter */}
             <div className="space-y-1 min-w-[200px]">
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-apricot drop-shadow-[0_0_5px_rgba(255,179,92,0.4)] flex items-center gap-2">
                 <MapPin className="h-3 w-3" /> Venue & City
               </span>
-              <div className="relative group/select">
-                <select 
-                  className="w-full bg-slate-800/80 border border-slate-700/50 rounded-xl px-4 py-2.5 text-xs focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white font-black italic uppercase tracking-tighter"
-                  value={selectedConcert}
-                  onChange={(e) => onConcertChange(e.target.value)}
-                >
-                  <option value="">ALL CONCERTS</option>
-                  
-                  {/* Past Concerts */}
-                  {pastConcerts.map(c => {
-                    const hasTimeline = c.setlist && c.setlist.length > 0;
-                    return (
-                      <option key={c.id} value={c.id} className={`bg-slate-900 font-bold ${hasTimeline ? 'text-twice-magenta' : ''}`}>
-                        {hasTimeline ? '✨ ' : ''}{c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()} {hasTimeline ? '(TIMELINE)' : ''}
-                      </option>
-                    );
-                  })}
-
-                  {/* Other / Vlogs */}
-                  {otherConcert && (
-                    <option value={otherConcert.id} className="bg-slate-900 text-twice-apricot font-black">
-                      OTHER CONTENT / VLOGS
-                    </option>
-                  )}
-
-                  {/* Upcoming Separator & List */}
-                  {futureConcerts.length > 0 && (
-                    <>
-                      <option disabled className="bg-slate-950 text-gray-600 text-center">────────── UPCOMING ──────────</option>
-                      {futureConcerts.map(c => (
-                        <option key={c.id} value={c.id} className="bg-slate-900 opacity-50 italic">
-                          {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
+              <div className="flex items-center gap-2">
+                <div className="relative group/select flex-1">
+                  <select 
+                    className="w-full bg-slate-800/80 border border-slate-700/50 rounded-xl px-4 py-2.5 text-xs focus:ring-2 focus:ring-twice-magenta outline-none transition-all appearance-none cursor-pointer text-white font-black italic uppercase tracking-tighter"
+                    value={selectedConcert}
+                    onChange={(e) => onConcertChange(e.target.value)}
+                  >
+                    <option value="">ALL CONCERTS</option>
+                    {pastConcerts.map(c => {
+                      const hasTimeline = c.setlist && c.setlist.length > 0;
+                      return (
+                        <option key={c.id} value={c.id} className={`bg-slate-900 font-bold ${hasTimeline ? 'text-twice-magenta' : ''}`}>
+                          {hasTimeline ? '✨ ' : ''}{c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()} {hasTimeline ? '(TIMELINE)' : ''}
                         </option>
-                      ))}
-                    </>
-                  )}
-                </select>
-                <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover/select:text-twice-magenta transition-colors">
-                  <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
+                      );
+                    })}
+                    {otherConcert && (
+                      <option value={otherConcert.id} className="bg-slate-900 text-twice-apricot font-black">
+                        OTHER CONTENT / VLOGS
+                      </option>
+                    )}
+                    {futureConcerts.length > 0 && (
+                      <>
+                        <option disabled className="bg-slate-950 text-gray-600 text-center">────────── UPCOMING ──────────</option>
+                        {futureConcerts.map(c => (
+                          <option key={c.id} value={c.id} className="bg-slate-900 opacity-50 italic">
+                            {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
+                          </option>
+                        ))}
+                      </>
+                    )}
+                  </select>
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover/select:text-twice-magenta transition-colors">
+                    <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
+                  </div>
                 </div>
-                </div>
-                </div>
-
-                {/* Timeline Popover Trigger */}
                 {activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0 && (
-                <button 
-                onClick={() => setShowTimeline(true)}
-                className="bg-slate-800 hover:bg-twice-magenta/20 p-3 rounded-xl border border-slate-700 hover:border-twice-magenta/50 text-twice-magenta transition-all group/info relative"
-                >
-                <History className="h-5 w-5" />
-                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-twice-magenta text-white text-[8px] font-black px-2 py-1 rounded opacity-0 group-hover/info:opacity-100 transition-opacity whitespace-nowrap uppercase tracking-widest shadow-lg">View Master Timeline</div>
-                </button>
+                  <button 
+                    onClick={() => setShowTimeline(true)}
+                    className="bg-slate-800 hover:bg-twice-magenta/20 p-3 rounded-xl border border-slate-700 hover:border-twice-magenta/50 text-twice-magenta transition-all group/info relative"
+                  >
+                    <History className="h-5 w-5" />
+                    <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-twice-magenta text-white text-[8px] font-black px-2 py-1 rounded opacity-0 group-hover/info:opacity-100 transition-opacity whitespace-nowrap uppercase tracking-widest shadow-lg">View Master Timeline</div>
+                  </button>
                 )}
-                </div>
-
+              </div>
+            </div>
             <div className="space-y-1">
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-magenta drop-shadow-[0_0_5px_#FF1988]">Timeline Range</span>
-              <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4 text-white">
-                {startOrder === endOrder ? (
-                  <span>#{startOrder.toString().padStart(2, '0')} {getSongName(startOrder)}</span>
+              <h3 className="text-2xl font-black text-white tracking-tighter italic uppercase flex items-center gap-4">
+                {clampedStart === clampedEnd ? (
+                  <span>#{clampedStart.toString().padStart(2, '0')} {getSongName(clampedStart)}</span>
                 ) : (
                   <>
-                    <span className="text-twice-apricot">#{startOrder.toString().padStart(2, '0')}</span>
+                    <span className="text-twice-apricot">#{clampedStart.toString().padStart(2, '0')}</span>
                     <span className="text-gray-600 text-sm normal-case not-italic tracking-normal font-bold px-2">TO</span>
-                    <span className="text-twice-apricot">#{endOrder.toString().padStart(2, '0')}</span>
+                    <span className="text-twice-apricot">#{clampedEnd.toString().padStart(2, '0')}</span>
                   </>
                 )}
               </h3>
             </div>
           </div>
-          
           <div className="text-right bg-slate-800/50 px-4 py-2 rounded-2xl border border-white/5">
             <span className="text-[9px] font-black text-gray-500 uppercase tracking-widest block text-white">Selected Window</span>
-            <p className="text-sm text-white font-black">{endOrder - startOrder + 1} TRACKS</p>
+            <p className="text-sm text-white font-black">{clampedEnd - clampedStart + 1} TRACKS</p>
           </div>
         </div>
 
-        {/* Slider Component */}
         <div className="relative h-36 flex items-start mt-4">
-          {/* Base Track - Centered between thumb centers */}
           <div className="absolute left-[10px] right-[10px] h-1.5 bg-slate-950 rounded-full border border-white/5 top-3"></div>
-          
-          {/* Active Range Highlight - Precisely positioned */}
           <div 
             className="absolute h-1.5 bg-twice-magenta shadow-[0_0_20px_#FF1988] rounded-full z-10 transition-all duration-300 top-3 pointer-events-none"
             style={{ 
@@ -199,8 +178,6 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
               width: `calc((${calculatePercent(clampedEnd)} - ${calculatePercent(clampedStart)}) * (100% - 20px) / 100)` 
             }}
           ></div>
-
-          {/* Dual Inputs */}
           <input
             type="range" min={minOrder} max={maxOrder} step="1" value={clampedStart} onChange={handleStartChange}
             className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
@@ -209,33 +186,14 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
             type="range" min={minOrder} max={maxOrder} step="1" value={clampedEnd} onChange={handleEndChange}
             className="absolute w-full h-1.5 appearance-none bg-transparent pointer-events-none z-30 cursor-pointer top-3 accent-white [&::-webkit-slider-thumb]:pointer-events-auto [&::-webkit-slider-thumb]:w-5 [&::-webkit-slider-thumb]:h-5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-white [&::-webkit-slider-thumb]:border-4 [&::-webkit-slider-thumb]:border-twice-magenta [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(0,0,0,0.5)] [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:transition-transform [&::-webkit-slider-thumb]:hover:scale-125"
           />
-
-          {/* Ticker Labels Area - Matches thumb track exactly */}
           <div className="absolute left-[10px] right-[10px] top-3 bottom-0 pointer-events-none">
             {displaySongs.map((song) => {
               const isActive = song.order >= clampedStart && song.order <= clampedEnd;
               const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
-              
               return (
-                <div 
-                  key={song.id} 
-                  className="absolute top-0 h-full transition-all duration-500" 
-                  style={{ left: `${calculatePercent(song.order)}%` }}
-                >
-                  <div className={`w-px mx-auto transition-all duration-500 ${
-                    isActive ? 'h-6 bg-twice-magenta shadow-[0_0_8px_#FF1988]' : isMajor ? 'h-4 bg-slate-700' : 'h-2 bg-slate-800'
-                  }`}></div>
-                  
-                  <div 
-                    className={`absolute top-8 left-0 origin-top-left rotate-45 transition-all duration-500 whitespace-nowrap ${
-                      isActive 
-                        ? 'text-white text-[9px] font-black opacity-100 scale-105' 
-                        : isMajor 
-                          ? 'text-gray-500 text-[8px] font-bold opacity-60' 
-                          : 'text-gray-700 text-[7px] font-medium opacity-30'
-                    }`}
-                    style={{ textShadow: isActive ? '0 0 10px rgba(255, 25, 136, 0.4)' : 'none' }}
-                  >
+                <div key={song.id} className="absolute top-0 h-full transition-all duration-500" style={{ left: `${calculatePercent(song.order)}%` }}>
+                  <div className={`w-px mx-auto transition-all duration-500 ${isActive ? 'h-6 bg-twice-magenta shadow-[0_0_8px_#FF1988]' : isMajor ? 'h-4 bg-slate-700' : 'h-2 bg-slate-800'}`}></div>
+                  <div className={`absolute top-8 left-0 origin-top-left rotate-45 transition-all duration-500 whitespace-nowrap ${isActive ? 'text-white text-[9px] font-black opacity-100 scale-105' : isMajor ? 'text-gray-500 text-[8px] font-bold opacity-60' : 'text-gray-700 text-[7px] font-medium opacity-30'}`} style={{ textShadow: isActive ? '0 0 10px rgba(255, 25, 136, 0.4)' : 'none' }}>
                     <span className="mr-2 opacity-40 font-mono">#{song.order.toString().padStart(2, '0')}</span>
                     {song.name}
                   </div>
@@ -245,17 +203,16 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
           </div>
         </div>
 
-        {/* Footer Info Area */}
         <div className="grid grid-cols-2 gap-10 pt-8 border-t border-white/5">
           <div className="space-y-1">
             <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white">Start Track</span>
-            <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg text-white">
+            <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg">
               {getSongName(clampedStart)}
             </div>
           </div>
           <div className="space-y-1 text-right">
             <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white text-right">End Track</span>
-            <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-white text-right">
+            <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-right">
               {getSongName(clampedEnd)}
             </div>
           </div>
