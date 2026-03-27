@@ -31,7 +31,7 @@ async def get_video_info_async(page, url):
         await page.goto(url, wait_until="networkidle", timeout=30000)
         # 타이틀 대기
         await page.wait_for_selector("ytd-watch-metadata h1, #title h1", timeout=20000)
-        title_elem = await page.locator("ytd-watch-metadata h1, #title h1").first
+        title_elem = page.locator("ytd-watch-metadata h1, #title h1").first
         title = await title_elem.inner_text()
         title = title.strip()
         
@@ -61,7 +61,7 @@ async def get_video_info_async(page, url):
 
         channel = "Unknown"
         try:
-            channel_elem = await page.locator("#owner-and-teaser #channel-name a, .ytd-channel-name a").first
+            channel_elem = page.locator("#owner-and-teaser #channel-name a, .ytd-channel-name a").first
             channel = await channel_elem.inner_text()
         except: pass
 
