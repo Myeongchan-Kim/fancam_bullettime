@@ -17,12 +17,17 @@ SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
 
 def time_to_seconds(t_str):
-    """HH:MM:SS 또는 MM:SS 를 초 단위로 변환"""
-    parts = t_str.split(':')
-    if len(parts) == 3:
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-    elif len(parts) == 2:
-        return int(parts[0]) * 60 + int(parts[1])
+    """HH:MM:SS 또는 MM:SS 를 초 단위로 변환 (견고한 예외 처리 추가)"""
+    try:
+        if not t_str or not isinstance(t_str, str):
+            return 0
+        parts = t_str.split(':')
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        elif len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, AttributeError, IndexError):
+        pass
     return 0
 
 def ai_fix_setlist_times():

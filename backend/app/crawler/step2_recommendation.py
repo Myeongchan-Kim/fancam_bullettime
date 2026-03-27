@@ -5,6 +5,7 @@ import sys
 import logging
 import random
 import time
+from urllib.parse import quote
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.sql.expression import func
@@ -107,7 +108,6 @@ async def run_recommendation_chain_async(depth=30):
                     start_url = f"https://www.youtube.com/watch?v={start_video.youtube_id}"
                 else:
                     logger.info("🎯 마스터급 콘서트 영상 검색으로 시작점을 잡습니다...")
-                    from urllib.parse import quote
                     search_query = "TWICE THIS IS FOR World Tour Full Concert 4K"
                     await page.goto(f"https://www.youtube.com/results?search_query={quote(search_query)}")
                     await page.wait_for_selector("a#video-title", timeout=15000)

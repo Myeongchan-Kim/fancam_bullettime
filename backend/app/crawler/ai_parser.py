@@ -63,11 +63,24 @@ Expected JSON schema:
 }}
 """
 
+def clean_json_response(text: str) -> str:
+    """Gemini 응답에서 Markdown 코드 블록 등을 제거하고 순수 JSON 문자열만 추출"""
+    text = text.strip()
+    if text.startswith("```"):
+        # ```json ... ``` 또는 ``` ... ``` 블록 제거
+        lines = text.splitlines()
+        if lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].startswith("```"):
+            lines = lines[:-1]
+        text = "\n".join(lines).strip()
+    return text
+
 async def parse_fancam_metadata_async(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """(비동기) 유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash", # 최신 모델 사용
+            model_name="gemini-2.0-flash", 
             system_instruction=create_system_prompt(),
             generation_config={"response_mime_type": "application/json"}
         )
@@ -75,7 +88,8 @@ async def parse_fancam_metadata_async(title: str, channel_name: str, description
         user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
         response = await model.generate_content_async(user_prompt)
         
-        result_json = json.loads(response.text)
+        clean_text = clean_json_response(response.text)
+        result_json = json.loads(clean_text)
         return result_json
         
     except Exception as e:
@@ -94,7 +108,8 @@ def parse_fancam_metadata(title: str, channel_name: str, description: str = "") 
         user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
         response = model.generate_content(user_prompt)
         
-        result_json = json.loads(response.text)
+        clean_text = clean_json_response(response.text)
+        result_json = json.loads(clean_text)
         return result_json
         
     except Exception as e:
