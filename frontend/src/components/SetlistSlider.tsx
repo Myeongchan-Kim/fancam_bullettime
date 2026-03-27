@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Song, Concert } from '../types';
-import { MapPin } from 'lucide-react';
+import { MapPin, History } from 'lucide-react';
+import ConcertTimelineModal from './ConcertTimelineModal';
 
 interface SetlistSliderProps {
   songs: Song[];
@@ -21,6 +22,8 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   endOrder, 
   onChange 
 }) => {
+  const [showTimeline, setShowTimeline] = useState(false);
+
   // 1. 선택된 콘서트의 셋리스트 정보가 있는지 확인
   const activeConcert = concerts.find(c => c.id.toString() === selectedConcert);
   const hasCustomSetlist = activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0;
@@ -146,8 +149,20 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-white/20 group-hover/select:text-twice-magenta transition-colors">
                   <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
                 </div>
-              </div>
-            </div>
+                </div>
+                </div>
+
+                {/* Timeline Popover Trigger */}
+                {activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0 && (
+                <button 
+                onClick={() => setShowTimeline(true)}
+                className="bg-slate-800 hover:bg-twice-magenta/20 p-3 rounded-xl border border-slate-700 hover:border-twice-magenta/50 text-twice-magenta transition-all group/info relative"
+                >
+                <History className="h-5 w-5" />
+                <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-twice-magenta text-white text-[8px] font-black px-2 py-1 rounded opacity-0 group-hover/info:opacity-100 transition-opacity whitespace-nowrap uppercase tracking-widest shadow-lg">View Master Timeline</div>
+                </button>
+                )}
+                </div>
 
             <div className="space-y-1">
               <span className="text-[10px] font-black uppercase tracking-[0.3em] text-twice-magenta drop-shadow-[0_0_5px_#FF1988]">Timeline Range</span>
@@ -246,6 +261,9 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
           </div>
         </div>
       </div>
+      {showTimeline && activeConcert && (
+        <ConcertTimelineModal concert={activeConcert} onClose={() => setShowTimeline(false)} />
+      )}
     </div>
   );
 };

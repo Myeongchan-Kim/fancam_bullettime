@@ -6,6 +6,7 @@ import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
 import MultiAnglePlayer from '../components/MultiAnglePlayer';
+import ConcertTimelineModal from '../components/ConcertTimelineModal';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
@@ -22,6 +23,7 @@ const VideoDetailPage = () => {
   const [isAdminMode, setIsAdminMode] = useState(!!localStorage.getItem('admin_key'));
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [previewContrib, setPreviewContrib] = useState<Contribution | null>(null);
+  const [showTimelineInfo, setShowTimelineInfo] = useState(false);
 
   // Edit/Suggestion Shared State
   const [editData, setEditData] = useState({
@@ -275,9 +277,17 @@ const VideoDetailPage = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Concert Offset (sec)</label>
-                    <input type="number" step="0.1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
-                      value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value)})} />
+                    <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                      <Clock className="h-3 w-3"/> Concert Offset (sec)
+                      {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
+                        <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
+                          <Info className="h-3 w-3 text-twice-magenta" />
+                        </button>
+                      )}
+                    </label>
+                    <input type="number" step="0.01" min="-9999" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                      placeholder="e.g. -10.5 if starts earlier"
+                      value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value) || 0})} />
                   </div>
 
                   <div className="space-y-2">
@@ -355,9 +365,17 @@ const VideoDetailPage = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Concert Offset (sec)</label>
-                  <input type="number" step="0.1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
-                    value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value)})} />
+                  <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2">
+                    <Clock className="h-3 w-3"/> Concert Offset (sec)
+                    {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
+                      <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
+                        <Info className="h-3 w-3 text-twice-magenta" />
+                      </button>
+                    )}
+                  </label>
+                  <input type="number" step="0.01" min="-9999" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                    placeholder="e.g. -10.5 if starts earlier"
+                    value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value) || 0})} />
                 </div>
 
                 <div className="space-y-2">
@@ -434,6 +452,9 @@ const VideoDetailPage = () => {
           )}
         </div>
       </div>
+      {showTimelineInfo && video.concert && (
+        <ConcertTimelineModal concert={video.concert} onClose={() => setShowTimelineInfo(false)} />
+      )}
     </div>
   );
 };
