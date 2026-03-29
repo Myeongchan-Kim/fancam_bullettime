@@ -33,9 +33,29 @@ const VideoDetailPage = () => {
     members: [] as string[],
     coordinate_x: null as number | null,
     coordinate_y: null as number | null,
-    sync_offset: 0,
-    duration: 0
+    sync_offset: '0' as string | number,
+    duration: '0' as string | number
   });
+  
+  // 곡 선택 시 마스터 타임라인 오프셋 자동 채우기
+  const handleSongChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const selectedIds = Array.from(e.target.selectedOptions, option => parseInt(option.value));
+    
+    if (selectedIds.length > 0 && video?.concert?.setlist) {
+      const firstSongId = selectedIds[0];
+      const setlistItem = video.concert.setlist.find(sl => sl.song_id === firstSongId);
+      
+      if (setlistItem && setlistItem.start_time > 0) {
+        setEditData(prev => ({
+          ...prev, 
+          song_ids: selectedIds,
+          sync_offset: setlistItem.start_time
+        }));
+        return;
+      }
+    }
+    setEditData(prev => ({ ...prev, song_ids: selectedIds }));
+  };
   
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -96,8 +116,8 @@ const VideoDetailPage = () => {
         members: editData.members,
         coordinate_x: editData.coordinate_x,
         coordinate_y: editData.coordinate_y,
-        sync_offset: editData.sync_offset,
-        duration: editData.duration
+        sync_offset: parseFloat(editData.sync_offset.toString()) || 0,
+        duration: parseFloat(editData.duration.toString()) || 0
       }, { headers: { 'X-Admin-Key': adminKey } });
       setIsEditing(false);
       fetchVideoDetail();
@@ -116,8 +136,8 @@ const VideoDetailPage = () => {
         suggested_members: editData.members,
         suggested_coordinate_x: editData.coordinate_x,
         suggested_coordinate_y: editData.coordinate_y,
-        suggested_sync_offset: editData.sync_offset,
-        suggested_duration: editData.duration,
+        suggested_sync_offset: parseFloat(editData.sync_offset.toString()) || 0,
+        suggested_duration: parseFloat(editData.duration.toString()) || 0,
         suggested_angle: "Unknown"
       });
       alert("Contribution submitted! Thank you for improving the archive.");
@@ -287,13 +307,13 @@ const VideoDetailPage = () => {
                     </label>
                     <input type="number" step="0.01" min="-9999" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
                       placeholder="e.g. -10.5 if starts earlier"
-                      value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value) || 0})} />
+                      value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: e.target.value})} />
                   </div>
 
                   <div className="space-y-2">
                     <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Video Duration (sec)</label>
                     <input type="number" step="1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
-                      value={editData.duration} onChange={(e) => setEditData({...editData, duration: parseFloat(e.target.value)})} />
+                      value={editData.duration} onChange={(e) => setEditData({...editData, duration: e.target.value})} />
                   </div>
 
                   <div className="space-y-2 md:col-span-2">
@@ -341,13 +361,38 @@ const VideoDetailPage = () => {
 
                 <div className="space-y-2 md:col-span-2">
                   <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2"><Music className="h-3 w-3"/> Song Tags</label>
-                  <div className="flex flex-wrap gap-1.5 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-inner max-h-40 overflow-y-auto">
-                    {songs.map(s => (
-                      <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
-                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-500 hover:bg-slate-700'}`}>
-                        {s.name}
-                      </button>
-                    ))}
+                  <div className="flex flex-wrap gap-1.5 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-inner max-h-56 overflow-y-auto">
+                    {(() => {
+                      const setlistSongIds = new Set(video?.concert?.setlist?.map(sl => sl.song_id).filter(id => id !== null) || []);
+                      const setlistSongs = songs.filter(s => setlistSongIds.has(s.id));
+                      const otherSongs = songs.filter(s => !setlistSongIds.has(s.id));
+
+                      return (
+                        <>
+                          {setlistSongs.map(s => (
+                            <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
+                              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase border ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black border-twice-apricot' : 'bg-slate-800 text-white border-twice-magenta/30 hover:bg-slate-700'}`}>
+                              {s.name}
+                            </button>
+                          ))}
+                          
+                          {setlistSongs.length > 0 && otherSongs.length > 0 && (
+                            <div className="w-full py-2 flex items-center gap-3 opacity-30">
+                              <div className="h-px flex-1 bg-white/20"></div>
+                              <span className="text-[8px] font-black uppercase tracking-widest text-white/50">All Other Songs</span>
+                              <div className="h-px flex-1 bg-white/20"></div>
+                            </div>
+                          )}
+
+                          {otherSongs.map(s => (
+                            <button key={s.id} onClick={(e) => { e.preventDefault(); toggleSong(s.id); }}
+                              className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase ${editData.song_ids.includes(s.id) ? 'bg-twice-apricot text-black' : 'bg-slate-800 text-gray-500 hover:bg-slate-700'}`}>
+                              {s.name}
+                            </button>
+                          ))}
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -375,13 +420,13 @@ const VideoDetailPage = () => {
                   </label>
                   <input type="number" step="0.01" min="-9999" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
                     placeholder="e.g. -10.5 if starts earlier"
-                    value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: parseFloat(e.target.value) || 0})} />
+                    value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: e.target.value})} />
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2"><Clock className="h-3 w-3"/> Video Duration (sec)</label>
                   <input type="number" step="1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
-                    value={editData.duration} onChange={(e) => setEditData({...editData, duration: parseFloat(e.target.value)})} />
+                    value={editData.duration} onChange={(e) => setEditData({...editData, duration: e.target.value})} />
                 </div>
               </div>
 
@@ -453,7 +498,21 @@ const VideoDetailPage = () => {
         </div>
       </div>
       {showTimelineInfo && video.concert && (
-        <ConcertTimelineModal concert={video.concert} onClose={() => setShowTimelineInfo(false)} />
+        <ConcertTimelineModal 
+          concert={video.concert} 
+          onClose={() => setShowTimelineInfo(false)} 
+          onSelect={(seconds) => {
+            // 해당 시간대에 맞는 곡 ID도 찾아보기
+            const matchedSetlistItem = video.concert?.setlist?.find(sl => sl.start_time === seconds);
+            setEditData(prev => ({
+              ...prev,
+              sync_offset: seconds.toString(),
+              song_ids: (matchedSetlistItem && matchedSetlistItem.song_id && !prev.song_ids.includes(matchedSetlistItem.song_id))
+                ? [...prev.song_ids, matchedSetlistItem.song_id]
+                : prev.song_ids
+            }));
+          }}
+        />
       )}
     </div>
   );

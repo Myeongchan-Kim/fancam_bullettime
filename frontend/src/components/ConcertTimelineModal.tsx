@@ -6,9 +6,10 @@ import { Concert } from '../types';
 interface ConcertTimelineModalProps {
   concert: Concert;
   onClose: () => void;
+  onSelect?: (seconds: number) => void;
 }
 
-const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, onClose }) => {
+const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, onClose, onSelect }) => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -34,7 +35,16 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
         <div className="flex-1 overflow-y-auto p-6 space-y-3 custom-scrollbar">
           {concert.setlist && concert.setlist.length > 0 ? (
             concert.setlist.map((item, idx) => (
-              <div key={item.id} className="group flex items-center gap-4 p-4 bg-slate-800/40 hover:bg-slate-800 border border-slate-800 hover:border-twice-magenta/30 rounded-2xl transition-all">
+              <div 
+                key={item.id} 
+                onClick={() => {
+                  if (onSelect && item.start_time > 0) {
+                    onSelect(item.start_time);
+                    onClose();
+                  }
+                }}
+                className={`group flex items-center gap-4 p-4 bg-slate-800/40 hover:bg-slate-800 border border-slate-800 hover:border-twice-magenta/30 rounded-2xl transition-all ${onSelect && item.start_time > 0 ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+              >
                 <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-[10px] font-black text-gray-500 group-hover:text-twice-magenta transition-colors">
                   #{ (idx + 1).toString().padStart(2, '0') }
                 </div>
@@ -65,7 +75,9 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
 
         {/* Footer */}
         <div className="p-6 bg-slate-950/50 border-t border-slate-800 text-center">
-          <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic">Timeline data is used for precise multi-angle synchronization.</p>
+          <p className="text-[10px] text-gray-600 font-bold uppercase tracking-widest italic">
+            {onSelect ? "Click any track to automatically sync with the master timeline." : "Timeline data is used for precise multi-angle synchronization."}
+          </p>
         </div>
       </div>
     </div>,
