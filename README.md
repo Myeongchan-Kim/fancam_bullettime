@@ -1,48 +1,32 @@
 # TWICE World Tour 360° Fancam Archive 🍭
 
-TWICE 직캠 모음 웹 서비스입니다. 유튜브에 산재해 있는 멤버들의 아름다운 무대 직캠을 한 곳에서 쉽게 찾아보고 감상할 수 있습니다. AI를 활용해 월드 투어의 방대한 데이터를 자동으로 수집하고 체계적으로 분류합니다.
+> **"저 수많은 팬들의 핸드폰 카메라 시선들을 하나로 이어 붙이면 어떨까?"**
 
-## Key Features ✨
-- **콘서트별 동적 타임라인:** 공연별 실제 셋리스트 순서에 맞춘 정밀한 영상 필터링
-- **AI 기반 자동 수집:** Gemini AI와 Playwright를 결합한 스마트 크롤링 파이프라인
-- **인터랙티브 스테이지 맵:** 360도 아레나 뷰를 통한 멤버별/위치별 영상 탐색
-- **멀티 앵글 동기화:** 마스터 타임라인 기준 절대 시간 동기화 (예정)
+이 프로젝트는 어느 날 트와이스의 공연 영상을 보다가, 객석을 가득 채운 수많은 팬들의 핸드폰 불빛을 보며 떠올린 작은 상상에서 시작되었습니다. 수백, 수천 개의 서로 다른 위치에서 촬영된 직캠(Fancam)들을 하나의 시간 축으로 완벽하게 연결하여, 마치 영화 '매트릭스'의 **불릿 타임(Bullet Time)**처럼 무대를 360도 전 방위에서 자유롭게 넘나들며 감상하는 경험을 만드는 것이 우리의 궁극적인 목표입니다.
 
-## Tech Stack 🛠️
-- **Frontend:** React 19, TypeScript, Tailwind CSS v4, Lucide React
-- **Backend:** FastAPI, SQLAlchemy (SQLite), Pydantic v2
-- **Intelligence:** Gemini 2.0 Flash AI (Parsing & Extraction)
-- **Crawler:** Playwright (Chromium), Asyncio
+## Our Vision 🎯
+우리는 파편화된 팬캠들을 하나의 타임라인에 완벽하게 정렬하여 다음과 같은 세상을 꿈꿉니다.
+- **꿈의 시청 경험:** 나연이의 정면 직캠을 보다가 클릭 한 번으로 무대 뒤쪽이나 옆쪽에서 찍은 직캠으로 즉시 전환되는 경험.
+- **영원한 기록:** 월드 투어의 모든 순간이 어느 한 각도도 놓치지 않고 입체적으로 보존되는 아카이브.
+- **함께 만드는 역사:** 한 명의 개발자가 아닌, 전 세계 원스(ONCE)들의 제보와 정교한 싱크 조절로 완성되는 공동의 자산.
 
-## Getting Started 🚀
+## The Reality 🚩
+**솔직히 말씀드리면, 아직 갈 길이 아주 멉니다.**
+현재는 AI가 유튜브를 탐색하고 셋리스트를 추론하는 초기 단계이며, 수집된 영상의 양이나 싱크의 정확도 면에서 완성도가 한참 부족합니다. 하지만 우리가 이 길을 계속 가는 이유는, 이 데이터들이 쌓였을 때 비로소 가능해질 '새로운 차원의 무대 감상'을 믿기 때문입니다.
 
-### 1. Backend Setup
-```bash
-cd backend
-# UV 패키지 매니저 사용 권장
-uv run python -m app.main
-```
+## What We're Building 🤖
+이 목표를 향해 우리는 다음과 같은 기술적 도전을 계속하고 있습니다.
+- **AI-Powered Discovery:** Playwright와 Gemini 2.0 AI를 통해 우리가 놓친 소중한 영상들을 24시간 내내 찾아내고 분류합니다.
+- **Smart Sync Pipeline:** 파편화된 영상들의 메타데이터와 설명을 분석하여 마스터 타임라인에 자동으로 배치하는 실험을 진행 중입니다.
+- **Interactive Wiki:** 누구나 0.01초 단위로 오프셋을 직접 수정하고 위치를 핀으로 찍어 아카이브의 완성도를 높일 수 있는 시스템을 구축했습니다.
 
-### 2. Frontend Setup
-```bash
-cd frontend
-npm install
-npm run dev
-```
+## How to Contribute 🤝
+이 아카이브는 여러분의 참여로 완성됩니다. 
+- 아직 등록되지 않은 새로운 각도의 영상 제보
+- 어긋난 싱크 오프셋(sync_offset)의 정교한 수정
+- 더 나은 사용자 경험을 위한 기능 제안
 
-### 3. Crawler Execution
-```bash
-cd backend
-# Step 1: 기본 검색 수집
-uv run python -m app.crawler.step1_search
-# Step 2: 알고리즘 연쇄 탐색
-uv run python -m app.crawler.step2_recommendation
-# Importer: 풀 콘서트 셋리스트 추출
-uv run python -m app.crawler.full_concert_importer
-```
+우리의 꿈에 동참해 주세요. 당신의 0.01초가 트와이스의 무대를 더 입체적으로 만듭니다.
 
-## Architecture 🏗️
-상세한 시스템 설계와 데이터 모델은 [ARCHITECTURE.md](./ARCHITECTURE.md) 파일을 참조해 주세요.
-
-## Contributing 🤝
-버그 리포트, 기능 제안, PR 모두 환영합니다!
+---
+*Architecture and tech details can be found in [ARCHITECTURE.md](./ARCHITECTURE.md).*
