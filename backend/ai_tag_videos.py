@@ -16,10 +16,29 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
 
+def tag_video_with_songs(video, suggested_songs, song_map=None):
+    """
+    영상에 노래 태그를 추가하는 핵심 로직.
+    song_map이 제공되면 DB 조회 없이 맵에서 검색 (N+1 해결).
+    """
+    added_count = 0
+    for s_name in suggested_songs:
+        song = None
+        if song_map is not None:
+            song = song_map.get(s_name.lower())
+        else:
+            # 기존 방식 (Fallback)
+            song = db.query(Song).filter(Song.name.ilike(s_name)).first()
+            
+        if song and song not in video.songs:
+            video.songs.append(song)
+            added_count += 1
+            print(f"✅ [{video.id}] -> Tagged: {song.name}")
+    return added_count
+
 def ai_tag_videos():
-    print("🚀 Gemini AI 기반 노래 태깅 시작 (403개 대상)...")
+    print("🚀 Gemini AI 기반 노래 태깅 시작...")
     
-    # 1. 노래 태그가 없는 영상들 가져오기
     no_song_videos = db.query(Video).filter(
         ~Video.songs.any(),
         Video.angle != 'Full-Concert',
@@ -30,30 +49,19 @@ def ai_tag_videos():
         print("✅ 노래 태그가 필요한 영상이 더 이상 없습니다.")
         return
 
-    updated_count = 0
+    # 최적화: 모든 노래를 한 번에 가져와서 맵핑 (N+1 방지)
+    all_songs = db.query(Song).all()
+    song_map = {s.name.lower(): s for s in all_songs}
 
+    updated_count = 0
     for video in no_song_videos:
         try:
-            # AI 파서 호출 (설명은 생략하고 제목만으로 분석)
             res = parse_fancam_metadata(video.title, "Unknown Channel")
-            
             if res and res.get('songs'):
-                suggested_songs = res['songs']
-                
-                # DB 업데이트
-                added_for_this_video = 0
-                for s_name in suggested_songs:
-                    # 대소문자 구분 없이 검색
-                    song = db.query(Song).filter(Song.name.ilike(s_name)).first()
-                    if song and song not in video.songs:
-                        video.songs.append(song)
-                        added_for_this_video += 1
-                        print(f"✅ [{video.id}] {video.title[:30]}... -> Tagged: {song.name}")
-                
-                if added_for_this_video > 0:
+                added = tag_video_with_songs(video, res['songs'], song_map)
+                if added > 0:
                     updated_count += 1
-            
-            time.sleep(1) # API 매너
+            time.sleep(1)
         except Exception as e:
             print(f"❌ Error parsing {video.id}: {e}")
 

@@ -30,6 +30,20 @@ def time_to_seconds(t_str):
         pass
     return 0
 
+def find_setlist_item(db, concert_id, song_name, setlist_map=None):
+    """
+    콘서트 ID와 곡명으로 셋리스트 아이템을 찾는 로직.
+    setlist_map이 있으면 DB 조회 없이 즉시 반환 (N+1 해결).
+    """
+    if setlist_map is not None:
+        return setlist_map.get(song_name.lower())
+    
+    # 기존 방식 (Fallback)
+    return db.query(ConcertSetlist).join(Song).filter(
+        ConcertSetlist.concert_id == concert_id,
+        Song.name.ilike(song_name)
+    ).first()
+
 def ai_fix_setlist_times():
     print("🚀 Gemini AI 기반 마스터 타임라인(셋리스트) 복구 시작...")
     
@@ -63,6 +77,12 @@ def ai_fix_setlist_times():
             if res and res.get('setlist'):
                 found_timestamps = res['setlist']
                 
+                # 최적화: 해당 콘서트의 모든 셋리스트 아이템을 미리 가져옴 (N+1 방지)
+                concert_setlist = db.query(ConcertSetlist).join(Song).filter(
+                    ConcertSetlist.concert_id == concert.id
+                ).all()
+                setlist_map = {sl.song.name.lower(): sl for sl in concert_setlist if sl.song}
+
                 updated_songs = 0
                 for item in found_timestamps:
                     song_name = item.get('song_name')
@@ -74,12 +94,8 @@ def ai_fix_setlist_times():
                     seconds = time_to_seconds(timestamp)
                     if seconds <= 0: continue
                     
-                    # 해당 콘서트의 셋리스트 아이템 업데이트
-                    # 곡명으로 매칭 (대소문자 무시)
-                    sl_item = db.query(ConcertSetlist).join(Song).filter(
-                        ConcertSetlist.concert_id == concert.id,
-                        Song.name.ilike(song_name)
-                    ).first()
+                    # 최적화된 매칭 함수 사용
+                    sl_item = find_setlist_item(db, concert.id, song_name, setlist_map)
                     
                     if sl_item:
                         sl_item.start_time = seconds

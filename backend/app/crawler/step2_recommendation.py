@@ -89,6 +89,10 @@ async def run_recommendation_chain_async(depth=30):
         new_video_count = 0
         processed_ids = set()
 
+        # 최적화: 사이클 시작 시 모든 노래 정보를 한 번만 가져옴 (N+1 방지)
+        all_songs = db.query(Song).all()
+        song_map = {s.name.lower(): s for s in all_songs}
+
         async with async_playwright() as p:
             # 봇 감지 회피를 위해 브라우저 컨텍스트 설정 강화
             context = await p.chromium.launch_persistent_context(
@@ -151,9 +155,9 @@ async def run_recommendation_chain_async(depth=30):
                                     description=desc
                                 )
                                 db.add(new_v)
-                                # 노래 매칭
+                                # 최적화된 song_map 활용 (N+1 해결)
                                 for s_name in metadata.get("songs", []):
-                                    song_obj = db.query(Song).filter(Song.name == s_name).first()
+                                    song_obj = song_map.get(s_name.lower())
                                     if song_obj: new_v.songs.append(song_obj)
                                 
                                 db.commit()
