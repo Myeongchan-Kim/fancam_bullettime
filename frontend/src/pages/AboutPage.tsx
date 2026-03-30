@@ -128,10 +128,14 @@ const AboutPage = () => {
 
       {/* 5. Footer Repository */}
       <div className="pt-8 text-center border-t border-slate-800/50">
-        <div className="flex justify-center items-center">
+        <div className="flex justify-center items-center space-x-10">
           <a href="https://github.com/Myeongchan-Kim/fancam_bullettime" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group">
             <Github className="w-6 h-6 group-hover:scale-110 transition-transform" />
-            <span className="font-bold uppercase tracking-tighter text-sm">GitHub Repository</span>
+            <span className="font-bold uppercase tracking-tighter text-sm">GitHub</span>
+          </a>
+          <a href="https://www.youtube.com/channel/UCZsY0AUdS8yhLCKtCbzB3Cg" target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 text-gray-500 hover:text-white transition-colors group">
+            <Youtube className="w-6 h-6 group-hover:scale-110 transition-transform" />
+            <span className="font-bold uppercase tracking-tighter text-sm">YouTube</span>
           </a>
         </div>
         <div className="mt-8">
