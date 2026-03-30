@@ -1,13 +1,29 @@
+# Build/Frontend
+node_modules/
+dist/
+.vite/
+.next/
+
+# Python/Backend
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.python-version
+uv.lock
+
+# Environment/Data
 .env
 user_data/
 user_data_2/
-node_modules/
-dist/
-.DS_Store
 *.log
 *.db
+
+# OS
+.DS_Store
+Thumbs.db
+
 # overkill (added by overkill init)
 .overkill/

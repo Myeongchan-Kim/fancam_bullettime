@@ -1,6 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Play, ExternalLink, Target } from 'lucide-react';
+import { Play, Target } from 'lucide-react';
 import { Video } from '../types';
 
 interface StageMapProps {
@@ -9,7 +9,6 @@ interface StageMapProps {
   
   // For Marker Display (HomePage)
   videos?: Video[];
-  onPlayVideo?: (v: Video) => void;
   
   // For Precise Pining (VideoDetail)
   x?: number | null;
@@ -26,7 +25,6 @@ interface StageMapProps {
 const StageMap: React.FC<StageMapProps> = ({ 
   angle, 
   videos = [], 
-  onPlayVideo,
   x = null,
   y = null,
   onPosSelect,
@@ -154,16 +152,12 @@ const StageMap: React.FC<StageMapProps> = ({
                           {v.songs && v.songs.length > 0 ? v.songs.map(s => s.name).join(', ') : 'Unknown Song'} • {v.concert?.city}
                         </p>
                       </div>
-                      <div className="flex gap-2">
-                        {onPlayVideo && (
-                          <button onClick={() => { onPlayVideo(v); setActiveTooltip(null); }} className="flex-1 bg-twice-magenta hover:bg-twice-magenta/90 text-white text-[9px] font-black py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 shadow-lg shadow-twice-magenta/20">
-                            <Play className="h-2.5 w-2.5 fill-current" /> FULL SCREEN
-                          </button>
-                        )}
-                        <button onClick={() => navigate(`/video/${v.id}`)} className="flex-1 bg-slate-800 hover:bg-slate-700 text-white text-[9px] font-black py-2 rounded-xl transition-all flex items-center justify-center gap-1.5 border border-slate-700">
-                          <ExternalLink className="h-2.5 w-2.5" /> DETAIL
-                        </button>
-                      </div>
+                      <button 
+                        onClick={() => navigate(`/video/${v.id}`)} 
+                        className="w-full bg-twice-magenta hover:bg-twice-magenta/90 text-white text-[10px] font-black py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-twice-magenta/20 uppercase tracking-[0.1em]"
+                      >
+                        <Play className="h-3 w-3 fill-current" /> Sync Play
+                      </button>
                     </div>
                     <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-slate-700"></div>
                   </div>
