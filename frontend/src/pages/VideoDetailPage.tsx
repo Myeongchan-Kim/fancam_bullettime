@@ -5,12 +5,13 @@ import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, 
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
-import MultiAnglePlayer from '../components/MultiAnglePlayer';
+import MultiAnglePlayer, { MultiAnglePlayerRef } from '../components/MultiAnglePlayer';
 import ConcertTimelineModal from '../components/ConcertTimelineModal';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const playerRef = React.useRef<MultiAnglePlayerRef>(null);
   const [video, setVideo] = useState<Video | null>(null);
   const [relatedVideos, setRelatedVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
@@ -34,7 +35,10 @@ const VideoDetailPage = () => {
     coordinate_x: null as number | null,
     coordinate_y: null as number | null,
     sync_offset: '0' as string | number,
-    duration: '0' as string | number
+    duration: '0' as string | number,
+    suggested_setlist_id: 0,
+    suggested_start_time: '' as string | number,
+    suggested_event_name: ''
   });
   
   const [isEditing, setIsEditing] = useState(false);
@@ -59,7 +63,10 @@ const VideoDetailPage = () => {
         coordinate_x: res.data.coordinate_x,
         coordinate_y: res.data.coordinate_y,
         sync_offset: res.data.sync_offset,
-        duration: res.data.duration
+        duration: res.data.duration,
+        suggested_setlist_id: 0,
+        suggested_start_time: '',
+        suggested_event_name: ''
       });
 
       if (res.data.concert?.id) {
@@ -119,7 +126,10 @@ const VideoDetailPage = () => {
         suggested_coordinate_y: editData.coordinate_y,
         suggested_sync_offset: parseFloat(editData.sync_offset.toString()) || 0,
         suggested_duration: parseFloat(editData.duration.toString()) || 0,
-        suggested_angle: "Unknown"
+        suggested_angle: "Unknown",
+        suggested_setlist_id: editData.suggested_setlist_id || null,
+        suggested_start_time: editData.suggested_start_time !== '' ? parseFloat(editData.suggested_start_time.toString()) : null,
+        suggested_event_name: editData.suggested_event_name || null
       });
       alert("Contribution submitted! Thank you for improving the archive.");
       fetchContributions();
@@ -213,7 +223,7 @@ const VideoDetailPage = () => {
 
       {/* Multi-Angle Sync Player (Default View) */}
       <section className="animate-in fade-in zoom-in-95 duration-500">
-        <MultiAnglePlayer videos={[video, ...relatedVideos]} />
+        <MultiAnglePlayer ref={playerRef} videos={[video, ...relatedVideos]} />
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
@@ -409,6 +419,51 @@ const VideoDetailPage = () => {
                   <input type="number" step="1" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
                     value={editData.duration} onChange={(e) => setEditData({...editData, duration: e.target.value})} />
                 </div>
+
+                <div className="space-y-2 md:col-span-2 p-6 bg-slate-900/50 rounded-2xl border border-white/5 space-y-4">
+                  <div className="flex items-center justify-between">
+                     <label className="text-[11px] font-black text-twice-magenta uppercase tracking-widest flex items-center gap-2"><Clock className="h-3 w-3"/> Timeline Contribution</label>
+                     <div className="flex gap-2">
+                        <button onClick={() => {
+                          const time = playerRef.current?.getCurrentConcertTime() || 0;
+                          setEditData(prev => ({ ...prev, suggested_start_time: time.toFixed(2) }));
+                        }} className="text-[10px] font-black bg-twice-magenta/20 text-twice-magenta px-3 py-1 rounded-full border border-twice-magenta/30 hover:bg-twice-magenta/30 transition-all flex items-center gap-1">
+                          <Target className="h-3 w-3"/> Capture Player Time
+                        </button>
+                     </div>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">Existing Item (Optional)</label>
+                      <select className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs outline-none focus:ring-2 focus:ring-twice-magenta text-white appearance-none cursor-pointer"
+                        value={editData.suggested_setlist_id || 0} onChange={e => setEditData({...editData, suggested_setlist_id: parseInt(e.target.value)})}>
+                        <option value="0">--- Create New Custom Scene ---</option>
+                        {video.concert?.setlist?.map(sl => (
+                          <option key={sl.id} value={sl.id}>
+                            {sl.event_name || sl.song?.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">Concert Time (Sec)</label>
+                      <input type="number" step="0.01" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                        placeholder="e.g. 1240.5"
+                        value={editData.suggested_start_time} onChange={(e) => setEditData({...editData, suggested_start_time: e.target.value})} />
+                    </div>
+
+                    {!editData.suggested_setlist_id && (
+                      <div className="space-y-2 md:col-span-2 animate-in fade-in slide-in-from-top-1">
+                        <label className="text-[9px] font-black text-gray-500 uppercase tracking-widest ml-1">Custom Scene Name</label>
+                        <input className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
+                          placeholder="e.g. Intro VCR, Ending Talk, Special Dance..."
+                          value={editData.suggested_event_name} onChange={(e) => setEditData({...editData, suggested_event_name: e.target.value})} />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <button 
@@ -469,6 +524,15 @@ const VideoDetailPage = () => {
                       {c.suggested_title && c.suggested_title !== video.title && <div className="text-[10px] text-white font-bold leading-tight line-clamp-1">Title: {c.suggested_title}</div>}
                       {c.suggested_song_ids && c.suggested_song_ids.length > 0 && <div className="text-[10px] text-twice-apricot font-bold">Songs: {c.suggested_song_ids.map(id => songs.find(s => s.id === id)?.name).filter(Boolean).join(", ")}</div>}
                       {c.suggested_duration && <div className="text-[10px] text-emerald-400 font-bold uppercase tracking-widest">Duration: {Math.floor(c.suggested_duration / 60)}m {Math.floor(c.suggested_duration % 60)}s</div>}
+                      {(c.suggested_setlist_id || c.suggested_event_name) && (
+                        <div className="text-[10px] bg-indigo-500/20 p-1.5 rounded border border-indigo-500/30">
+                          <div className="text-indigo-300 font-black uppercase text-[8px] mb-1 flex items-center gap-1"><Clock className="h-2 w-2"/> Timeline Edit</div>
+                          <div className="font-bold text-white">
+                            {c.suggested_setlist_id ? `Update: ${video.concert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.event_name || video.concert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.song?.name}` : `New Scene: ${c.suggested_event_name}`}
+                          </div>
+                          <div className="text-[9px] text-twice-magenta font-black">Time: {c.suggested_start_time}s</div>
+                        </div>
+                      )}
                       <div className="text-[9px] text-indigo-400 font-black tracking-widest uppercase">Pos: {c.suggested_coordinate_x?.toFixed(2)}, {c.suggested_coordinate_y?.toFixed(2)} | Sync: {c.suggested_sync_offset}s</div>
                     </div>
                   </div>

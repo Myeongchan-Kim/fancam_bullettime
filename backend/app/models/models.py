@@ -102,7 +102,7 @@ class ConcertSetlist(Base):
     event_name = Column(String, nullable=True) 
     
     # Start time in seconds relative to the "Full Concert" version
-    start_time = Column(Float, index=True) 
+    start_time = Column(Float, index=True, nullable=True) 
     
     # Order in the setlist
     display_order = Column(Integer)
@@ -134,6 +134,7 @@ class Contribution(Base):
     # Setlist timing suggestions
     suggested_setlist_id = Column(Integer, ForeignKey("concert_setlists.id"), nullable=True)
     suggested_start_time = Column(Float, nullable=True)
+    suggested_event_name = Column(String, nullable=True)
     
     user_ip = Column(String) # For basic anti-spam
     is_processed = Column(Boolean, default=False)

@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import or_, not_, select
+from sqlalchemy import or_, not_, select, func
 from typing import List, Optional
 from datetime import datetime
 import os
@@ -133,41 +133,59 @@ def _maybe_auto_approve(db: Session, contribution_id: int):
         except Exception as e:
             logger.error(f"Auto-approve failed for contribution {contribution_id}: {str(e)}")
 
-def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution):
-    """Apply contribution values to a video and mark as processed."""
-    if contrib.suggested_title is not None: video.title = contrib.suggested_title
-    
-    # Sync song updates across both deprecated and new fields
-    suggested_song_ids = getattr(contrib, 'suggested_song_ids', None)
-    if suggested_song_ids is not None and isinstance(suggested_song_ids, list):
-        requested_ids = suggested_song_ids
-        found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all() if requested_ids else []
-        # Only apply if all requested songs exist to prevent partial data corruption
-        if len(found_songs) == len(requested_ids):
-            video.songs = found_songs
-            if found_songs:
-                video.song_id = found_songs[0].id
-            else:
-                video.song_id = None
-    elif contrib.suggested_song_id is not None:
-        video.song_id = contrib.suggested_song_id
-        song = db.query(Song).filter(Song.id == contrib.suggested_song_id).first()
-        video.songs = [song] if song else []
+def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Contribution):
+    """Apply contribution values to a video (if any) and handle setlist timing/creation."""
+    if video:
+        if contrib.suggested_title is not None: video.title = contrib.suggested_title
+        
+        # Sync song updates across both deprecated and new fields
+        suggested_song_ids = getattr(contrib, 'suggested_song_ids', None)
+        if suggested_song_ids is not None and isinstance(suggested_song_ids, list):
+            requested_ids = suggested_song_ids
+            found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all() if requested_ids else []
+            # Only apply if all requested songs exist to prevent partial data corruption
+            if len(found_songs) == len(requested_ids):
+                video.songs = found_songs
+                if found_songs:
+                    video.song_id = found_songs[0].id
+                else:
+                    video.song_id = None
+        elif contrib.suggested_song_id is not None:
+            video.song_id = contrib.suggested_song_id
+            song = db.query(Song).filter(Song.id == contrib.suggested_song_id).first()
+            video.songs = [song] if song else []
 
-    if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
-    if contrib.suggested_members is not None: video.members = contrib.suggested_members
-    if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
-    if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
-    if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
-    if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
-    if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
+        if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
+        if contrib.suggested_members is not None: video.members = contrib.suggested_members
+        if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
+        if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
+        if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
+        if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
+        if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
     
-    # Apply setlist timing if suggested
-    if contrib.suggested_setlist_id is not None and contrib.suggested_start_time is not None:
-        setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
-        if setlist_item:
-            setlist_item.start_time = contrib.suggested_start_time
-            logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time}")
+    # Handle setlist timing or create new setlist item if suggested
+    concert_id = contrib.suggested_concert_id or (video.concert_id if video else None)
+    if concert_id:
+        if contrib.suggested_setlist_id is not None:
+            setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
+            if setlist_item:
+                if contrib.suggested_start_time is not None:
+                    setlist_item.start_time = contrib.suggested_start_time
+                if contrib.suggested_event_name:
+                    setlist_item.event_name = contrib.suggested_event_name
+                logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time}")
+        elif contrib.suggested_event_name:
+            # Create new setlist item
+            max_order_result = db.query(func.max(ConcertSetlist.display_order)).filter(ConcertSetlist.concert_id == concert_id).scalar()
+            max_order = max_order_result if max_order_result is not None else 0
+            new_item = ConcertSetlist(
+                concert_id=concert_id,
+                event_name=contrib.suggested_event_name,
+                start_time=contrib.suggested_start_time,
+                display_order=max_order + 1
+            )
+            db.add(new_item)
+            logger.info(f"Created new setlist item: {contrib.suggested_event_name} for concert {concert_id}")
 
     contrib.is_processed = True
     # COMMIT REMOVED - Caller must handle transaction atomicity
@@ -319,6 +337,7 @@ def create_general_contribution(
         suggested_angle=contribution.suggested_angle or "Unknown",
         suggested_setlist_id=contribution.suggested_setlist_id,
         suggested_start_time=contribution.suggested_start_time,
+        suggested_event_name=contribution.suggested_event_name,
         user_ip=request.client.host
     )
     db.add(new_contrib)
@@ -358,6 +377,7 @@ def create_contribution(
         suggested_sync_offset=contribution.suggested_sync_offset,
         suggested_setlist_id=contribution.suggested_setlist_id,
         suggested_start_time=contribution.suggested_start_time,
+        suggested_event_name=contribution.suggested_event_name,
         user_ip=request.client.host
     )
     db.add(new_contrib)
@@ -393,6 +413,7 @@ def get_contributions(video_id: int, db: Session = Depends(get_db)):
             "suggested_sync_offset": r.suggested_sync_offset,
             "suggested_setlist_id": r.suggested_setlist_id,
             "suggested_start_time": r.suggested_start_time,
+            "suggested_event_name": r.suggested_event_name,
             "is_processed": r.is_processed,
             "created_at": r.created_at
         })
@@ -422,6 +443,7 @@ def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depen
             "suggested_sync_offset": r.suggested_sync_offset,
             "suggested_setlist_id": r.suggested_setlist_id,
             "suggested_start_time": r.suggested_start_time,
+            "suggested_event_name": r.suggested_event_name,
             "is_processed": r.is_processed,
             "created_at": r.created_at
         })
@@ -486,14 +508,7 @@ def internal_approve_contribution(db: Session, contribution_id: int):
         return video
     else:
         # Pure Setlist / Other contribution
-        # We don't have a video to apply to, but we might have setlist updates
-        if contrib.suggested_setlist_id is not None and contrib.suggested_start_time is not None:
-            setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
-            if setlist_item:
-                setlist_item.start_time = contrib.suggested_start_time
-                logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time} (Pure Setlist Suggestion)")
-        
-        contrib.is_processed = True
+        apply_contribution_to_video(db, None, contrib)
         return None
 
 @app.post("/api/contributions/{contribution_id}/approve")

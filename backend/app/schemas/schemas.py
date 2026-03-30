@@ -17,7 +17,7 @@ class ConcertSetlistBase(BaseModel):
     concert_id: int
     song_id: Optional[int] = None
     event_name: Optional[str] = None
-    start_time: float
+    start_time: Optional[float] = None
     display_order: int
     song: Optional[SongBase] = None
 
@@ -86,6 +86,7 @@ class ContributionCreate(BaseModel):
     suggested_sync_offset: Optional[float] = None
     suggested_setlist_id: Optional[int] = None
     suggested_start_time: Optional[float] = None
+    suggested_event_name: Optional[str] = None
 
 class ContributionBase(BaseModel):
     id: int
@@ -104,6 +105,7 @@ class ContributionBase(BaseModel):
     suggested_sync_offset: Optional[float] = None
     suggested_setlist_id: Optional[int] = None
     suggested_start_time: Optional[float] = None
+    suggested_event_name: Optional[str] = None
     is_processed: bool
     created_at: datetime
 
