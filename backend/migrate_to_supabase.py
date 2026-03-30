@@ -81,11 +81,30 @@ def migrate():
         # 5) Contributions
         print("🤝 Contributions 복사 중...")
         contribs = sqlite_db.query(Contribution).all()
+        
+        # 유효한 ID 세트 준비 (매번 쿼리하면 느리므로)
+        valid_video_ids = {v.id for v in sqlite_db.query(Video.id).all()}
+        valid_song_ids = {s.id for s in sqlite_db.query(Song.id).all()}
+        valid_concert_ids = {c.id for c in sqlite_db.query(Concert.id).all()}
+
+        skip_count = 0
         for cb in contribs:
+            # 외래 키 무결성 검사
+            if cb.video_id and cb.video_id not in valid_video_ids:
+                skip_count += 1
+                continue
+            if cb.suggested_song_id and cb.suggested_song_id not in valid_song_ids:
+                skip_count += 1
+                continue
+            if cb.suggested_concert_id and cb.suggested_concert_id not in valid_concert_ids:
+                skip_count += 1
+                continue
+            
             sqlite_db.expunge(cb)
             pg_db.merge(cb)
+            
         pg_db.commit()
-        print(f"   ✅ {len(contribs)}개 기여 내역 완료")
+        print(f"   ✅ {len(contribs) - skip_count}개 기여 내역 완료 (유효하지 않은 {skip_count}개 제외)")
 
         print("\n✨ 모든 데이터가 Supabase로 성공적으로 이전되었습니다!")
 
