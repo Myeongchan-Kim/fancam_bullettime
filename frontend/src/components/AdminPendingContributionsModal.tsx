@@ -105,7 +105,11 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   <div className="flex items-center gap-2">
                     {c.video_id ? (
                       <span className="px-2 py-0.5 bg-blue-500/20 text-blue-400 text-[10px] font-bold rounded uppercase truncate max-w-[200px]">
-                        Edit: {c.video_title || `#${c.video_id}`}
+                        Edit Video: {c.video_title || `#${c.video_id}`}
+                      </span>
+                    ) : c.suggested_setlist_id ? (
+                      <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-bold rounded uppercase flex items-center gap-1">
+                        Setlist Sync Fix
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-bold rounded uppercase flex items-center gap-1"><Youtube className="w-3 h-3" /> New Fancam</span>
@@ -116,7 +120,20 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
                   {c.suggested_url && (
                     <a href={c.suggested_url} target="_blank" rel="noreferrer" className="text-sm font-bold text-blue-400 hover:underline block break-all">{c.suggested_url}</a>
                   )}
-                  {c.suggested_title && <div className="text-xs text-white font-bold">Title: {c.suggested_title}</div>}
+                  {c.suggested_title && <div className="text-xs text-white font-bold italic">Suggested Title: {c.suggested_title}</div>}
+                  
+                  {c.suggested_setlist_id && (
+                    <div className="text-xs p-3 bg-slate-900 rounded-lg border border-slate-700 space-y-1">
+                      <div className="text-twice-magenta font-black uppercase tracking-widest text-[9px]">Setlist Timing Update</div>
+                      <div className="text-white font-bold">
+                        Target Track ID: #{c.suggested_setlist_id}
+                      </div>
+                      <div className="text-twice-apricot font-mono font-black text-sm">
+                        New Timestamp: {Math.floor(c.suggested_start_time! / 60)}:{(c.suggested_start_time! % 60).toString().padStart(2, '0')}
+                      </div>
+                    </div>
+                  )}
+
                   {c.suggested_song_ids && c.suggested_song_ids.length > 0 && <div className="text-xs text-twice-apricot">Songs: {c.suggested_song_ids.map(id => songs.find(s => s.id === id)?.name).filter(Boolean).join(", ")}</div>}
                   {c.suggested_concert_id && <div className="text-xs text-gray-300">Concert: {concerts.find(co => co.id === c.suggested_concert_id)?.city}</div>}
                   {c.suggested_members && c.suggested_members.length > 0 && <div className="text-xs text-twice-magenta">Members: {c.suggested_members.join(", ")}</div>}

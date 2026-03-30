@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { Song, Concert } from '../types';
-import { MapPin, History } from 'lucide-react';
+import { MapPin, History, Clock, Save, Send } from 'lucide-react';
+import { API_BASE_URL } from '../constants';
 import ConcertTimelineModal from './ConcertTimelineModal';
 
 interface SetlistSliderProps {
@@ -23,9 +25,76 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   onChange 
 }) => {
   const [showTimeline, setShowTimeline] = useState(false);
+  const adminKey = localStorage.getItem('admin_key');
 
   const activeConcert = concerts.find(c => c.id.toString() === selectedConcert);
   const hasCustomSetlist = activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0;
+
+  // Setlist Editor State
+  const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
+  const [editTime, setEditTime] = useState("");
+  const [isUpdating, setIsUpdating] = useState(false);
+
+  // Sync editor state when concert or item changes
+  useEffect(() => {
+    if (activeConcert?.setlist && activeConcert.setlist.length > 0) {
+      const firstItem = activeConcert.setlist[0];
+      setSelectedItemId(firstItem.id);
+      setEditTime(secondsToMMSS(firstItem.start_time));
+    } else {
+      setSelectedItemId(null);
+      setEditTime("");
+    }
+  }, [selectedConcert, activeConcert]);
+
+  const handleItemSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const id = parseInt(e.target.value);
+    setSelectedItemId(id);
+    const item = activeConcert?.setlist?.find(i => i.id === id);
+    if (item) setEditTime(secondsToMMSS(item.start_time));
+  };
+
+  function secondsToMMSS(sec: number) {
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+  }
+
+  function mmssToSeconds(str: string) {
+    const parts = str.split(':');
+    if (parts.length !== 2) return 0;
+    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  }
+
+  const handleUpdate = async () => {
+    if (!selectedItemId) return;
+    const seconds = mmssToSeconds(editTime);
+    
+    setIsUpdating(true);
+    try {
+      if (adminKey) {
+        // Direct Update for Admin
+        await axios.patch(`${API_BASE_URL}/admin/setlist/${selectedItemId}?start_time=${seconds}`, {}, {
+          headers: { Authorization: `Bearer ${adminKey}` }
+        });
+        alert("Master timeline updated successfully!");
+        // We might want to trigger a data refresh here
+        window.location.reload(); 
+      } else {
+        // Suggestion for Users
+        await axios.post(`${API_BASE_URL}/contributions`, {
+          suggested_setlist_id: selectedItemId,
+          suggested_start_time: seconds,
+          suggested_concert_id: activeConcert?.id
+        });
+        alert("Thank you! Your sync suggestion has been submitted for review.");
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "Update failed");
+    } finally {
+      setIsUpdating(false);
+    }
+  };
 
   const displaySource = hasCustomSetlist 
     ? activeConcert.setlist!.map(sl => ({
@@ -202,6 +271,62 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
             })}
           </div>
         </div>
+
+        {/* Setlist Timeline Editor (Added below slider) */}
+        {activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0 && (
+          <div className="pt-8 border-t border-white/5 animate-in fade-in slide-in-from-top-4 duration-500">
+            <div className="flex flex-col md:flex-row items-center gap-6 bg-slate-950/40 p-6 rounded-[2rem] border border-white/5">
+              <div className="flex items-center gap-4 shrink-0">
+                <div className="p-3 bg-twice-magenta/10 rounded-2xl">
+                  <Clock className="h-5 w-5 text-twice-magenta" />
+                </div>
+                <div>
+                  <h4 className="text-xs font-black text-white uppercase tracking-widest">Setlist Sync Editor</h4>
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-tight">Fine-tune track timestamps</p>
+                </div>
+              </div>
+
+              <div className="flex-grow grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+                <div className="relative group/edit">
+                  <select 
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-4 pr-10 py-3 text-xs text-white font-bold outline-none focus:ring-2 focus:ring-twice-magenta transition-all appearance-none cursor-pointer"
+                    value={selectedItemId || ""}
+                    onChange={handleItemSelect}
+                  >
+                    {activeConcert.setlist.map((item, idx) => (
+                      <option key={item.id} value={item.id}>
+                        #{ (idx + 1).toString().padStart(2, '0') } - {item.event_name || item.song?.name || "Unknown"}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-gray-600 group-hover/edit:text-twice-magenta transition-colors">
+                    <div className="w-1.5 h-1.5 border-r-2 border-b-2 border-current rotate-45"></div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-grow">
+                    <input 
+                      type="text"
+                      placeholder="MM:SS (e.g. 05:24)"
+                      value={editTime}
+                      onChange={(e) => setEditTime(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white font-mono font-bold outline-none focus:ring-2 focus:ring-twice-magenta transition-all"
+                    />
+                  </div>
+                  <button 
+                    onClick={handleUpdate}
+                    disabled={isUpdating}
+                    className={`flex items-center justify-center gap-2 px-6 py-3 rounded-xl font-black uppercase tracking-widest text-[10px] transition-all shadow-lg ${adminKey ? 'bg-twice-magenta hover:bg-twice-magenta/90 text-white shadow-twice-magenta/20' : 'bg-slate-800 hover:bg-slate-700 text-twice-magenta border border-slate-700'}`}
+                  >
+                    {adminKey ? <Save className="h-4 w-4" /> : <Send className="h-4 w-4" />}
+                    {isUpdating ? '...' : (adminKey ? 'APPLY' : 'SUGGEST')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
       {showTimeline && activeConcert && (
         <ConcertTimelineModal concert={activeConcert} onClose={() => setShowTimeline(false)} />
