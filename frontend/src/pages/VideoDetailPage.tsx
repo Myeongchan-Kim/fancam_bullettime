@@ -41,6 +41,7 @@ const VideoDetailPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
+    setVideo(null); // Reset state when switching videos
     fetchVideoDetail();
     fetchMetadata();
     fetchContributions();
