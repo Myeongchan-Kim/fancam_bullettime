@@ -190,34 +190,14 @@ def ensure_list(data):
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
     song_id: Optional[int] = None,
-    start_order: Optional[int] = None,
-    end_order: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
     angle: Optional[str] = None,
-    untagged: bool = Query(False),
     shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
-    # 0. Check Cache with robust key generation and normalization
-    # Treat 1-Max range as None (standard all-view)
-    try:
-        s_ord = int(start_order) if start_order is not None else None
-        e_ord = int(end_order) if end_order is not None else None
-    except:
-        s_ord, e_ord = start_order, end_order
-
-    norm_start = None if s_ord == 1 else s_ord
-    norm_end = e_ord
-    norm_untagged = untagged
-    
-    if not concert_id and (s_ord == 1 or s_ord is None):
-        # On main page, a very large end_order is effectively "none"
-        if e_ord is None or e_ord >= 35: 
-            norm_end = None
-            norm_untagged = False # untagged=True is default for full range on main
-
-    params = [song_id, norm_start, norm_end, concert_id, member, angle, norm_untagged, shorts_only]
+    # 0. Check Cache with simplified key
+    params = [song_id, concert_id, member, angle, shorts_only]
     cache_key = ":".join([str(p) if p is not None else "none" for p in params])
     
     with CACHE_LOCK:
@@ -229,75 +209,13 @@ def get_videos(
 
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
 
-    # 0. 쇼츠 전용 필터링
+    # Basic Filtering
     if shorts_only:
         query = query.filter(Video.is_shorts == True)
-
-    # 1. 콘서트별 커스텀 셋리스트 필터링 로직
-    # Optimization: Skip filtering if it's the full range on the main page
-    is_global_full_range = not concert_id and s_ord == 1 and (e_ord is None or e_ord >= 35)
-
-    if is_global_full_range:
-        # Just use the base query (all videos)
-        pass
-    elif concert_id and s_ord is not None and e_ord is not None:
-        # 해당 콘서트의 셋리스트가 있는지 확인
-        active_setlist = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).all()
-        has_local_setlist = len(active_setlist) > 0
-        
-        # 만약 전체 범위를 선택한 상태라면 (예: 1번부터 마지막까지), 노래 필터링을 건너뛰고 모든 영상을 보여줌
-        is_full_range = start_order <= 1 and (end_order >= (len(active_setlist) if has_local_setlist else 37))
-
-        if is_full_range:
-            query = query.filter(Video.concert_id == concert_id)
-        elif has_local_setlist:
-            # 로컬 셋리스트 기반 필터링 (범위 좁혔을 때)
-            local_songs_subquery = db.query(ConcertSetlist.song_id).filter(
-                ConcertSetlist.concert_id == concert_id,
-                ConcertSetlist.display_order >= (s_ord - 1),
-                ConcertSetlist.display_order <= (e_ord - 1)
-            ).subquery()
-            
-            if untagged:
-                query = query.filter(
-                    (Video.concert_id == concert_id) & 
-                    (or_(Video.song_id.in_(local_songs_subquery), Video.song_id == None))
-                )
-            else:
-                query = query.filter(
-                    (Video.concert_id == concert_id) & 
-                    (Video.song_id.in_(local_songs_subquery))
-                )
-        else:
-            # 로컬 셋리스트가 없는 경우 글로벌 order 기준 (범위 좁혔을 때)
-            if untagged:
-                query = query.outerjoin(Video.songs).filter(
-                    or_(
-                        (Song.order >= s_ord) & (Song.order <= e_ord),
-                        Song.id == None
-                    )
-                )
-            else:
-                query = query.join(Video.songs).filter(Song.order >= s_ord, Song.order <= e_ord)
-            query = query.filter(Video.concert_id == concert_id)
-            
-    elif s_ord is not None and e_ord is not None:
-        # 콘서트 선택 없이 범위만 지정된 경우 (글로벌 필터)
-        if untagged:
-            query = query.outerjoin(Video.songs).filter(
-                or_(
-                    (Song.order >= s_ord) & (Song.order <= e_ord),
-                    Song.id == None
-                )
-            )
-        else:
-            query = query.join(Video.songs).filter(Song.order >= s_ord, Song.order <= e_ord)
-
-    # 기타 필터들
+    if concert_id:
+        query = query.filter(Video.concert_id == concert_id)
     if song_id:
         query = query.filter(Video.songs.any(Song.id == song_id))
-    if concert_id and not (start_order and end_order):
-        query = query.filter(Video.concert_id == concert_id)
     if member:
         from sqlalchemy import String
         query = query.filter(Video.members.cast(String).like(f"%{member}%"))
@@ -309,10 +227,6 @@ def get_videos(
     # 3. Post-process and Cache
     final_results = []
     for v in results:
-        # We need to manually construct the dictionary or ensure objects are serializable
-        # to avoid session detachment issues during caching.
-        # However, for simplicity and since we use joinedload, we can cache the objects
-        # IF we don't access lazy attributes later.
         v.members = ensure_list(v.members)
         final_results.append(v)
     

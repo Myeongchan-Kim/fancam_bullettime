@@ -59,9 +59,46 @@ const HomePage = () => {
   }, [localSearch, searchQuery, setSearchParams]);
 
   const filteredVideos = useMemo(() => {
-    if (!searchQuery.trim()) return videos;
+    let filtered = videos;
+
+    // 1. Song Order Filtering (Instant Frontend Logic)
+    if (selectedConcert && activeConcertObj?.setlist) {
+      // Concert Mode: Filter by display_order in that concert's setlist
+      // Map setlist to song IDs for quick lookup
+      const setlistInRange = activeConcertObj.setlist.filter(item => 
+        item.display_order >= (startOrder - 1) && 
+        item.display_order <= (endOrder - 1)
+      );
+      const validSongIds = setlistInRange.map(item => item.song_id).filter(id => id !== null);
+      
+      filtered = filtered.filter(v => {
+        // Show if video's concert matches AND (it matches a song in range OR it has no song yet)
+        const matchesConcert = v.concert_id?.toString() === selectedConcert;
+        if (!matchesConcert) return false;
+        
+        const hasSongInRange = v.songs?.some(s => validSongIds.includes(s.id));
+        const isUntagged = !v.songs || v.songs.length === 0;
+        
+        // Show untagged only if the range includes "end" (logic carried over from backend)
+        const showUntagged = endOrder >= effectiveMaxOrder;
+        
+        return hasSongInRange || (isUntagged && showUntagged);
+      });
+    } else if (!selectedConcert && songs.length > 0) {
+      // Global Mode: Filter by song's global order
+      filtered = filtered.filter(v => {
+        const hasSongInRange = v.songs?.some(s => s.order !== null && s.order >= startOrder && s.order <= endOrder);
+        const isUntagged = !v.songs || v.songs.length === 0;
+        const showUntagged = endOrder >= effectiveMaxOrder;
+        
+        return hasSongInRange || (isUntagged && showUntagged);
+      });
+    }
+
+    // 2. Text Search Filtering
+    if (!searchQuery.trim()) return filtered;
     const lowerQuery = searchQuery.toLowerCase();
-    return videos.filter(v => {
+    return filtered.filter(v => {
       return (
         v.youtube_id?.toLowerCase().includes(lowerQuery) ||
         v.title?.toLowerCase().includes(lowerQuery) ||
@@ -70,7 +107,7 @@ const HomePage = () => {
         v.songs?.some(s => s.name.toLowerCase().includes(lowerQuery))
       );
     });
-  }, [videos, searchQuery]);
+  }, [videos, searchQuery, selectedConcert, startOrder, endOrder, effectiveMaxOrder, activeConcertObj, songs.length]);
 
   const resetFilters = () => {
     setSearchParams(new URLSearchParams(), { replace: true });
@@ -93,11 +130,11 @@ const HomePage = () => {
 
   useEffect(() => {
     fetchVideos();
-  }, [selectedConcert, startOrder, endOrder, shortsOnly]);
+  }, [selectedConcert, shortsOnly]);
 
   useEffect(() => {
     setVisibleCount(12); // Reset scroll when dataset or search changes
-  }, [videos, searchQuery]);
+  }, [videos, searchQuery, startOrder, endOrder]);
 
   // Infinite Scroll Observer
   useEffect(() => {
@@ -133,16 +170,6 @@ const HomePage = () => {
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (shortsOnly) url += `shorts_only=true&`;
-      
-      // Only send order params if they are actually filtering (not full range)
-      // OR if a concert is selected (where setlist order matters)
-      const isFullRange = startOrder === 1 && endOrder >= effectiveMaxOrder;
-      if (!isFullRange || selectedConcert) {
-        if (songs.length > 0) {
-          url += `start_order=${startOrder}&end_order=${endOrder}&`;
-          if (endOrder >= effectiveMaxOrder) url += `untagged=true&`;
-        }
-      }
       
       const res = await axios.get(url);
       setVideos(res.data);
