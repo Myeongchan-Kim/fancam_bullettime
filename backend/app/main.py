@@ -201,19 +201,19 @@ def get_videos(
 ):
     # 0. Check Cache with robust key generation and normalization
     # Treat 1-Max range as None (standard all-view)
-    norm_start = None if start_order == 1 else start_order
-    
-    # We need the current max order to check if end_order is "full range"
-    # But querying DB every time for max order defeats the purpose.
-    # We can use a reasonable heuristic or keep the max_order cached.
-    # For now, let's just treat end_order >= 37 (standard TWICE setlist) as potentially "full".
-    # Or more simply: if no concert_id, then full range is the default.
-    norm_end = end_order
+    try:
+        s_ord = int(start_order) if start_order is not None else None
+        e_ord = int(end_order) if end_order is not None else None
+    except:
+        s_ord, e_ord = start_order, end_order
+
+    norm_start = None if s_ord == 1 else s_ord
+    norm_end = e_ord
     norm_untagged = untagged
     
-    if not concert_id and start_order == 1:
+    if not concert_id and (s_ord == 1 or s_ord is None):
         # On main page, a very large end_order is effectively "none"
-        if end_order and end_order >= 35: 
+        if e_ord is None or e_ord >= 35: 
             norm_end = None
             norm_untagged = False # untagged=True is default for full range on main
 
