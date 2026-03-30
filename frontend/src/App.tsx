@@ -42,6 +42,7 @@ function App() {
               <Link to="/" className="text-gray-400 hover:text-white transition-colors">Home</Link>
               <Link to="/about" className="text-gray-400 hover:text-white transition-colors">About</Link>
               <a href="https://github.com/Myeongchan-Kim/fancam_bullettime" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">GitHub</a>
+              <a href="https://www.youtube.com/channel/UCZsY0AUdS8yhLCKtCbzB3Cg" target="_blank" rel="noopener noreferrer" className="text-gray-400 hover:text-white transition-colors">YouTube</a>
             </div>
             <p className="text-gray-500 text-sm">
               © 2026 TWICE World Tour 360° Fancam Archive - All stage videos are property of their respective creators.
