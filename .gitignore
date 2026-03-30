@@ -9,3 +9,5 @@ dist/
 .DS_Store
 *.log
 *.db
+# overkill (added by overkill init)
+.overkill/
