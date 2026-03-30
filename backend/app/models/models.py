@@ -131,6 +131,10 @@ class Contribution(Base):
     suggested_coordinate_y = Column(Float, nullable=True)
     suggested_sync_offset = Column(Float, nullable=True)
     
+    # Setlist timing suggestions
+    suggested_setlist_id = Column(Integer, ForeignKey("concert_setlists.id"), nullable=True)
+    suggested_start_time = Column(Float, nullable=True)
+    
     user_ip = Column(String) # For basic anti-spam
     is_processed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

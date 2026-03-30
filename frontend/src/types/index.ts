@@ -57,6 +57,8 @@ export interface Contribution {
   suggested_coordinate_x: number | null;
   suggested_coordinate_y: number | null;
   suggested_sync_offset: number | null;
+  suggested_setlist_id: number | null;
+  suggested_start_time: number | null;
   is_processed: boolean;
   created_at: string;
 }

@@ -162,6 +162,13 @@ def apply_contribution_to_video(db: Session, video: Video, contrib: Contribution
     if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
     if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
     
+    # Apply setlist timing if suggested
+    if contrib.suggested_setlist_id is not None and contrib.suggested_start_time is not None:
+        setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
+        if setlist_item:
+            setlist_item.start_time = contrib.suggested_start_time
+            logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time}")
+
     contrib.is_processed = True
     # COMMIT REMOVED - Caller must handle transaction atomicity
 
@@ -310,6 +317,8 @@ def create_general_contribution(
         suggested_members=contribution.suggested_members or [],
         suggested_duration=contribution.suggested_duration,
         suggested_angle=contribution.suggested_angle or "Unknown",
+        suggested_setlist_id=contribution.suggested_setlist_id,
+        suggested_start_time=contribution.suggested_start_time,
         user_ip=request.client.host
     )
     db.add(new_contrib)
@@ -347,6 +356,8 @@ def create_contribution(
         suggested_coordinate_x=contribution.suggested_coordinate_x,
         suggested_coordinate_y=contribution.suggested_coordinate_y,
         suggested_sync_offset=contribution.suggested_sync_offset,
+        suggested_setlist_id=contribution.suggested_setlist_id,
+        suggested_start_time=contribution.suggested_start_time,
         user_ip=request.client.host
     )
     db.add(new_contrib)
@@ -380,6 +391,8 @@ def get_contributions(video_id: int, db: Session = Depends(get_db)):
             "suggested_coordinate_x": r.suggested_coordinate_x,
             "suggested_coordinate_y": r.suggested_coordinate_y,
             "suggested_sync_offset": r.suggested_sync_offset,
+            "suggested_setlist_id": r.suggested_setlist_id,
+            "suggested_start_time": r.suggested_start_time,
             "is_processed": r.is_processed,
             "created_at": r.created_at
         })
@@ -407,11 +420,28 @@ def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depen
             "suggested_coordinate_x": r.suggested_coordinate_x,
             "suggested_coordinate_y": r.suggested_coordinate_y,
             "suggested_sync_offset": r.suggested_sync_offset,
+            "suggested_setlist_id": r.suggested_setlist_id,
+            "suggested_start_time": r.suggested_start_time,
             "is_processed": r.is_processed,
             "created_at": r.created_at
         })
             
     return output
+
+@app.patch("/api/admin/setlist/{item_id}")
+def update_setlist_item(
+    item_id: int,
+    start_time: float = Query(...),
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    item = db.query(ConcertSetlist).filter(ConcertSetlist.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Setlist item not found")
+    
+    item.start_time = start_time
+    db.commit()
+    return {"message": "Updated setlist timing", "new_time": start_time}
 
 def internal_approve_contribution(db: Session, contribution_id: int):
     """Internal helper to approve a single contribution. Does NOT commit."""
@@ -419,42 +449,54 @@ def internal_approve_contribution(db: Session, contribution_id: int):
     if not contrib:
         raise Exception("Contribution not found")
     
-    if contrib.video_id is None:
-        if not contrib.suggested_url:
-            raise Exception("suggested_url is required for new videos")
-        yt_id = get_video_id(contrib.suggested_url)
-        if not yt_id:
-            raise Exception("Invalid YouTube URL")
+    # Check if this is a video-related contribution
+    if contrib.video_id is not None or contrib.suggested_url:
+        if contrib.video_id is None:
+            if not contrib.suggested_url:
+                raise Exception("suggested_url is required for new videos")
+            yt_id = get_video_id(contrib.suggested_url)
+            if not yt_id:
+                raise Exception("Invalid YouTube URL")
+                
+            existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
+            if existing:
+                video = existing
+            else:
+                video = Video(
+                    youtube_id=yt_id,
+                    url=contrib.suggested_url,
+                    title=contrib.suggested_title or "Unknown Title",
+                    thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
+                    members=contrib.suggested_members or [],
+                    angle=contrib.suggested_angle or "Unknown",
+                    duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
+                    concert_id=contrib.suggested_concert_id
+                )
+                db.add(video)
+                db.flush() # Generate ID within transaction
             
-        existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
-        if existing:
-            video = existing
+            contrib.video_id = video.id
+            apply_contribution_to_video(db, video, contrib)
         else:
-            video = Video(
-                youtube_id=yt_id,
-                url=contrib.suggested_url,
-                title=contrib.suggested_title or "Unknown Title",
-                thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
-                members=contrib.suggested_members or [],
-                angle=contrib.suggested_angle or "Unknown",
-                duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
-                concert_id=contrib.suggested_concert_id
-            )
-            db.add(video)
-            db.flush() # Generate ID within transaction
-        
-        contrib.video_id = video.id
-        apply_contribution_to_video(db, video, contrib)
+            video = db.query(Video).filter(Video.id == contrib.video_id).first()
+            if not video:
+                raise Exception("Video not found")
+            
+            apply_contribution_to_video(db, video, contrib)
+        return video
     else:
-        video = db.query(Video).filter(Video.id == contrib.video_id).first()
-        if not video:
-            raise Exception("Video not found")
+        # Pure Setlist / Other contribution
+        # We don't have a video to apply to, but we might have setlist updates
+        if contrib.suggested_setlist_id is not None and contrib.suggested_start_time is not None:
+            setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
+            if setlist_item:
+                setlist_item.start_time = contrib.suggested_start_time
+                logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time} (Pure Setlist Suggestion)")
         
-        apply_contribution_to_video(db, video, contrib)
-    
-    return video
+        contrib.is_processed = True
+        return None
 
-@app.post("/api/contributions/{contribution_id}/approve", response_model=VideoDetail)
+@app.post("/api/contributions/{contribution_id}/approve")
 def approve_contribution(
     contribution_id: int, 
     db: Session = Depends(get_db),
@@ -464,15 +506,17 @@ def approve_contribution(
         video = internal_approve_contribution(db, contribution_id)
         db.commit() # Atomic commit
         clear_video_cache() # Data changed!
-        result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
-        if not result:
-            raise Exception("Video not found after approval")
-        return result
+
+        if video:
+            result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+            if not result:
+                raise Exception("Video not found after approval")
+            return result
+        else:
+            return {"message": "Contribution approved (Non-video related)"}
     except Exception as e:
         db.rollback()
-        logger.error(f"Approval failed for ID {contribution_id}: {str(e)}")
-        logger.error(traceback.format_exc()) # PRINT FULL TRACEBACK
-        raise HTTPException(status_code=500, detail=f"Approval failed: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/admin/contributions/approve-all")
 def approve_all_contributions(

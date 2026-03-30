@@ -84,6 +84,8 @@ class ContributionCreate(BaseModel):
     suggested_coordinate_x: Optional[float] = None
     suggested_coordinate_y: Optional[float] = None
     suggested_sync_offset: Optional[float] = None
+    suggested_setlist_id: Optional[int] = None
+    suggested_start_time: Optional[float] = None
 
 class ContributionBase(BaseModel):
     id: int
@@ -100,6 +102,8 @@ class ContributionBase(BaseModel):
     suggested_coordinate_x: Optional[float] = None
     suggested_coordinate_y: Optional[float] = None
     suggested_sync_offset: Optional[float] = None
+    suggested_setlist_id: Optional[int] = None
+    suggested_start_time: Optional[float] = None
     is_processed: bool
     created_at: datetime
 
