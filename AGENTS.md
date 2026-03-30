@@ -2,13 +2,14 @@
 
 ## 🛠️ Core Principles & Mandates
 - **CRITICAL: NEVER DELETE `backend/twice_fancam.db`**. Contains live gathered data. Always verify file size > 0 before operations.
-- **Branch Strategy:** ALWAYS create a new branch (e.g., `feat/`, `fix/`) for any code changes. NEVER work directly on the `main` branch.
-- **Merge Protocol:** Merging to `main` requires explicit user approval.
+- **Branch Strategy (STRICT):** `main` is the **Live Production Deployment Branch** via Vercel. **ABSOLUTELY NO DIRECT COMMITS TO `main` ARE ALLOWED.** You must always create a new branch (`feat/`, `fix/`, `docs/`) and use Pull Requests.
+- **Merge Protocol:** Merging to `main` requires explicit user approval and a passing CI/Pre-push hook status.
 - **Always use `uv`** for all Python/Backend operations.
 - **Data Integrity:** 
   - `Song.is_solo` must be `bool` (non-nullable).
   - JSON fields (`members`, `suggested_song_ids`) must use `JSONEncodedList` ORM type.
   - Always use `ensure_list` failsafe in API layers to handle SQLite JSON quirks.
+  - **MANDATORY API ABSTRACTION:** Never modify the database directly (SQL/SQLAlchemy) for data contribution or updates. All agents and scripts must use the REST API endpoints (e.g., `POST /api/contributions`) to ensure validation, consistency, and compatibility with the distributed architecture (Vercel + Supabase).
 
 ## 🏗️ High-Level Architecture
 - **Backend:** FastAPI + SQLAlchemy (SQLite).
