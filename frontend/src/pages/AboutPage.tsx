@@ -53,6 +53,47 @@ const AboutPage = () => {
         </section>
       </div>
 
+      {/* 2.5 Sync Guide Section */}
+      <section className="bg-slate-900/50 rounded-[3rem] p-10 md:p-12 border border-slate-800 shadow-2xl relative overflow-hidden">
+        <div className="absolute top-0 right-0 w-64 h-64 bg-twice-magenta/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2"></div>
+        
+        <div className="relative z-10 space-y-10">
+          <div className="text-center space-y-4">
+            <h2 className="text-3xl font-black text-white uppercase tracking-tight italic">
+              ⏱️ <span className="twice-text-gradient">Sync Guide</span>: 타임 오프셋 맞추는 법
+            </h2>
+            <p className="text-gray-400 max-w-2xl mx-auto">
+              모든 영상은 콘서트 시작 시점을 기준으로 정렬됩니다. 정확한 싱크 오프셋 설정은 전 세계 원스들에게 완벽한 360도 경험을 선사합니다.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <div className="text-twice-magenta font-black text-xl italic">01. 기준점 잡기</div>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                각 콘서트의 <strong className="text-white">마스터 타임라인(0:00)</strong>은 공연이 완전히 시작되는 첫 순간입니다. 보통 오프닝 VCR이 시작되거나 인트로 문구(<span className="text-twice-apricot">"This is for..."</span>)가 화면에 나타나는 시점을 0초로 잡습니다.
+              </p>
+            </div>
+
+            <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <div className="text-twice-magenta font-black text-xl italic">02. 오프셋 계산</div>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                <strong className="text-white text-sm">싱크 오프셋(Sync Offset)</strong>은 콘서트 시작 후 해당 영상이 <strong className="text-white">몇 초 뒤에 시작하는지</strong>를 의미합니다.<br/><br/>
+                <span className="bg-slate-900 px-2 py-1 rounded text-[11px] text-gray-300">예: 콘서트 시작 10분(600초) 후 촬영 시작 ➔ 오프셋 600</span>
+              </p>
+            </div>
+
+            <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 space-y-4">
+              <div className="text-twice-magenta font-black text-xl italic">03. 미세 조정</div>
+              <ul className="text-sm text-gray-400 space-y-2 list-disc pl-4">
+                <li>영상이 마스터보다 <strong className="text-white">빠를 때</strong> (화면이 먼저 나옴) ➔ 오프셋 값을 <span className="text-green-500 font-bold">늘리세요 (+1.0)</span></li>
+                <li>영상이 마스터보다 <strong className="text-white">느릴 때</strong> (화면이 나중에 나옴) ➔ 오프셋 값을 <span className="text-red-500 font-bold">줄이세요 (-1.0)</span></li>
+              </ul>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* 3. Contact & Call to Action */}
       <section className="bg-twice-magenta/5 rounded-[2.5rem] p-10 md:p-12 border border-twice-magenta/10 flex flex-col md:flex-row items-center gap-10 mt-12">
         <div className="bg-twice-magenta/10 w-24 h-24 rounded-full flex items-center justify-center shrink-0 shadow-[0_0_30px_rgba(255,25,136,0.1)]">
