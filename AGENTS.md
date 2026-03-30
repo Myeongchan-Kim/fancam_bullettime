@@ -1,5 +1,12 @@
 # TWICE World Tour 360° Fancam Archive - Shared Agent Memory
 
+## 🧠 Agent Instruction Hierarchy
+This project uses a unified instruction system via symbolic links to ensure all AI assistants share the exact same core memory and rules:
+- **`AGENTS.md`**: The master file containing all universal core mandates, technical standards, and safety rules.
+- **`GEMINI.md`** & **`CLAUDE.md`**: These are **symbolic links** pointing to `AGENTS.md`. Do not modify them directly; any changes to the agent memory must be made in `AGENTS.md`.
+
+---
+
 ## 🛠️ Core Principles & Mandates
 - **CRITICAL: NEVER DELETE `backend/twice_fancam.db`**. Contains live gathered data. Always verify file size > 0 before operations.
 - **Branch Strategy (STRICT):** `main` is the **Live Production Deployment Branch** via Vercel. **ABSOLUTELY NO DIRECT COMMITS TO `main` ARE ALLOWED.** You must always create a new branch (`feat/`, `fix/`, `docs/`) and use Pull Requests.
@@ -12,7 +19,7 @@
   - **MANDATORY API ABSTRACTION:** Never modify the database directly (SQL/SQLAlchemy) for data contribution or updates. All agents and scripts must use the REST API endpoints (e.g., `POST /api/contributions`) to ensure validation, consistency, and compatibility with the distributed architecture (Vercel + Supabase).
 
 ## 🏗️ High-Level Architecture
-- **Backend:** FastAPI + SQLAlchemy (SQLite).
+- **Backend:** FastAPI + SQLAlchemy (SQLite/Supabase).
 - **Frontend:** React 19 + TypeScript + Tailwind CSS v4.
 - **Crawler:** 3-step pipeline (Search -> Chain/Async -> Importer).
 - **Dynamic Filtering:** API filters by `ConcertSetlist.display_order` if a concert is selected, else falls back to `Song.order`.
