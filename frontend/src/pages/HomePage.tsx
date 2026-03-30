@@ -73,7 +73,7 @@ const HomePage = () => {
       
       filtered = filtered.filter(v => {
         // Show if video's concert matches AND (it matches a song in range OR it has no song yet)
-        const matchesConcert = v.concert_id?.toString() === selectedConcert;
+        const matchesConcert = v.concert?.id?.toString() === selectedConcert;
         if (!matchesConcert) return false;
         
         const hasSongInRange = v.songs?.some(s => validSongIds.includes(s.id));
@@ -87,7 +87,10 @@ const HomePage = () => {
     } else if (!selectedConcert && songs.length > 0) {
       // Global Mode: Filter by song's global order
       filtered = filtered.filter(v => {
-        const hasSongInRange = v.songs?.some(s => s.order !== null && s.order >= startOrder && s.order <= endOrder);
+        const hasSongInRange = v.songs?.some(s => {
+          const ord = s.order;
+          return ord !== null && ord !== undefined && ord >= startOrder && ord <= endOrder;
+        });
         const isUntagged = !v.songs || v.songs.length === 0;
         const showUntagged = endOrder >= effectiveMaxOrder;
         
