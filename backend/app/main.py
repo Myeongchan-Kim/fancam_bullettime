@@ -22,20 +22,37 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite:///./twice_fancam.db"
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+# 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./twice_fancam.db")
+
+# SQLite인 경우에만 check_same_thread 옵션 추가
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DATABASE_URL)
+
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 app = FastAPI(title="TWICE World Tour 360° Fancam Archive API")
 
-# CORS 설정
+# CORS 설정 (Vercel 배포 시 필요)
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://twice-fancam-archive.vercel.app", # 회원님의 프론트엔드 실제 주소 (나중에 수정 가능)
+    "*" # 개발 시에는 전체 허용, 보안이 필요하면 위 주소들로 제한
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # 개발 중에는 모두 허용
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Vercel handler
+app_handler = app
 
 # DB 의존성
 def get_db():
@@ -134,6 +151,7 @@ def get_videos(
     end_order: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
+    angle: Optional[str] = None,
     untagged: bool = Query(False),
     shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
