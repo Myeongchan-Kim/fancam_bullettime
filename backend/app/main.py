@@ -32,6 +32,34 @@ def clear_video_cache():
     with CACHE_LOCK:
         VIDEO_CACHE.clear()
         logger.info("🧹 Video cache cleared due to data update.")
+    # Warm up the most common query in background
+    threading.Thread(target=warm_up_cache, daemon=True).start()
+
+def warm_up_cache():
+    """Pre-cache the default video list."""
+    try:
+        db = SessionLocal()
+        logger.info("🔥 Warming up video cache...")
+        # Call the actual logic (mocking the request params)
+        # We need the max order to match the normalized key
+        songs_count = db.query(Song).count()
+        # Default home page key (normalized)
+        cache_key = "none:none:none:none:none:none:False:False"
+        
+        query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+        results = query.distinct().order_by(Video.created_at.desc()).all()
+        
+        final_results = []
+        for v in results:
+            v.members = ensure_list(v.members)
+            final_results.append(v)
+            
+        with CACHE_LOCK:
+            VIDEO_CACHE[cache_key] = final_results
+        db.close()
+        logger.info(f"✨ Cache warm-up complete. ({len(final_results)} videos)")
+    except Exception as e:
+        logger.error(f"Failed to warm up cache: {e}")
 
 # 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./twice_fancam.db")
@@ -45,6 +73,10 @@ else:
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 app = FastAPI(title="TWICE World Tour 360° Fancam Archive API")
+
+@app.on_event("startup")
+async def startup_event():
+    threading.Thread(target=warm_up_cache, daemon=True).start()
 
 # CORS 설정 (Vercel 배포 시 필요)
 origins = [
@@ -167,11 +199,33 @@ def get_videos(
     shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
-    # 0. Check Cache
-    cache_key = f"{song_id}_{start_order}_{end_order}_{concert_id}_{member}_{angle}_{untagged}_{shorts_only}"
+    # 0. Check Cache with robust key generation and normalization
+    # Treat 1-Max range as None (standard all-view)
+    norm_start = None if start_order == 1 else start_order
+    
+    # We need the current max order to check if end_order is "full range"
+    # But querying DB every time for max order defeats the purpose.
+    # We can use a reasonable heuristic or keep the max_order cached.
+    # For now, let's just treat end_order >= 37 (standard TWICE setlist) as potentially "full".
+    # Or more simply: if no concert_id, then full range is the default.
+    norm_end = end_order
+    norm_untagged = untagged
+    
+    if not concert_id and start_order == 1:
+        # On main page, a very large end_order is effectively "none"
+        if end_order and end_order >= 35: 
+            norm_end = None
+            norm_untagged = False # untagged=True is default for full range on main
+
+    params = [song_id, norm_start, norm_end, concert_id, member, angle, norm_untagged, shorts_only]
+    cache_key = ":".join([str(p) if p is not None else "none" for p in params])
+    
     with CACHE_LOCK:
         if cache_key in VIDEO_CACHE:
+            logger.info(f"✅ CACHE HIT: {cache_key}")
             return VIDEO_CACHE[cache_key]
+        else:
+            logger.info(f"❌ CACHE MISS: {cache_key} (Current cache size: {len(VIDEO_CACHE)})")
 
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
 
