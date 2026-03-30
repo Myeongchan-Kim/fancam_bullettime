@@ -36,7 +36,7 @@ This archive is fueled by your participation.
 
 #### ⏱️ Sync Guide (How to set Time Offset)
 To achieve perfect "Bullet Time", all videos must be aligned to a single **Master Timeline**.
-1. **Reference Point**: The Master Timeline starts (0:00) at the very beginning of the concert (usually the first VCR or the "This is for..." intro).
+1. **Reference Point**: The Master Timeline starts (0:00) at the very beginning of the concert (usually the first VCR or the start of the "This is for..." lyrics).
 2. **sync_offset**: This value represents the number of seconds from the concert start to the beginning of the fancam.
    - *Example*: If a fancam starts exactly when the 10th minute (600s) of the concert begins, its `sync_offset` should be `600`.
 3. **How to Adjust**:
@@ -79,7 +79,7 @@ Every 0.01-second adjustment helps make the stage more immersive. Feel free to c
 
 #### ⏱️ 싱크 가이드 (타임 오프셋 맞추는 법)
 완벽한 '불릿 타임'을 위해 모든 영상은 하나의 **마스터 타임라인**에 정렬되어야 합니다.
-1. **기준점**: 마스터 타임라인의 0초(0:00)는 콘서트의 완전한 시작 지점입니다 (보통 오프닝 VCR 혹은 "This is for..." 문구가 나오는 인트로 시점).
+1. **기준점**: 마스터 타임라인의 0초(0:00)는 콘서트의 완전한 시작 지점입니다 (보통 오프닝 VCR 혹은 "This is for..." 가사가 시작되는 시점).
 2. **싱크 오프셋(sync_offset)**: 해당 직캠이 콘서트 시작 후 **몇 초 뒤에 시작하는지**를 나타내는 값입니다.
    - *예시*: 어떤 직캠이 콘서트 시작 후 정확히 10분(600초) 뒤의 상황을 담고 있다면, 해당 영상의 오프셋은 `600`이 되어야 합니다.
 3. **조정 방법**:

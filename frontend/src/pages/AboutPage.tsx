@@ -71,7 +71,7 @@ const AboutPage = () => {
             <div className="bg-slate-950/50 p-6 rounded-2xl border border-slate-800 space-y-4">
               <div className="text-twice-magenta font-black text-xl italic">01. 기준점 잡기</div>
               <p className="text-sm text-gray-400 leading-relaxed">
-                각 콘서트의 <strong className="text-white">마스터 타임라인(0:00)</strong>은 공연이 완전히 시작되는 첫 순간입니다. 보통 오프닝 VCR이 시작되거나 인트로 문구(<span className="text-twice-apricot">"This is for..."</span>)가 화면에 나타나는 시점을 0초로 잡습니다.
+                각 콘서트의 <strong className="text-white">마스터 타임라인(0:00)</strong>은 공연이 완전히 시작되는 첫 순간입니다. 보통 오프닝 VCR이 시작되거나 첫 가사(<span className="text-twice-apricot">"This is for..."</span>)가 들리는 시점을 0초로 잡습니다.
               </p>
             </div>
 
