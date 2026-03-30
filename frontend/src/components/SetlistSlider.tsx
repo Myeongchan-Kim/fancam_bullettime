@@ -32,7 +32,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
 
   // Setlist Editor State
   const [selectedItemId, setSelectedItemId] = useState<number | null>(null);
-  const [editTime, setEditTime] = useState("");
+  const [editTime, setEditTime] = useState<number | string>(0);
   const [isUpdating, setIsUpdating] = useState(false);
 
   // Sync editor state when concert or item changes
@@ -40,10 +40,10 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
     if (activeConcert?.setlist && activeConcert.setlist.length > 0) {
       const firstItem = activeConcert.setlist[0];
       setSelectedItemId(firstItem.id);
-      setEditTime(secondsToMMSS(firstItem.start_time));
+      setEditTime(firstItem.start_time || 0);
     } else {
       setSelectedItemId(null);
-      setEditTime("");
+      setEditTime(0);
     }
   }, [selectedConcert, activeConcert]);
 
@@ -51,24 +51,12 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
     const id = parseInt(e.target.value);
     setSelectedItemId(id);
     const item = activeConcert?.setlist?.find(i => i.id === id);
-    if (item) setEditTime(secondsToMMSS(item.start_time));
+    if (item) setEditTime(item.start_time || 0);
   };
-
-  function secondsToMMSS(sec: number) {
-    const m = Math.floor(sec / 60);
-    const s = Math.floor(sec % 60);
-    return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  }
-
-  function mmssToSeconds(str: string) {
-    const parts = str.split(':');
-    if (parts.length !== 2) return 0;
-    return parseInt(parts[0]) * 60 + parseInt(parts[1]);
-  }
 
   const handleUpdate = async () => {
     if (!selectedItemId) return;
-    const seconds = mmssToSeconds(editTime);
+    const seconds = typeof editTime === 'string' ? parseFloat(editTime) : editTime;
     
     setIsUpdating(true);
     try {
@@ -307,8 +295,9 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                 <div className="flex gap-2">
                   <div className="relative flex-grow">
                     <input 
-                      type="text"
-                      placeholder="MM:SS (e.g. 05:24)"
+                      type="number"
+                      step="0.01"
+                      placeholder="Seconds (e.g. 324.5)"
                       value={editTime}
                       onChange={(e) => setEditTime(e.target.value)}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-xs text-white font-mono font-bold outline-none focus:ring-2 focus:ring-twice-magenta transition-all"
