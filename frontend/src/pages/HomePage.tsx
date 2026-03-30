@@ -4,7 +4,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Search, ExternalLink, Compass, Youtube } from 'lucide-react';
 import { Video, Song, Concert } from '../types';
 import { API_BASE_URL } from '../constants';
-import VideoPlayerModal from '../components/VideoPlayerModal';
 import StageMap from '../components/StageMap';
 import SetlistSlider from '../components/SetlistSlider';
 import NewVideoSuggestionModal from '../components/NewVideoSuggestionModal';
@@ -32,7 +31,6 @@ const HomePage = () => {
   const endOrder = parseInt(searchParams.get('end') || effectiveMaxOrder.toString(), 10) || effectiveMaxOrder;
   const searchQuery = searchParams.get('q') || '';
 
-  const [activeVideo, setActiveVideo] = useState<Video | null>(null);
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
@@ -151,7 +149,6 @@ const HomePage = () => {
 
   return (
     <div className="space-y-12">
-      {activeVideo && <VideoPlayerModal video={activeVideo} onClose={() => setActiveVideo(null)} />}
       {showNewVideoModal && <NewVideoSuggestionModal songs={songs} concerts={concerts} onClose={() => setShowNewVideoModal(false)} />}
       {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(); }} />}
 
@@ -165,7 +162,6 @@ const HomePage = () => {
             <StageMap 
               angle="Unknown" 
               videos={videos} 
-              onPlayVideo={setActiveVideo}
               sizeClass="w-[45rem]"
             />
           </div>
