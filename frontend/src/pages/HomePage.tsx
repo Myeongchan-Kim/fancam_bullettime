@@ -154,7 +154,7 @@ const HomePage = () => {
     if (sentinel) observer.observe(sentinel);
 
     return () => observer.disconnect();
-  }, [visibleCount, filteredVideos.length]);
+  }, [visibleCount, filteredVideos.length, isLoading]);
 
   const fetchInitialData = async () => {
     try {
