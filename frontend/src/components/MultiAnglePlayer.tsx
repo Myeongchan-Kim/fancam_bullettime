@@ -39,10 +39,12 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       const isFullConcert = t.includes('full concert') || t.includes('full show') || t.includes('full live') || t.includes('full-concert');
       if (isFullConcert) return true;
 
-      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
-      const BUFFER = 5; 
+      // Tight Time-based filtering (fancams)
+      const PADDING = 30; // 30s as requested by the user
+      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 0; 
 
-      const hasStarted = currentConcertTime >= (v.sync_offset - BUFFER);      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + BUFFER);
+      const hasStarted = currentConcertTime >= (v.sync_offset - PADDING);
+      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + PADDING);
 
       return hasStarted && !hasEnded;
     });
