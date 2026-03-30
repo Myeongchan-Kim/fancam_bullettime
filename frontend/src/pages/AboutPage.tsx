@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, Heart, Github, Youtube, Copy, Check, Sparkles, MessageSquareHeart, Zap, Info, View } from 'lucide-react';
+import { Heart, Github, Youtube, Copy, Check, MessageSquareHeart, Zap, View } from 'lucide-react';
 
 const AboutPage = () => {
   const [copied, setCopied] = useState(false);

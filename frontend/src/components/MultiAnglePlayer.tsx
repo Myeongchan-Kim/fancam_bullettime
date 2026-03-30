@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-import { Maximize2, VolumeX, ExternalLink } from 'lucide-react';
+import { Maximize2, ExternalLink } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Video } from '../types';
 

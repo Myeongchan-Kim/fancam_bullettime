@@ -37,26 +37,6 @@ const VideoDetailPage = () => {
     duration: '0' as string | number
   });
   
-  // 곡 선택 시 마스터 타임라인 오프셋 자동 채우기
-  const handleSongChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const selectedIds = Array.from(e.target.selectedOptions, option => parseInt(option.value));
-    
-    if (selectedIds.length > 0 && video?.concert?.setlist) {
-      const firstSongId = selectedIds[0];
-      const setlistItem = video.concert.setlist.find(sl => sl.song_id === firstSongId);
-      
-      if (setlistItem && setlistItem.start_time > 0) {
-        setEditData(prev => ({
-          ...prev, 
-          song_ids: selectedIds,
-          sync_offset: setlistItem.start_time
-        }));
-        return;
-      }
-    }
-    setEditData(prev => ({ ...prev, song_ids: selectedIds }));
-  };
-  
   const [isEditing, setIsEditing] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 

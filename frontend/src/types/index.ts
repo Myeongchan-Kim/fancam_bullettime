@@ -37,6 +37,7 @@ export interface Video {
   coordinate_y: number | null;
   sync_offset: number;
   duration: number;
+  is_shorts: boolean;
   created_at: string;
   songs?: Song[];
   concert?: Concert;
