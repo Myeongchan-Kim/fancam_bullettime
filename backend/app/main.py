@@ -354,23 +354,56 @@ def create_contribution(
 @app.get("/api/videos/{video_id}/contributions", response_model=List[ContributionBase])
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
     results = db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+    
+    output = []
     for r in results:
-        r.suggested_song_ids = ensure_list(r.suggested_song_ids)
-        r.suggested_members = ensure_list(r.suggested_members)
-    return results
+        output.append({
+            "id": r.id,
+            "video_id": r.video_id,
+            "video_title": r.video.title if r.video else None,
+            "suggested_url": r.suggested_url,
+            "suggested_title": r.suggested_title,
+            "suggested_song_id": r.suggested_song_id,
+            "suggested_song_ids": ensure_list(r.suggested_song_ids),
+            "suggested_concert_id": r.suggested_concert_id,
+            "suggested_members": ensure_list(r.suggested_members),
+            "suggested_duration": r.suggested_duration,
+            "suggested_angle": r.suggested_angle,
+            "suggested_coordinate_x": r.suggested_coordinate_x,
+            "suggested_coordinate_y": r.suggested_coordinate_y,
+            "suggested_sync_offset": r.suggested_sync_offset,
+            "is_processed": r.is_processed,
+            "created_at": r.created_at
+        })
+        
+    return output
 
 @app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
-    # Populate video_title from relationship and apply ensure_list
+    
+    output = []
     for r in results:
-        if r.video:
-            r.video_title = r.video.title
-        
-        r.suggested_song_ids = ensure_list(r.suggested_song_ids)
-        r.suggested_members = ensure_list(r.suggested_members)
+        output.append({
+            "id": r.id,
+            "video_id": r.video_id,
+            "video_title": r.video.title if r.video else None,
+            "suggested_url": r.suggested_url,
+            "suggested_title": r.suggested_title,
+            "suggested_song_id": r.suggested_song_id,
+            "suggested_song_ids": ensure_list(r.suggested_song_ids),
+            "suggested_concert_id": r.suggested_concert_id,
+            "suggested_members": ensure_list(r.suggested_members),
+            "suggested_duration": r.suggested_duration,
+            "suggested_angle": r.suggested_angle,
+            "suggested_coordinate_x": r.suggested_coordinate_x,
+            "suggested_coordinate_y": r.suggested_coordinate_y,
+            "suggested_sync_offset": r.suggested_sync_offset,
+            "is_processed": r.is_processed,
+            "created_at": r.created_at
+        })
             
-    return results
+    return output
 
 def internal_approve_contribution(db: Session, contribution_id: int):
     """Internal helper to approve a single contribution. Does NOT commit."""
