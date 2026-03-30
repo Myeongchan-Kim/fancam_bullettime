@@ -202,21 +202,6 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
             })}
           </div>
         </div>
-
-        <div className="grid grid-cols-2 gap-10 pt-8 border-t border-white/5">
-          <div className="space-y-1">
-            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white">Start Track</span>
-            <div className="text-xs text-white font-bold truncate border-l-2 border-twice-magenta pl-3 bg-white/5 py-2 rounded-r-lg">
-              {getSongName(clampedStart)}
-            </div>
-          </div>
-          <div className="space-y-1 text-right">
-            <span className="text-[9px] font-black text-twice-magenta/50 uppercase tracking-widest block text-white text-right">End Track</span>
-            <div className="text-xs text-white font-bold truncate border-r-2 border-twice-magenta pr-3 bg-white/5 py-2 rounded-l-lg text-right">
-              {getSongName(clampedEnd)}
-            </div>
-          </div>
-        </div>
       </div>
       {showTimeline && activeConcert && (
         <ConcertTimelineModal concert={activeConcert} onClose={() => setShowTimeline(false)} />
