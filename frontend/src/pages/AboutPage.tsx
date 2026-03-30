@@ -100,10 +100,10 @@ const AboutPage = () => {
           <MessageSquareHeart className="text-twice-magenta w-12 h-12" />
         </div>
         <div className="flex-grow text-center md:text-left space-y-4">
-          <h2 className="text-2xl font-bold text-white">함께 꿈을 현실로 만들어주세요</h2>
+          <h2 className="text-2xl font-bold text-white">여러분의 제보를 기다립니다</h2>
           <p className="text-gray-500">
-            부족한 데이터, 어긋난 싱크, 누락된 영상 제보... 그 어떤 의견도 소중합니다. <br/>
-            원스 여러분의 작은 참여가 우리가 꿈꾸는 360도 아카이브를 완성하는 가장 큰 힘이 됩니다.
+            데이터 오류, 어긋난 싱크, 혹은 누락된 새로운 영상 제보 등 아카이브를 풍성하게 만들 수 있는 모든 의견을 환영합니다. <br/>
+            여러분의 참여로 트와이스의 모든 순간을 더 완벽하게 기록할 수 있습니다.
           </p>
         </div>
         <div className="shrink-0 space-y-3 w-full md:w-auto">
