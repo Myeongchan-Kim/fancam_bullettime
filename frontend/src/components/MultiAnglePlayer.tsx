@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, ExternalLink } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 
 interface MultiAnglePlayerProps {
@@ -12,6 +12,10 @@ const SYNC_THRESHOLD = 0.5; // seconds difference before forcing seek
 
 const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const initialTime = parseInt(queryParams.get('t') || '0', 10);
+
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
@@ -144,17 +148,21 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
   const setAsMaster = (id: number) => {
     if (id === masterId) return;
-    
+
     // Pause current master to avoid overlapping audio
     const oldMasterPlayer = players[masterId];
     if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function' && oldMasterPlayer.getIframe()) {
       oldMasterPlayer.pauseVideo();
     }
 
-    // Crucial: Update URL first. This triggers VideoDetailPage to re-fetch,
-    // which eventually updates MultiAnglePlayer's videos prop.
-    navigate(`/video/${id}`, { replace: true });
-    
+    // Calculate the target time for the new master video based on current concert time
+    const newMaster = videos.find(v => v.id === id);
+    const targetTime = newMaster ? Math.max(0, currentConcertTimeRef.current - (newMaster.sync_offset || 0)) : 0;
+
+    // Crucial: Update URL first. Pushing to history allows the back button to work.
+    // The ?t= param ensures the new video starts at the exact synchronized time.
+    navigate(`/video/${id}?t=${Math.floor(targetTime)}`);
+
     setMasterId(id);
     setIsPlaying(false);
   };
@@ -166,9 +174,9 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       autoplay: 1 as const,
       modestbranding: 1 as const,
       rel: 0 as const,
+      start: initialTime,
     },
   };
-
   const optsSlave = {
     width: '100%',
     height: '100%',
