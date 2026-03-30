@@ -212,7 +212,7 @@ const VideoDetailPage = () => {
 
       {/* Multi-Angle Sync Player (Default View) */}
       <section className="animate-in fade-in zoom-in-95 duration-500">
-        <MultiAnglePlayer videos={[video, ...relatedVideos].slice(0, 12)} />
+        <MultiAnglePlayer videos={[video, ...relatedVideos]} />
       </section>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
