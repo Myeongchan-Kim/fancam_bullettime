@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import VideoDetailPage from './pages/VideoDetailPage';
 import AboutPage from './pages/AboutPage';
 import { Candy } from 'lucide-react';
+import { API_BASE_URL } from './constants';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -24,9 +25,16 @@ function App() {
             <div className="flex items-center justify-between h-16">
               <Link to="/" className="flex items-center space-x-2">
                 <Candy className="h-8 w-8 text-twice-magenta" />
-                <span className="text-2xl font-black uppercase tracking-tighter italic twice-text-gradient">
-                  TWICE World Tour 360° Fancam Archive
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-2xl font-black uppercase tracking-tighter italic twice-text-gradient leading-tight">
+                    TWICE World Tour 360° Fancam Archive
+                  </span>
+                  {import.meta.env.DEV && (
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none ml-1">
+                      Dev Mode • API: {API_BASE_URL.replace('http://', '').replace('https://', '')}
+                    </span>
+                  )}
+                </div>
               </Link>
               <div className="flex space-x-4">
                 <Link to="/" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">Home</Link>
