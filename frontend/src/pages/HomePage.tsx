@@ -34,6 +34,7 @@ const HomePage = () => {
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
   const [visibleCount, setVisibleCount] = useState(12);
+  const [isLoading, setIsLoading] = useState(true);
   const adminKey = localStorage.getItem('admin_key') || '';
 
   // Local state for the input field to make it snappy
@@ -134,6 +135,7 @@ const HomePage = () => {
   };
 
   const fetchVideos = async () => {
+    setIsLoading(true);
     try {
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
@@ -144,7 +146,11 @@ const HomePage = () => {
       }
       const res = await axios.get(url);
       setVideos(res.data);
-    } catch (err) { console.error("Error fetching videos", err); }
+    } catch (err) { 
+      console.error("Error fetching videos", err); 
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -205,7 +211,7 @@ const HomePage = () => {
         <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center gap-2 text-white min-w-max">
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
-            <span>{filteredVideos.length} Performances Found</span>
+            <span>{isLoading ? 'Searching...' : `${filteredVideos.length} Performances Found`}</span>
           </h2>
           
           {/* Real-time Text Filter */}
@@ -243,58 +249,67 @@ const HomePage = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
-          {filteredVideos.slice(0, visibleCount).map(video => (
-            <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
-              <div className="aspect-video relative overflow-hidden">
-                <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
-                <div className="absolute top-2 left-2 flex flex-wrap gap-1">
-                  {video.members?.slice(0, 3).map(m => (
-                    <span key={m} className="bg-twice-magenta/90 text-white px-2 py-0.5 text-[8px] font-black rounded uppercase tracking-wider shadow-lg">{m}</span>
-                  ))}
-                  {video.members?.length > 3 && <span className="bg-black/60 text-white px-2 py-0.5 text-[8px] font-bold rounded">+{video.members.length - 3}</span>}
-                </div>
-                <div className="absolute bottom-2 left-2 flex gap-1">
-                  {video.is_shorts && (
-                    <span className="bg-red-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
-                      <Youtube className="h-2 w-2" /> SHORTS
-                    </span>
-                  )}
-                  {video.angle !== "Unknown" && (
-                    <span className="bg-indigo-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
-                      <Compass className="h-2 w-2" /> {video.angle.split(' ')[0]}
-                    </span>
-                  )}
-                </div>
-                <div className="absolute inset-0 bg-twice-magenta/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <ExternalLink className="h-10 w-10 text-white drop-shadow-2xl scale-75 group-hover:scale-100 transition-transform duration-300" />
-                </div>
-              </div>
-              <div className="p-4 space-y-2 bg-slate-900/50">
-                <h3 className="font-bold text-sm line-clamp-2 text-white group-hover:text-twice-apricot transition-colors leading-tight">{video.title}</h3>
-                <div className="flex items-center text-[10px] text-gray-500 space-x-2 font-black uppercase tracking-tighter opacity-70">
-                  <span className="truncate max-w-[100px]">{video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
-                  <span className="opacity-30">•</span>
-                  <span>{video.concert?.city || 'Unknown City'}</span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
+        {isLoading ? (
+          <div className="flex flex-col items-center justify-center py-32 space-y-4">
+            <div className="w-12 h-12 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
+            <p className="text-sm font-bold text-gray-500 uppercase tracking-widest">Loading Videos...</p>
+          </div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
+              {filteredVideos.slice(0, visibleCount).map(video => (
+                <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
+                  <div className="aspect-video relative overflow-hidden">
+                    <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
+                    <div className="absolute top-2 left-2 flex flex-wrap gap-1">
+                      {video.members?.slice(0, 3).map(m => (
+                        <span key={m} className="bg-twice-magenta/90 text-white px-2 py-0.5 text-[8px] font-black rounded uppercase tracking-wider shadow-lg">{m}</span>
+                      ))}
+                      {video.members?.length > 3 && <span className="bg-black/60 text-white px-2 py-0.5 text-[8px] font-bold rounded">+{video.members.length - 3}</span>}
+                    </div>
+                    <div className="absolute bottom-2 left-2 flex gap-1">
+                      {video.is_shorts && (
+                        <span className="bg-red-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
+                          <Youtube className="h-2 w-2" /> SHORTS
+                        </span>
+                      )}
+                      {video.angle !== "Unknown" && (
+                        <span className="bg-indigo-600/90 text-white px-2 py-0.5 text-[8px] font-black rounded flex items-center gap-1 shadow-lg">
+                          <Compass className="h-2 w-2" /> {video.angle.split(' ')[0]}
+                        </span>
+                      )}
+                    </div>
+                    <div className="absolute inset-0 bg-twice-magenta/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <ExternalLink className="h-10 w-10 text-white drop-shadow-2xl scale-75 group-hover:scale-100 transition-transform duration-300" />
+                    </div>
+                  </div>
+                  <div className="p-4 space-y-2 bg-slate-900/50">
+                    <h3 className="font-bold text-sm line-clamp-2 text-white group-hover:text-twice-apricot transition-colors leading-tight">{video.title}</h3>
+                    <div className="flex items-center text-[10px] text-gray-500 space-x-2 font-black uppercase tracking-tighter opacity-70">
+                      <span className="truncate max-w-[100px]">{video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
+                      <span className="opacity-30">•</span>
+                      <span>{video.concert?.city || 'Unknown City'}</span>
+                    </div>
+                  </div>
+                </Link>
+              ))}
+            </div>
 
-        {/* Scroll Sentinel */}
-        {filteredVideos.length > visibleCount && (
-          <div id="scroll-sentinel" className="h-20 flex items-center justify-center">
-            <div className="w-6 h-6 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
-          </div>
-        )}
-        
-        {filteredVideos.length === 0 && (
-          <div className="text-center py-32 text-gray-600">
-            <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
-            <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
-            <button onClick={resetFilters} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
-          </div>
+            {/* Scroll Sentinel */}
+            {filteredVideos.length > visibleCount && (
+              <div id="scroll-sentinel" className="h-20 flex items-center justify-center">
+                <div className="w-6 h-6 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
+              </div>
+            )}
+            
+            {filteredVideos.length === 0 && (
+              <div className="text-center py-32 text-gray-600">
+                <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
+                <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
+                <button onClick={resetFilters} className="mt-4 text-xs text-twice-magenta font-bold hover:underline">Reset Filters</button>
+              </div>
+            )}
+          </>
         )}
       </div>
     </div>
