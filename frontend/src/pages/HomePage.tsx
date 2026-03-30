@@ -73,14 +73,7 @@ const HomePage = () => {
   }, [videos, searchQuery]);
 
   const resetFilters = () => {
-    setSearchParams(prev => {
-      prev.delete('concert');
-      prev.set('start', '1');
-      prev.set('end', maxSongOrder.toString());
-      prev.delete('q');
-      prev.delete('shorts');
-      return prev;
-    }, { replace: true });
+    setSearchParams(new URLSearchParams(), { replace: true });
     setLocalSearch(''); // Clear local input immediately
   };
 
@@ -140,10 +133,17 @@ const HomePage = () => {
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (shortsOnly) url += `shorts_only=true&`;
-      if (songs.length > 0) {
-        url += `start_order=${startOrder}&end_order=${endOrder}&`;
-        if (endOrder >= effectiveMaxOrder) url += `untagged=true&`;
+      
+      // Only send order params if they are actually filtering (not full range)
+      // OR if a concert is selected (where setlist order matters)
+      const isFullRange = startOrder === 1 && endOrder >= effectiveMaxOrder;
+      if (!isFullRange || selectedConcert) {
+        if (songs.length > 0) {
+          url += `start_order=${startOrder}&end_order=${endOrder}&`;
+          if (endOrder >= effectiveMaxOrder) url += `untagged=true&`;
+        }
       }
+      
       const res = await axios.get(url);
       setVideos(res.data);
     } catch (err) { 
