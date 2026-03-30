@@ -18,9 +18,20 @@ from sqlalchemy.orm import sessionmaker
 
 from app.crawler.recheck_worker import run_recheck_job, recheck_status
 
+import threading
+
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Cache for video list API
+VIDEO_CACHE = {}
+CACHE_LOCK = threading.Lock()
+
+def clear_video_cache():
+    with CACHE_LOCK:
+        VIDEO_CACHE.clear()
+        logger.info("🧹 Video cache cleared due to data update.")
 
 # 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./twice_fancam.db")
@@ -156,6 +167,12 @@ def get_videos(
     shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
+    # 0. Check Cache
+    cache_key = f"{song_id}_{start_order}_{end_order}_{concert_id}_{member}_{angle}_{untagged}_{shorts_only}"
+    with CACHE_LOCK:
+        if cache_key in VIDEO_CACHE:
+            return VIDEO_CACHE[cache_key]
+
     query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
 
     # 0. 쇼츠 전용 필터링
@@ -229,9 +246,21 @@ def get_videos(
         query = query.filter(Video.angle == angle)
         
     results = query.distinct().order_by(Video.created_at.desc()).all()
+    
+    # 3. Post-process and Cache
+    final_results = []
     for v in results:
+        # We need to manually construct the dictionary or ensure objects are serializable
+        # to avoid session detachment issues during caching.
+        # However, for simplicity and since we use joinedload, we can cache the objects
+        # IF we don't access lazy attributes later.
         v.members = ensure_list(v.members)
-    return results
+        final_results.append(v)
+    
+    with CACHE_LOCK:
+        VIDEO_CACHE[cache_key] = final_results
+        
+    return final_results
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
@@ -262,6 +291,7 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
         setattr(db_video, key, value)
     
     db.commit()
+    clear_video_cache() # Invalidate cache
     db.refresh(db_video)
     # Refresh with joined load to return full detail
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
@@ -314,6 +344,9 @@ def create_general_contribution(
     db.refresh(new_contrib)
 
     _maybe_auto_approve(db, new_contrib.id)
+    # If auto-approved, video list might have changed
+    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+        clear_video_cache()
             
     return new_contrib
 
@@ -348,6 +381,8 @@ def create_contribution(
     db.refresh(new_contrib)
 
     _maybe_auto_approve(db, new_contrib.id)
+    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+        clear_video_cache()
         
     return new_contrib
 
@@ -455,6 +490,7 @@ def approve_contribution(
     try:
         video = internal_approve_contribution(db, contribution_id)
         db.commit() # Atomic commit
+        clear_video_cache() # Data changed!
         result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
         if not result:
             raise Exception("Video not found after approval")
@@ -483,6 +519,7 @@ def approve_all_contributions(
             continue
             
     db.commit()
+    clear_video_cache() # All data might have changed
     return {"message": f"Successfully approved {count} contributions", "errors": errors}
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
