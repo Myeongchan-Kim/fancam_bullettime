@@ -353,7 +353,11 @@ def create_contribution(
 
 @app.get("/api/videos/{video_id}/contributions", response_model=List[ContributionBase])
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
-    return db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+    results = db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+    for r in results:
+        r.suggested_song_ids = ensure_list(r.suggested_song_ids)
+        r.suggested_members = ensure_list(r.suggested_members)
+    return results
 
 @app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
