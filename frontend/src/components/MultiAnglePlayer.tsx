@@ -41,7 +41,7 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
 
       // Tight Time-based filtering (fancams)
       const PADDING = 30; // 30s as requested by the user
-      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 0; 
+      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
 
       const hasStarted = currentConcertTime >= (v.sync_offset - PADDING);
       const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + PADDING);
