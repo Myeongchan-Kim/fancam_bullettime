@@ -8,7 +8,14 @@ import StageMap from '../components/StageMap';
 import SetlistSlider from '../components/SetlistSlider';
 import NewVideoSuggestionModal from '../components/NewVideoSuggestionModal';
 import AdminPendingContributionsModal from '../components/AdminPendingContributionsModal';
-import { ShieldCheck } from 'lucide-react';
+import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
+
+const FEATURED_SYNC_VIDEOS = [
+  { id: 1061, title: 'FANCY', subtitle: 'Taipei 2026', img: 'https://img.youtube.com/vi/9VNa8agq6NE/hqdefault.jpg' },
+  { id: 1137, title: 'Feel Special', subtitle: 'Incheon 2025 (Momo & Sana)', img: 'https://img.youtube.com/vi/s0pW12v94iM/hqdefault.jpg' },
+  { id: 215, title: 'MOVE LIKE THAT', subtitle: 'Incheon 2025 (Momo Solo)', img: 'https://img.youtube.com/vi/GjYn7_yvGZk/hqdefault.jpg' },
+  { id: 597, title: 'CHESS', subtitle: 'Incheon 2025 (Dahyun Solo)', img: 'https://img.youtube.com/vi/sP2l33b-qL0/hqdefault.jpg' },
+];
 
 const HomePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -235,6 +242,42 @@ const HomePage = () => {
           />
         </div>
       </section>
+
+      {/* Featured Multi-Angle Section */}
+      {(!searchQuery && !selectedConcert) && (
+        <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div className="flex items-center gap-3">
+              <Star className="h-5 w-5 text-yellow-500 fill-yellow-500" />
+              <h2 className="text-xl font-black text-white uppercase tracking-widest italic">Featured Multi-Angle Syncs</h2>
+              <span className="hidden sm:inline-block text-[10px] bg-yellow-500/20 text-yellow-500 px-2 py-0.5 rounded font-bold ml-2 border border-yellow-500/30">Editor's Pick</span>
+            </div>
+            <p className="hidden md:block text-[10px] font-bold text-gray-500 uppercase tracking-widest">
+              Experience the perfect 360° stage
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {FEATURED_SYNC_VIDEOS.map((featured) => (
+              <Link to={`/video/${featured.id}`} key={featured.id} className="group relative rounded-2xl overflow-hidden border border-yellow-500/30 hover:border-yellow-400 transition-all hover:shadow-[0_0_30px_rgba(234,179,8,0.2)]">
+                <div className="aspect-video w-full bg-black relative">
+                  <img src={featured.img} alt={featured.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-90 transition-opacity duration-300" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
+                  
+                  {/* Floating Play Button */}
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <PlayCircle className="w-12 h-12 text-white opacity-80 group-hover:scale-110 group-hover:text-yellow-400 transition-all duration-300 drop-shadow-2xl" />
+                  </div>
+                  
+                  <div className="absolute bottom-4 left-4 right-4">
+                    <h3 className="text-white font-black text-lg uppercase tracking-tight leading-none group-hover:text-yellow-400 transition-colors drop-shadow-md">{featured.title}</h3>
+                    <p className="text-yellow-500/80 text-[10px] font-bold uppercase tracking-widest mt-1 truncate">{featured.subtitle}</p>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Video Grid Section */}
       <div className="space-y-6">
