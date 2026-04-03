@@ -82,8 +82,8 @@ async def startup_event():
 origins = [
     "http://localhost:5173",
     "http://localhost:3000",
-    "https://twice-fancam-archive.vercel.app", # 회원님의 프론트엔드 실제 주소 (나중에 수정 가능)
-    "*" # 개발 시에는 전체 허용, 보안이 필요하면 위 주소들로 제한
+    "https://twice-fancam-archive.vercel.app",
+    "https://fancam-bullettime.vercel.app", # 현재 실제 배포 주소
 ]
 
 app.add_middleware(
