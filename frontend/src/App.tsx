@@ -29,11 +29,12 @@ function App() {
               <Link to="/" className="flex items-center space-x-2">
                 <Candy className="h-8 w-8 text-twice-magenta" />
                 <div className="flex flex-col">
-                  <span className="text-2xl font-black uppercase tracking-tighter italic twice-text-gradient leading-tight">
-                    TWICE World Tour 360° Fancam Archive
+                  <span className="text-base sm:text-2xl font-black uppercase tracking-tighter italic twice-text-gradient leading-tight">
+                    <span className="sm:hidden">TWICE 360° ARCHIVE</span>
+                    <span className="hidden sm:inline">TWICE World Tour 360° Fancam Archive</span>
                   </span>
                   {import.meta.env.DEV && (
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none ml-1">
+                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none ml-1 hidden sm:block">
                       Dev Mode • API: {API_BASE_URL.replace('http://', '').replace('https://', '')}
                     </span>
                   )}
