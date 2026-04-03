@@ -59,11 +59,11 @@ const StageMap: React.FC<StageMapProps> = ({
   };
 
   return (
-    <div className="flex flex-col items-center justify-center w-full transition-all overflow-visible">
+    <div className={`flex flex-col items-center justify-center transition-all overflow-visible ${sizeClass}`}>
       <div 
         ref={mapRef}
         onClick={handleMapClick}
-        className={`relative aspect-square flex items-center justify-center overflow-visible ${sizeClass} ${onPosSelect ? 'cursor-crosshair hover:bg-slate-700/20 transition-colors rounded-full' : ''}`}
+        className={`relative w-full aspect-square flex items-center justify-center overflow-visible ${onPosSelect ? 'cursor-crosshair hover:bg-slate-700/20 transition-colors rounded-full' : ''}`}
       >
         {/* Dial Background */}
         <div className="absolute inset-0 rounded-full border-4 border-slate-900 shadow-[inset_0_0_80px_rgba(0,0,0,0.8)] scale-110 bg-slate-900/10 pointer-events-none"></div>
@@ -168,20 +168,20 @@ const StageMap: React.FC<StageMapProps> = ({
           return null;
         })}
 
-        {/* Integrated Stage with Precise PIT Layout - Adjusted Width */}
-        <div className="relative w-[32rem] h-32 flex items-center justify-center z-10 pointer-events-none text-white shrink-0" style={{ transform: `scale(${stageScale})` }}>
+        {/* Integrated Stage with Precise PIT Layout - Responsive scaling relative to circle */}
+        <div className="relative w-[70%] h-[12%] flex items-center justify-center z-10 pointer-events-none text-white shrink-0" style={{ transform: `scale(${stageScale})` }}>
           {/* Main Huge Stage Body */}
           <div className="absolute w-full h-full bg-slate-700/80 rounded-lg shadow-2xl flex items-center justify-center border-2 border-slate-600/50 overflow-hidden">
-            <span className="text-[12px] font-black tracking-[1.5em] uppercase opacity-30">Stage</span>
+            <span className="text-[10px] sm:text-[12px] font-black tracking-[0.5em] sm:tracking-[1.5em] uppercase opacity-30">Stage</span>
           </div>
           
           {/* PIT 2 (Top Right Cutout) */}
-          <div className="absolute top-0 right-12 w-36 h-24 bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
+          <div className="absolute top-0 right-[15%] w-[35%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             PIT 2
           </div>
           
           {/* PIT 1 (Bottom Left Cutout) */}
-          <div className="absolute bottom-0 left-12 w-36 h-24 bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
+          <div className="absolute bottom-0 left-[15%] w-[35%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             PIT 1
           </div>
         </div>
