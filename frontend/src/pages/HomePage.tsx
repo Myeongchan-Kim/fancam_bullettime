@@ -205,7 +205,7 @@ const HomePage = () => {
             <StageMap 
               angle="Unknown" 
               videos={videos} 
-              sizeClass="w-[45rem]"
+              sizeClass="w-full max-w-[45rem]"
             />
           </div>
         </div>
