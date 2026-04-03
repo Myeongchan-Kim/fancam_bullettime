@@ -200,7 +200,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   return (
     <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-950 p-4 xl:p-6">
       {/* ㅢ Layout Container: Grid on XL, Flex on mobile */}
-      <div className="grid grid-cols-1 xl:grid-cols-4 xl:grid-rows-[auto_1fr] gap-4 xl:gap-6">
+      <div className="grid grid-cols-1 xl:grid-cols-5 xl:grid-rows-[auto_1fr] gap-4 xl:gap-6">
         
         {/* Master View (Top-Left) - Spans 3 columns */}
         <div className="xl:col-span-3 flex flex-col min-w-0">
@@ -236,8 +236,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           </div>
         </div>
 
-        {/* Side Slaves (Right Sidebar) - Spans the right-most column */}
-        <div className="xl:col-span-1 xl:row-span-2 flex flex-col space-y-4 max-h-[600px] xl:max-h-[850px] overflow-y-auto no-scrollbar min-w-0">
+        {/* Side Slaves (Right Sidebar) - Spans the right-most 2 columns */}
+        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 max-h-[600px] xl:max-h-[850px] overflow-y-auto no-scrollbar min-w-0">
           <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
             <div className="h-px flex-1 bg-slate-800"></div>
             SIDE ANGLES
@@ -282,7 +282,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           )}
         </div>
 
-        {/* Bottom Slaves (Horizontal Flow) - Fills the space below Master */}
+        {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
         {slaveVideos.length > 3 && (
           <div className="xl:col-span-3 flex flex-col space-y-4">
             <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
