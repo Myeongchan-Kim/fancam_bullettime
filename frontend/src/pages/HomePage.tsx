@@ -11,10 +11,10 @@ import AdminPendingContributionsModal from '../components/AdminPendingContributi
 import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
 
 const FEATURED_SYNC_VIDEOS = [
-  { id: 1061, title: 'FANCY', subtitle: 'Taipei 2026', img: 'https://img.youtube.com/vi/9VNa8agq6NE/hqdefault.jpg' },
-  { id: 1137, title: 'Feel Special', subtitle: 'Incheon 2025 (Momo & Sana)', img: 'https://img.youtube.com/vi/s0pW12v94iM/hqdefault.jpg' },
   { id: 215, title: 'MOVE LIKE THAT', subtitle: 'Incheon 2025 (Momo Solo)', img: 'https://img.youtube.com/vi/GjYn7_yvGZk/hqdefault.jpg' },
   { id: 597, title: 'CHESS', subtitle: 'Incheon 2025 (Dahyun Solo)', img: 'https://img.youtube.com/vi/sP2l33b-qL0/hqdefault.jpg' },
+  { id: 1137, title: 'Feel Special', subtitle: 'Incheon 2025 (Momo & Sana)', img: 'https://img.youtube.com/vi/s0pW12v94iM/hqdefault.jpg' },
+  { id: 43, title: 'In my room', subtitle: 'Incheon 2025 (Chaeyoung Solo)', img: 'https://img.youtube.com/vi/6S6W8a6ZJk8/hqdefault.jpg' },
 ];
 
 const HomePage = () => {
