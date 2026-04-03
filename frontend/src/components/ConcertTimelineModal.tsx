@@ -10,10 +10,13 @@ interface ConcertTimelineModalProps {
 }
 
 const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, onClose, onSelect }) => {
-  const formatTime = (seconds: number) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  const formatTime = (seconds: number | null) => {
+    if (seconds === null) return "--:--";
+    const absoluteSeconds = Math.abs(seconds);
+    const mins = Math.floor(absoluteSeconds / 60);
+    const secs = Math.floor(absoluteSeconds % 60);
+    const formatted = `${mins}:${secs.toString().padStart(2, '0')}`;
+    return seconds < 0 ? `-${formatted}` : formatted;
   };
 
   // Use createPortal to render the modal at the document root to avoid parent clipping/z-index issues
@@ -38,12 +41,12 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
               <div 
                 key={item.id} 
                 onClick={() => {
-                  if (onSelect && item.start_time > 0) {
+                  if (onSelect && item.start_time !== null) {
                     onSelect(item.start_time);
                     onClose();
                   }
                 }}
-                className={`group flex items-center gap-4 p-4 bg-slate-800/40 hover:bg-slate-800 border border-slate-800 hover:border-twice-magenta/30 rounded-2xl transition-all ${onSelect && item.start_time > 0 ? 'cursor-pointer active:scale-[0.98]' : ''}`}
+                className={`group flex items-center gap-4 p-4 bg-slate-800/40 hover:bg-slate-800 border border-slate-800 hover:border-twice-magenta/30 rounded-2xl transition-all ${onSelect && item.start_time !== null ? 'cursor-pointer active:scale-[0.98]' : 'opacity-60 grayscale-[0.5]'}`}
               >
                 <div className="w-10 h-10 bg-slate-900 rounded-xl flex items-center justify-center text-[10px] font-black text-gray-500 group-hover:text-twice-magenta transition-colors">
                   #{ (idx + 1).toString().padStart(2, '0') }
@@ -55,11 +58,12 @@ const ConcertTimelineModal: React.FC<ConcertTimelineModalProps> = ({ concert, on
                   <div className="flex items-center gap-2 mt-1">
                     {item.song?.is_solo && <span className="text-[8px] bg-twice-magenta/20 text-twice-magenta px-1.5 py-0.5 rounded font-black uppercase">{item.song.member_name} Solo</span>}
                     {item.song?.name && !item.song.is_solo && <span className="text-[8px] bg-slate-700 text-gray-400 px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1"><Music className="h-2 w-2" /> Song Tag</span>}
+                    {item.event_name && !item.song && <span className="text-[8px] bg-twice-apricot/20 text-twice-apricot px-1.5 py-0.5 rounded font-black uppercase tracking-widest">Custom Scene</span>}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 px-4 py-2 bg-slate-950 rounded-xl border border-white/5">
-                  <Clock className="h-3 w-3 text-twice-magenta" />
-                  <span className="text-sm font-black font-mono text-white leading-none pt-0.5">
+                  <Clock className={`h-3 w-3 ${item.start_time !== null ? 'text-twice-magenta' : 'text-gray-600'}`} />
+                  <span className={`text-sm font-black font-mono leading-none pt-0.5 ${item.start_time !== null ? 'text-white' : 'text-gray-600'}`}>
                     {formatTime(item.start_time)}
                   </span>
                 </div>

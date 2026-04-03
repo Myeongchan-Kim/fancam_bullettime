@@ -11,7 +11,7 @@ export interface ConcertSetlist {
   concert_id: number;
   song_id: number | null;
   event_name: string | null;
-  start_time: number;
+  start_time: number | null;
   display_order: number;
   song?: Song;
 }
@@ -59,6 +59,7 @@ export interface Contribution {
   suggested_sync_offset: number | null;
   suggested_setlist_id: number | null;
   suggested_start_time: number | null;
+  suggested_event_name: string | null;
   is_processed: boolean;
   created_at: string;
 }

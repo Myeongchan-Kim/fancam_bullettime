@@ -3,7 +3,8 @@ import { useEffect } from 'react';
 import HomePage from './pages/HomePage';
 import VideoDetailPage from './pages/VideoDetailPage';
 import AboutPage from './pages/AboutPage';
-import { Candy } from 'lucide-react';
+import AdminDashboardPage from './pages/AdminDashboardPage';
+import { Candy, LayoutDashboard } from 'lucide-react';
 import { API_BASE_URL } from './constants';
 
 function ScrollToTop() {
@@ -15,6 +16,8 @@ function ScrollToTop() {
 }
 
 function App() {
+  const adminKey = localStorage.getItem('admin_key');
+
   return (
     <Router>
       <ScrollToTop />
@@ -36,9 +39,14 @@ function App() {
                   )}
                 </div>
               </Link>
-              <div className="flex space-x-4">
+              <div className="flex items-center space-x-4">
                 <Link to="/" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">Home</Link>
                 <Link to="/about" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">About</Link>
+                {adminKey && (
+                  <Link to="/admin" className="bg-slate-800 text-twice-apricot hover:bg-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all border border-twice-apricot/20">
+                    <LayoutDashboard className="h-4 w-4" /> Dashboard
+                  </Link>
+                )}
               </div>
             </div>
           </div>
@@ -50,6 +58,7 @@ function App() {
             <Route path="/" element={<HomePage />} />
             <Route path="/video/:id" element={<VideoDetailPage />} />
             <Route path="/about" element={<AboutPage />} />
+            <Route path="/admin" element={<AdminDashboardPage />} />
           </Routes>
         </main>
 

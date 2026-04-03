@@ -1,8 +1,12 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, ExternalLink } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
+
+export interface MultiAnglePlayerRef {
+  getCurrentConcertTime: () => number;
+}
 
 interface MultiAnglePlayerProps {
   videos: Video[];
@@ -10,7 +14,7 @@ interface MultiAnglePlayerProps {
 
 const SYNC_THRESHOLD = 0.5; // seconds difference before forcing seek
 
-const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
+const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(({ videos }, ref) => {
   const navigate = useNavigate();
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
@@ -22,6 +26,10 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    getCurrentConcertTime: () => currentConcertTimeRef.current
+  }));
 
   // Sync internal state when navigating between videos (e.g. clicking back/forward or promo/demote)
   useEffect(() => {
@@ -315,7 +323,6 @@ const MultiAnglePlayer: React.FC<MultiAnglePlayerProps> = ({ videos }) => {
       </div>
     </div>
   );
-
-};
+});
 
 export default MultiAnglePlayer;
