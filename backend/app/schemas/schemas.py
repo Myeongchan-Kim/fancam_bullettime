@@ -111,3 +111,9 @@ class ContributionBase(BaseModel):
 
     class Config:
         from_attributes = True
+
+class HomeSummary(BaseModel):
+    songs: List[SongBase]
+    concerts: List[ConcertBase]
+    videos: List[VideoDetail]
+    total_videos: int

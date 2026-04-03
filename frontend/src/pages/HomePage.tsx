@@ -125,8 +125,43 @@ const HomePage = () => {
   };
 
   useEffect(() => {
-    fetchInitialData();
+    loadSummary();
   }, []);
+
+  const loadSummary = async () => {
+    // 1. Try to load from LocalStorage for instant render
+    const cached = localStorage.getItem('home_summary_cache');
+    if (cached) {
+      try {
+        const data = JSON.parse(cached);
+        setSongs(data.songs || []);
+        setConcerts(data.concerts || []);
+        setVideos(data.videos || []);
+        setIsLoading(false);
+        console.log("⚡ Instant render from cache");
+      } catch (e) {
+        console.error("Cache parse error", e);
+      }
+    }
+
+    // 2. Fetch fresh data from optimized summary endpoint
+    try {
+      const res = await axios.get(`${API_BASE_URL}/home/summary`);
+      const data = res.data;
+      
+      setSongs(data.songs);
+      setConcerts(data.concerts);
+      setVideos(data.videos);
+      setIsLoading(false);
+      
+      // Update cache
+      localStorage.setItem('home_summary_cache', JSON.stringify(data));
+      console.log("✨ Data refreshed from server");
+    } catch (err) {
+      console.error("Error fetching summary", err);
+      setIsLoading(false);
+    }
+  };
 
   useEffect(() => {
     if (songs.length > 0 && !searchParams.has('end')) {
@@ -163,18 +198,10 @@ const HomePage = () => {
     return () => observer.disconnect();
   }, [visibleCount, filteredVideos.length, isLoading]);
 
-  const fetchInitialData = async () => {
-    try {
-      const [sRes, cRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/songs`),
-        axios.get(`${API_BASE_URL}/concerts`)
-      ]);
-      setSongs(sRes.data);
-      setConcerts(cRes.data);
-    } catch (err) { console.error("Error fetching metadata", err); }
-  };
-
   const fetchVideos = async () => {
+    // Only fetch separately if filters are active (concert or shorts)
+    if (!selectedConcert && !shortsOnly) return;
+
     setIsLoading(true);
     try {
       let url = `${API_BASE_URL}/videos?`;

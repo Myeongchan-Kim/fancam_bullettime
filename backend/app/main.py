@@ -12,7 +12,7 @@ import traceback
 from dotenv import load_dotenv
 
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
-from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate
+from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate, HomeSummary
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -300,9 +300,35 @@ def get_songs(db: Session = Depends(get_db)):
 
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
-    return db.query(Concert).options(
-        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-    ).order_by(Concert.date.desc()).all()
+    return db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+
+@app.get("/api/home/summary", response_model=HomeSummary)
+def get_home_summary(db: Session = Depends(get_db)):
+    """Optimized endpoint for initial page load, providing all metadata and default videos."""
+    # 1. Fetch songs and concerts
+    songs = db.query(Song).order_by(Song.order).all()
+    concerts = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+
+    # 2. Get default videos (Home Page view)
+    cache_key = "none:none:none:none:none:none:False:False"
+    with CACHE_LOCK:
+        if cache_key in VIDEO_CACHE:
+            videos = VIDEO_CACHE[cache_key]
+        else:
+            query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+            results = query.distinct().order_by(Video.created_at.desc()).all()
+            videos = []
+            for v in results:
+                v.members = ensure_list(v.members)
+                videos.append(v)
+            VIDEO_CACHE[cache_key] = videos
+
+    return {
+        "songs": songs,
+        "concerts": concerts,
+        "videos": videos,
+        "total_videos": len(videos)
+    }
 
 def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
