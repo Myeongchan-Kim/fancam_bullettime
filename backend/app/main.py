@@ -347,7 +347,9 @@ def get_home_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Error in get_home_summary: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))def get_video_id(url: str):
+        raise HTTPException(status_code=500, detail=str(e))
+
+def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
     pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
