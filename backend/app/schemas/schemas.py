@@ -117,3 +117,6 @@ class HomeSummary(BaseModel):
     concerts: List[ConcertBase]
     videos: List[VideoDetail]
     total_videos: int
+
+    class Config:
+        from_attributes = True
