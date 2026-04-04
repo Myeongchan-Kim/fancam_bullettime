@@ -36,23 +36,26 @@ def clear_video_cache():
     threading.Thread(target=warm_up_cache, daemon=True).start()
 
 def warm_up_cache():
-    """Pre-cache the default video list."""
+    """Pre-cache the default video list with all relationships loaded and serialized."""
     try:
         db = SessionLocal()
         logger.info("🔥 Warming up video cache...")
-        # Call the actual logic (mocking the request params)
-        # We need the max order to match the normalized key
-        songs_count = db.query(Song).count()
-        # Default home page key (normalized)
         cache_key = "none:none:none:none:none:none:False:False"
         
-        query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+        # Load everything in one go to prevent DetachedInstanceError
+        query = db.query(Video).options(
+            joinedload(Video.songs),
+            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        )
         results = query.distinct().order_by(Video.created_at.desc()).all()
         
+        # Serialize to Pydantic models then to dicts to be session-independent
         final_results = []
         for v in results:
             v.members = ensure_list(v.members)
-            final_results.append(v)
+            # Convert to schema first to trigger all lazy loads within the session
+            detail = VideoDetail.model_validate(v).model_dump(mode='json')
+            final_results.append(detail)
             
         with CACHE_LOCK:
             VIDEO_CACHE[cache_key] = final_results
@@ -60,6 +63,7 @@ def warm_up_cache():
         logger.info(f"✨ Cache warm-up complete. ({len(final_results)} videos)")
     except Exception as e:
         logger.error(f"Failed to warm up cache: {e}")
+        logger.error(traceback.format_exc())
 
 # 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./twice_fancam.db")
@@ -222,18 +226,18 @@ def get_videos(
     shorts_only: bool = Query(False),
     db: Session = Depends(get_db)
 ):
-    # 0. Check Cache with simplified key
+    # 0. Check Cache
     params = [song_id, concert_id, member, angle, shorts_only]
     cache_key = ":".join([str(p) if p is not None else "none" for p in params])
     
     with CACHE_LOCK:
         if cache_key in VIDEO_CACHE:
-            logger.info(f"✅ CACHE HIT: {cache_key}")
             return VIDEO_CACHE[cache_key]
-        else:
-            logger.info(f"❌ CACHE MISS: {cache_key} (Current cache size: {len(VIDEO_CACHE)})")
 
-    query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+    query = db.query(Video).options(
+        joinedload(Video.songs),
+        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    )
 
     # Basic Filtering
     if shorts_only:
@@ -250,11 +254,12 @@ def get_videos(
         
     results = query.distinct().order_by(Video.created_at.desc()).all()
     
-    # 3. Post-process and Cache
+    # 3. Post-process and Cache (Serialize within session)
     final_results = []
     for v in results:
         v.members = ensure_list(v.members)
-        final_results.append(v)
+        detail = VideoDetail.model_validate(v).model_dump(mode='json')
+        final_results.append(detail)
     
     with CACHE_LOCK:
         VIDEO_CACHE[cache_key] = final_results
@@ -307,9 +312,13 @@ def get_concerts(db: Session = Depends(get_db)):
 def get_home_summary(db: Session = Depends(get_db)):
     """Optimized endpoint for initial page load, providing all metadata and default videos."""
     try:
-        # 1. Fetch songs and concerts
-        songs = db.query(Song).order_by(Song.order).all()
-        concerts = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+        # 1. Fetch songs and concerts (Need to serialize these too)
+        songs_query = db.query(Song).order_by(Song.order).all()
+        concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+
+        # Serialize metadata to be safe
+        songs = [SongBase.model_validate(s).model_dump(mode='json') for s in songs_query]
+        concerts = [ConcertBase.model_validate(c).model_dump(mode='json') for c in concerts_query]
 
         # 2. Get default videos (Home Page view)
         cache_key = "none:none:none:none:none:none:False:False"
@@ -317,12 +326,16 @@ def get_home_summary(db: Session = Depends(get_db)):
             if cache_key in VIDEO_CACHE:
                 videos = VIDEO_CACHE[cache_key]
             else:
-                query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+                query = db.query(Video).options(
+                    joinedload(Video.songs),
+                    joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+                )
                 results = query.distinct().order_by(Video.created_at.desc()).all()
                 videos = []
                 for v in results:
                     v.members = ensure_list(v.members)
-                    videos.append(v)
+                    detail = VideoDetail.model_validate(v).model_dump(mode='json')
+                    videos.append(detail)
                 VIDEO_CACHE[cache_key] = videos
 
         return {
@@ -334,8 +347,7 @@ def get_home_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Error in get_home_summary: {str(e)}")
         logger.error(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=str(e))
-def get_video_id(url: str):
+        raise HTTPException(status_code=500, detail=str(e))def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
     pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
