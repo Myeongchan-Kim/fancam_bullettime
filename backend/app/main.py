@@ -81,6 +81,7 @@ async def startup_event():
 # CORS 설정 (Vercel 배포 시 필요)
 origins = [
     "http://localhost:5173",
+    "http://127.0.0.1:5173",
     "http://localhost:3000",
     "https://twice-fancam-archive.vercel.app",
     "https://fancam-bullettime.vercel.app", # 현재 실제 배포 주소
@@ -305,31 +306,35 @@ def get_concerts(db: Session = Depends(get_db)):
 @app.get("/api/home/summary", response_model=HomeSummary)
 def get_home_summary(db: Session = Depends(get_db)):
     """Optimized endpoint for initial page load, providing all metadata and default videos."""
-    # 1. Fetch songs and concerts
-    songs = db.query(Song).order_by(Song.order).all()
-    concerts = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+    try:
+        # 1. Fetch songs and concerts
+        songs = db.query(Song).order_by(Song.order).all()
+        concerts = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
 
-    # 2. Get default videos (Home Page view)
-    cache_key = "none:none:none:none:none:none:False:False"
-    with CACHE_LOCK:
-        if cache_key in VIDEO_CACHE:
-            videos = VIDEO_CACHE[cache_key]
-        else:
-            query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
-            results = query.distinct().order_by(Video.created_at.desc()).all()
-            videos = []
-            for v in results:
-                v.members = ensure_list(v.members)
-                videos.append(v)
-            VIDEO_CACHE[cache_key] = videos
+        # 2. Get default videos (Home Page view)
+        cache_key = "none:none:none:none:none:none:False:False"
+        with CACHE_LOCK:
+            if cache_key in VIDEO_CACHE:
+                videos = VIDEO_CACHE[cache_key]
+            else:
+                query = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert))
+                results = query.distinct().order_by(Video.created_at.desc()).all()
+                videos = []
+                for v in results:
+                    v.members = ensure_list(v.members)
+                    videos.append(v)
+                VIDEO_CACHE[cache_key] = videos
 
-    return {
-        "songs": songs,
-        "concerts": concerts,
-        "videos": videos,
-        "total_videos": len(videos)
-    }
-
+        return {
+            "songs": songs,
+            "concerts": concerts,
+            "videos": videos,
+            "total_videos": len(videos)
+        }
+    except Exception as e:
+        logger.error(f"❌ Error in get_home_summary: {str(e)}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=str(e))
 def get_video_id(url: str):
     # Robust pattern for 11-char ID preceded by common delimiters
     pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
