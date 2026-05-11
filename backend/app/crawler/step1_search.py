@@ -13,10 +13,11 @@ from sqlalchemy.orm import sessionmaker
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from app.core.config import settings
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.ai_parser import parse_fancam_metadata
 
-DATABASE_URL = "sqlite:///./twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "user_data")
 
 # 로그 설정

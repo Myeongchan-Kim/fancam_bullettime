@@ -3,9 +3,10 @@ import json
 from datetime import datetime
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from app.core.config import settings
 from app.models.models import Base, Song, Concert
 
-DATABASE_URL = "sqlite:///./twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 TOUR_DATA_PATH = os.path.join(os.path.dirname(__file__), "app", "data", "tour_info.json")
 
 engine = create_engine(DATABASE_URL)

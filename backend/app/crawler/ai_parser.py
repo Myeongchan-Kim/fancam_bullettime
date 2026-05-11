@@ -1,6 +1,7 @@
 import os
 import json
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Optional, Dict, Any
 from dotenv import load_dotenv
 
@@ -14,7 +15,7 @@ with open(TOUR_DATA_PATH, "r", encoding="utf-8") as f:
     TOUR_DATA = json.load(f)
 
 # API KEY 확인 (환경변수 또는 .env에서 가져오기)
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
 def create_system_prompt() -> str:
     """투어 데이터 및 셋리스트를 포함한 LLM 시스템 프롬프트 생성"""
@@ -79,17 +80,18 @@ def clean_json_response(text: str) -> str:
 async def parse_fancam_metadata_async(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """(비동기) 유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash", 
-            system_instruction=create_system_prompt(),
-            generation_config={"response_mime_type": "application/json"}
+        user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
+        
+        response = await client.aio.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=create_system_prompt(),
+                response_mime_type="application/json"
+            )
         )
         
-        user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
-        response = await model.generate_content_async(user_prompt)
-        
-        clean_text = clean_json_response(response.text)
-        result_json = json.loads(clean_text)
+        result_json = response.parsed if hasattr(response, 'parsed') else json.loads(clean_json_response(response.text))
         return result_json
         
     except Exception as e:
@@ -99,17 +101,18 @@ async def parse_fancam_metadata_async(title: str, channel_name: str, description
 def parse_fancam_metadata(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash", 
-            system_instruction=create_system_prompt(),
-            generation_config={"response_mime_type": "application/json"}
+        user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=create_system_prompt(),
+                response_mime_type="application/json"
+            )
         )
         
-        user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
-        response = model.generate_content(user_prompt)
-        
-        clean_text = clean_json_response(response.text)
-        result_json = json.loads(clean_text)
+        result_json = response.parsed if hasattr(response, 'parsed') else json.loads(clean_json_response(response.text))
         return result_json
         
     except Exception as e:

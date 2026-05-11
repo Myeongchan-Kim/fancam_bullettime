@@ -60,7 +60,7 @@ class Video(Base):
     duration = Column(Float, default=9999.0) # in seconds
     is_shorts = Column(Boolean, default=False)
     
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     
     # Relationships
     song = relationship("Song", back_populates="videos", overlaps="songs,videos_list") # Deprecated
@@ -138,6 +138,6 @@ class Contribution(Base):
     
     user_ip = Column(String) # For basic anti-spam
     is_processed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     
     video = relationship("Video", back_populates="contributions")

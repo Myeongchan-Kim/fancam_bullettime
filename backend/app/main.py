@@ -9,6 +9,7 @@ import logging
 import json
 import re
 import traceback
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
@@ -65,8 +66,10 @@ def warm_up_cache():
         logger.error(f"Failed to warm up cache: {e}")
         logger.error(traceback.format_exc())
 
+from app.core.config import settings
+
 # 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./twice_fancam.db")
+DATABASE_URL = settings.DATABASE_URL
 
 # SQLite인 경우에만 check_same_thread 옵션 추가
 if DATABASE_URL.startswith("sqlite"):
@@ -76,11 +79,14 @@ else:
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-app = FastAPI(title="TWICE World Tour 360° Fancam Archive API")
-
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Warm up cache in background
     threading.Thread(target=warm_up_cache, daemon=True).start()
+    yield
+    # Shutdown logic (if any) could go here
+
+app = FastAPI(title="TWICE World Tour 360° Fancam Archive API", lifespan=lifespan)
 
 # CORS 설정 (Vercel 배포 시 필요)
 origins = [

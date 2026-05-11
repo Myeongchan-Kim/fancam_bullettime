@@ -10,6 +10,7 @@ from datetime import datetime
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from app.core.config import settings
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.step1_search import search_youtube, get_video_info, timestamp_to_seconds, get_video_id
 from app.crawler.ai_parser import parse_fancam_metadata
@@ -18,7 +19,7 @@ from app.crawler.ai_parser import parse_fancam_metadata
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = "sqlite:///./twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

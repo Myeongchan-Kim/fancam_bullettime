@@ -9,10 +9,11 @@ from sqlalchemy.orm import sessionmaker
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from app.core.config import settings
 from app.models.models import Video, Concert, Contribution
 from app.crawler.ai_parser import parse_fancam_metadata
 
-DATABASE_URL = "sqlite:///./twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 
 # 로그 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -82,7 +83,7 @@ def run_recheck_job():
             if metadata and metadata.get("is_valid_fancam") and metadata.get("city") == "Other":
                 logger.info(f"💡 AI 결과: [Other 영상 판독됨] 제안(Contribution)을 생성합니다.")
                 new_contrib = Contribution(
-                    video_id=video_id,
+                    video_id=video.id,
                     suggested_concert_id=other_concert.id,
                     suggested_song_ids=[], # Other 분류 시 노래 정보는 초기화 제안
                     user_ip="127.0.0.1" # 워커 IP
