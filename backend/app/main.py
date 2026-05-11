@@ -516,6 +516,34 @@ def update_setlist_item(
     db.commit()
     return {"message": "Updated setlist timing", "new_time": start_time}
 
+@app.post("/api/admin/concerts/{concert_id}/setlist")
+def import_setlist(
+    concert_id: int,
+    items: List[dict], # List of {song_id, event_name, start_time}
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    concert = db.query(Concert).filter(Concert.id == concert_id).first()
+    if not concert:
+        raise HTTPException(status_code=404, detail="Concert not found")
+    
+    # Remove existing setlist for this concert
+    db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).delete()
+    
+    for idx, item in enumerate(items):
+        new_entry = ConcertSetlist(
+            concert_id=concert_id,
+            song_id=item.get("song_id"),
+            event_name=item.get("event_name"),
+            start_time=item.get("start_time"),
+            display_order=idx
+        )
+        db.add(new_entry)
+    
+    db.commit()
+    clear_video_cache()
+    return {"message": f"Successfully imported {len(items)} setlist items"}
+
 def internal_approve_contribution(db: Session, contribution_id: int):
     """Internal helper to approve a single contribution. Does NOT commit."""
     contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()

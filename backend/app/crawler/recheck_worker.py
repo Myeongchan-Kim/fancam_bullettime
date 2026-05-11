@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import logging
+import requests
 import traceback
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -14,6 +15,7 @@ from app.models.models import Video, Concert, Contribution
 from app.crawler.ai_parser import parse_fancam_metadata
 
 DATABASE_URL = settings.DATABASE_URL
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 
 # 로그 설정
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
@@ -81,17 +83,20 @@ def run_recheck_job():
             metadata = parse_fancam_metadata(video.title, channel_name="Unknown")
             
             if metadata and metadata.get("is_valid_fancam") and metadata.get("city") == "Other":
-                logger.info(f"💡 AI 결과: [Other 영상 판독됨] 제안(Contribution)을 생성합니다.")
-                new_contrib = Contribution(
-                    video_id=video.id,
-                    suggested_concert_id=other_concert.id,
-                    suggested_song_ids=[], # Other 분류 시 노래 정보는 초기화 제안
-                    user_ip="127.0.0.1" # 워커 IP
-                )
-                db.add(new_contrib)
-                db.commit()
-                recheck_status["contributions_created"] += 1
-                logger.info(f"✅ 제안 생성 완료 [비디오 ID {video.id}]")
+                logger.info(f"💡 AI 결과: [Other 영상 판독됨] 제안(Contribution)을 생성(API)합니다.")
+                payload = {
+                    "suggested_concert_id": other_concert.id,
+                    "suggested_song_ids": [] # Other 분류 시 노래 정보는 초기화 제안
+                }
+                try:
+                    resp = requests.post(f"{API_BASE_URL}/videos/{video.id}/contributions", json=payload)
+                    if resp.status_code == 200:
+                        recheck_status["contributions_created"] += 1
+                        logger.info(f"✅ 제안 생성 완료 [비디오 ID {video.id}]")
+                    else:
+                        logger.error(f"❌ 제안 생성 실패 ({resp.status_code}): {resp.text}")
+                except Exception as e:
+                    logger.error(f"❌ API 통신 에러: {e}")
             else:
                 logger.info(f"  판독 결과: 기존 콘서트 유지.")
 

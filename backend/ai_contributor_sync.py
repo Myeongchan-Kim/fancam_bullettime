@@ -2,7 +2,8 @@ import sys
 import os
 import json
 import requests
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 from typing import Optional, List, Dict, Any
 from dotenv import load_dotenv
 
@@ -11,16 +12,17 @@ sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, joinedload
+from app.core.config import settings
 from app.models.models import Video, Song, ConcertSetlist, Concert
 from app.schemas.schemas import ContributionCreate
 
 # .env 파일 로드
 load_dotenv()
 
-# API KEY 확인
-genai.configure(api_key=os.environ.get("GEMINI_API_KEY", ""))
+# API KEY 및 클라이언트 설정
+client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
@@ -40,10 +42,7 @@ def get_gemini_suggestion(video: Video, setlist: List[ConcertSetlist]) -> Option
             "display_order": item.display_order
         })
 
-    system_prompt = f"""
-You are an expert at analyzing TWICE concert fancams.
-Your task is to match a specific video to the correct song(s) from a concert setlist and identify featured members.
-
+    user_prompt = f"""
 ### Video Context:
 - Video Title: {video.title}
 - Video Description: {video.description[:200] if video.description else "No description"}
@@ -51,6 +50,11 @@ Your task is to match a specific video to the correct song(s) from a concert set
 
 ### Ground Truth Setlist (Master Timeline):
 {json.dumps(setlist_info, indent=2, ensure_ascii=False)}
+"""
+
+    system_instruction = """
+You are an expert at analyzing TWICE concert fancams.
+Your task is to match a specific video to the correct song(s) from a concert setlist and identify featured members.
 
 ### TWICE Members:
 Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu
@@ -67,22 +71,25 @@ Nayeon, Jeongyeon, Momo, Sana, Jihyo, Mina, Dahyun, Chaeyoung, Tzuyu
 Return the result in JSON format ONLY.
 
 Expected JSON schema:
-{{
+{
   "match_found": boolean,
   "suggested_song_ids": [integer, ...],
   "suggested_sync_offset": float,
   "suggested_members": [string, ...],
   "reasoning": "brief explanation"
-}}
+}
 """
     try:
-        model = genai.GenerativeModel(
-            model_name="gemini-2.0-flash",
-            generation_config={"response_mime_type": "application/json"}
+        response = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=user_prompt,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                response_mime_type="application/json"
+            )
         )
         
-        response = model.generate_content(system_prompt)
-        result = json.loads(response.text)
+        result = response.parsed if hasattr(response, 'parsed') else json.loads(response.text)
         return result
     except Exception as e:
         print(f"\n❌ Gemini API Error Details:")

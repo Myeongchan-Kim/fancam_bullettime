@@ -2,16 +2,21 @@ import sys
 import os
 import json
 import time
+import requests
 
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from app.core.config import settings
 from app.models.models import Video, Concert, ConcertSetlist, Song
 from app.crawler.ai_parser import parse_fancam_metadata # 기존 AI 파서 활용
 
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
+ADMIN_KEY = os.getenv("ADMIN_KEY", "twice360")
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
@@ -98,8 +103,15 @@ def ai_fix_setlist_times():
                     sl_item = find_setlist_item(db, concert.id, song_name, setlist_map)
                     
                     if sl_item:
-                        sl_item.start_time = seconds
-                        updated_songs += 1
+                        try:
+                            url = f"{API_BASE_URL}/admin/setlist/{sl_item.id}?start_time={seconds}"
+                            resp = requests.patch(url, headers={"X-Admin-Key": ADMIN_KEY})
+                            if resp.status_code == 200:
+                                updated_songs += 1
+                            else:
+                                print(f"      ❌ API Error ({resp.status_code}): {resp.text}")
+                        except Exception as e:
+                            print(f"      ❌ API Connection Error: {e}")
                 
                 if updated_songs > 0:
                     updated_concerts += 1
@@ -109,7 +121,6 @@ def ai_fix_setlist_times():
         except Exception as e:
             print(f"❌ Error processing {concert.city}: {e}")
 
-    db.commit()
     print(f"\n✨ 총 {updated_concerts}개 콘서트의 타임라인을 복구했습니다.")
 
 if __name__ == "__main__":

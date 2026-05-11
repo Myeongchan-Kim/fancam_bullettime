@@ -4,6 +4,7 @@ import time
 import sys
 import random
 import logging
+import requests
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
@@ -250,24 +251,28 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
 
                             is_shorts = "/shorts/" in url or (duration_sec > 0 and duration_sec < 65)
 
-                            new_contrib = Contribution(
-                                suggested_url=url,
-                                suggested_title=title,
-                                suggested_song_ids=[s.id for s in song_objs],
-                                suggested_concert_id=concert_obj.id if concert_obj else None,
-                                suggested_members=metadata.get("members", []),
-                                suggested_duration=duration_sec,
-                                suggested_is_shorts=is_shorts, # 쇼츠 여부 저장
-                                suggested_angle="Unknown",
-                                suggested_sync_offset=suggested_offset,
-                                user_ip="step1-crawler",
-                                is_processed=0
-                            )
-                            db.add(new_contrib)
-                            db.commit()
-                            logger.info(f"    ✅ 제안 완료 ({'Shorts' if is_shorts else 'Video'}): {title}")
-
+                            payload = {
+                                "suggested_url": url,
+                                "suggested_title": title,
+                                "suggested_song_ids": [s.id for s in song_objs],
+                                "suggested_concert_id": concert_obj.id if concert_obj else None,
+                                "suggested_members": metadata.get("members", []),
+                                "suggested_duration": duration_sec,
+                                "suggested_is_shorts": is_shorts,
+                                "suggested_angle": "Unknown",
+                                "suggested_sync_offset": suggested_offset
+                            }
                             
+                            try:
+                                API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
+                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
+                                if resp.status_code == 200:
+                                    logger.info(f"    ✅ 제안 완료 ({'Shorts' if is_shorts else 'Video'}): {title}")
+                                else:
+                                    logger.error(f"    ❌ 제안 실패 ({resp.status_code}): {resp.text}")
+                            except Exception as e:
+                                logger.error(f"    ❌ API 통신 에러: {e}")
+
                             # Training and Cooldown per video
                             v_page = context.new_page()
                             v_page.goto(url)
@@ -279,7 +284,6 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                     except Exception as e:
                         logger.warning(f"    ⚠️ 개별 영상 처리 오류: {e}")
                         continue
-                db.commit() # Commit all new contributions for this search query
             except Exception as e:
                 logger.error(f"  ❌ 쿼리 수행 오류: {e}")
                 continue

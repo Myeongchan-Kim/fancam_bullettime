@@ -3,6 +3,7 @@ import os
 import json
 import logging
 import time
+import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -20,6 +21,9 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 DATABASE_URL = settings.DATABASE_URL
+API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
+ADMIN_KEY = os.getenv("ADMIN_KEY", "twice360")
+
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -53,7 +57,7 @@ def run_full_concert_importer(city_name: str = None, limit: int = 5):
                 v_id = get_video_id(url)
                 if not v_id: continue
                 
-                # 1. 이미 등록된 영상인지 확인
+                # 1. 이미 등록된 영상인지 확인 (읽기는 DB 직접 수행 가능)
                 exists_v = db.query(Video).filter(Video.youtube_id == v_id).first()
                 if exists_v:
                     # 이미 등록된 영상이라면, 그 영상이 속한 실제 공연의 셋리스트가 있는지 확인
@@ -97,35 +101,44 @@ def run_full_concert_importer(city_name: str = None, limit: int = 5):
                 if detected_city.lower() not in city.lower():
                     logger.info(f"🔄 도시 불일치 감지: 검색({city}) -> 실제({detected_city}). {detected_city} 기준으로 처리합니다.")
 
-                # 5. 셋리스트 자동 생성 (비어있을 때만)
+                # 5. 셋리스트 자동 생성 (API 사용)
                 ai_setlist = metadata.get("setlist", [])
                 existing_count = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_obj.id).count()
                 
                 if ai_setlist and existing_count == 0:
                     if len(ai_setlist) >= 20: # 🛡️ 안전장치: 20곡 이상
-                        logger.info(f"📝 {concert_obj.city} ({concert_obj.date}) 공연의 셋리스트 {len(ai_setlist)}개를 자동 생성합니다.")
-                        for idx, item in enumerate(ai_setlist):
+                        logger.info(f"📝 {concert_obj.city} ({concert_obj.date}) 공연의 셋리스트 {len(ai_setlist)}개를 자동 생성(API)합니다.")
+                        setlist_payload = []
+                        for item in ai_setlist:
                             s_name = item["song_name"]
                             s_ts = item["timestamp"]
                             s_sec = timestamp_to_seconds(s_ts)
                             song_obj = db.query(Song).filter(Song.name == s_name).first()
-                            new_entry = ConcertSetlist(
-                                concert_id=concert_obj.id,
-                                song_id=song_obj.id if song_obj else None,
-                                event_name=s_name,
-                                start_time=s_sec,
-                                display_order=idx
+                            setlist_payload.append({
+                                "song_id": song_obj.id if song_obj else None,
+                                "event_name": s_name,
+                                "start_time": s_sec
+                            })
+                        
+                        try:
+                            resp = requests.post(
+                                f"{API_BASE_URL}/admin/concerts/{concert_obj.id}/setlist",
+                                json=setlist_payload,
+                                headers={"X-Admin-Key": ADMIN_KEY}
                             )
-                            db.add(new_entry)
-                        db.commit()
-                        # 🛡️ 중요: 같은 도시의 다음 영상을 위해 개수 업데이트
-                        existing_count = len(ai_setlist)
+                            if resp.status_code == 200:
+                                logger.info(f"   ✅ 셋리스트 {len(setlist_payload)}개 임포트 완료")
+                                existing_count = len(ai_setlist)
+                            else:
+                                logger.error(f"   ❌ 셋리스트 임포트 실패 ({resp.status_code}): {resp.text}")
+                        except Exception as e:
+                            logger.error(f"   ❌ API 통신 에러: {e}")
                     else:
                         logger.warning(f"⚠️ 발견된 셋리스트 항목이 {len(ai_setlist)}개로 너무 적어 무시합니다.")
                 elif existing_count > 0:
-                    logger.info(f"ℹ️ {concert_obj.city} 공연은 이미 {existing_count}개의 셋리스트가 존재하여 건너뜁니다.")
+                    logger.info(f"ℹ️ {concert_obj.city} 공연은 이미 {existing_count}개의 셋리스트가 존재하여 건너뜜.")
 
-                # 6. 신규 영상일 경우에만 제보 생성
+                # 6. 신규 영상일 경우에만 제보 생성 (API 사용)
                 if not exists_v:
                     # 해당 콘서트의 모든 노래 ID 수집
                     setlist_entries = db.query(ConcertSetlist).filter(
@@ -134,21 +147,24 @@ def run_full_concert_importer(city_name: str = None, limit: int = 5):
                     ).all()
                     all_song_ids = list(set(e.song_id for e in setlist_entries))
 
-                    new_contrib = Contribution(
-                        suggested_url=url,
-                        suggested_title=v_title,
-                        suggested_song_ids=all_song_ids,
-                        suggested_concert_id=concert_obj.id,
-                        suggested_members=["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"],
-                        suggested_duration=duration_sec,
-                        suggested_angle="Full-Concert",
-                        suggested_sync_offset=0.0,
-                        user_ip="full-concert-importer-ai",
-                        is_processed=0
-                    )
-                    db.add(new_contrib)
-                    db.commit()
-                    logger.info(f"✅ 신규 영상 제보 완료: {v_title}")
+                    payload = {
+                        "suggested_url": url,
+                        "suggested_title": v_title,
+                        "suggested_song_ids": all_song_ids,
+                        "suggested_concert_id": concert_obj.id,
+                        "suggested_members": ["Nayeon", "Jeongyeon", "Momo", "Sana", "Jihyo", "Mina", "Dahyun", "Chaeyoung", "Tzuyu"],
+                        "suggested_duration": duration_sec,
+                        "suggested_angle": "Full-Concert"
+                    }
+                    
+                    try:
+                        resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
+                        if resp.status_code == 200:
+                            logger.info(f"✅ 신규 영상 제보 완료: {v_title}")
+                        else:
+                            logger.error(f"❌ 영상 제보 실패 ({resp.status_code}): {resp.text}")
+                    except Exception as e:
+                        logger.error(f"❌ API 통신 에러 (제보): {e}")
 
             if len(cities) > 1:
                 logger.info("💤 다음 도시를 위해 10초간 대기합니다...")
