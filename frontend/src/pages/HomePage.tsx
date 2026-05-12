@@ -202,6 +202,8 @@ const HomePage = () => {
   }, [songs, searchParams, setSearchParams, effectiveMaxOrder]);
 
   useEffect(() => {
+    // Only call fetchVideos if we are not in the initial mount phase where loadSummary is handling it
+    if (songs.length === 0) return; 
     fetchVideos();
   }, [selectedConcert, shortsOnly]);
 
@@ -227,14 +229,17 @@ const HomePage = () => {
   }, [visibleCount, filteredVideos.length, isLoading]);
 
   const fetchVideos = async () => {
-    // If no filters are active, revert to the initial full list (via summary API)
-    if (!selectedConcert && !shortsOnly) {
-       loadSummary();
-       return;
-    }
-
     setIsLoading(true);
     try {
+      // If no filters are active, revert to the initial full list (via summary API)
+      if (!selectedConcert && !shortsOnly) {
+         // loadSummary does a full refresh, but we only need the videos array to reset.
+         // We can just fetch /home/summary again or if we had a pure /videos endpoint for all.
+         const res = await axios.get(`${API_BASE_URL}/home/summary`);
+         setVideos(res.data.videos);
+         return;
+      }
+
       let url = `${API_BASE_URL}/videos?`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (shortsOnly) url += `shorts_only=true&`;
