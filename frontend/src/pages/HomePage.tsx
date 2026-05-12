@@ -11,10 +11,38 @@ import AdminPendingContributionsModal from '../components/AdminPendingContributi
 import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
 
 const FEATURED_SYNC_VIDEOS = [
-  { id: 215, title: 'MOVE LIKE THAT', subtitle: 'Incheon 2025 (Momo Solo)', img: 'https://img.youtube.com/vi/GjYn7_yvGZk/hqdefault.jpg' },
-  { id: 597, title: 'CHESS', subtitle: 'Incheon 2025 (Dahyun Solo)', img: 'https://img.youtube.com/vi/sP2l33b-qL0/hqdefault.jpg' },
-  { id: 1137, title: 'Feel Special', subtitle: 'Incheon 2025 (Momo & Sana)', img: 'https://img.youtube.com/vi/s0pW12v94iM/hqdefault.jpg' },
-  { id: 43, title: 'In my room', subtitle: 'Incheon 2025 (Chaeyoung Solo)', img: 'https://img.youtube.com/vi/6S6W8a6ZJk8/hqdefault.jpg' },
+  { 
+    id: 215, 
+    title: 'MOVE LIKE THAT', 
+    subtitle: 'Incheon 2025 (Momo Solo)', 
+    img: 'https://i.ytimg.com/vi/jDc_VSUS3AI/hqdefault.jpg',
+    angleCount: 5,
+    extraImgs: ['https://i.ytimg.com/vi/jDc_VSUS3AI/1.jpg', 'https://i.ytimg.com/vi/jDc_VSUS3AI/2.jpg']
+  },
+  { 
+    id: 597, 
+    title: 'CHESS', 
+    subtitle: 'Incheon 2025 (Dahyun Solo)', 
+    img: 'https://i.ytimg.com/vi/FGhOm91Zjvw/hqdefault.jpg',
+    angleCount: 4,
+    extraImgs: ['https://i.ytimg.com/vi/FGhOm91Zjvw/1.jpg']
+  },
+  { 
+    id: 1137, 
+    title: 'Feel Special', 
+    subtitle: 'Incheon 2025 (Momo & Sana)', 
+    img: 'https://i.ytimg.com/vi/U6Fnd-6Lybk/hqdefault.jpg',
+    angleCount: 6,
+    extraImgs: ['https://i.ytimg.com/vi/U6Fnd-6Lybk/1.jpg', 'https://i.ytimg.com/vi/U6Fnd-6Lybk/2.jpg']
+  },
+  { 
+    id: 43, 
+    title: 'In my room', 
+    subtitle: 'Incheon 2025 (Chaeyoung Solo)', 
+    img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
+    angleCount: 3,
+    extraImgs: ['https://i.ytimg.com/vi/bjDt0qM9Xkw/1.jpg']
+  },
 ];
 
 const HomePage = () => {
@@ -283,27 +311,63 @@ const HomePage = () => {
               Experience the perfect 360° stage
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             {FEATURED_SYNC_VIDEOS.map((featured) => (
-              <Link to={`/video/${featured.id}`} key={featured.id} className="group relative rounded-2xl overflow-hidden border border-yellow-500/30 hover:border-yellow-400 transition-all hover:shadow-[0_0_30px_rgba(234,179,8,0.2)]">
-                <div className="aspect-video w-full bg-black relative">
-                  <img src={featured.img} alt={featured.title} className="w-full h-full object-cover opacity-60 group-hover:opacity-90 transition-opacity duration-300" />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent"></div>
-                  
-                  {/* Floating Play Button */}
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <PlayCircle className="w-12 h-12 text-white opacity-80 group-hover:scale-110 group-hover:text-yellow-400 transition-all duration-300 drop-shadow-2xl" />
+              <Link to={`/video/${featured.id}`} key={featured.id} className="group relative transition-all duration-300">
+                {/* Decorative Stack Behind */}
+                <div className="absolute -inset-1.5 bg-gradient-to-r from-twice-magenta/40 to-twice-apricot/40 rounded-3xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+
+                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400 bg-slate-900 shadow-2xl transition-all duration-300">
+                  {/* Background Overlapping Images (Stack Effect) */}
+                  {featured.extraImgs.map((extra, idx) => (
+                    <div 
+                      key={idx}
+                      className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-all duration-500"
+                      style={{ 
+                        transform: `scale(${1.05 + idx * 0.05}) translate(${idx * 10}px, ${idx * -5}px)`,
+                        filter: 'blur(1px)'
+                      }}
+                    >
+                      <img src={extra} alt="" className="w-full h-full object-cover" />
+                    </div>
+                  ))}
+
+                  {/* Main Image */}
+                  <img 
+                    src={featured.img} 
+                    alt={featured.title} 
+                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700 relative z-10" 
+                  />
+
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent z-20"></div>
+
+                  {/* Multi-Angle Badge */}
+                  <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1">
+                    <div className="bg-twice-magenta text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 border border-white/20 animate-pulse">
+                      <Compass className="h-3 w-3" />
+                      {featured.angleCount} ANGLES
+                    </div>
                   </div>
-                  
-                  <div className="absolute bottom-4 left-4 right-4">
+
+                  {/* Floating Play Button */}
+                  <div className="absolute inset-0 flex items-center justify-center z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-full border border-white/30 scale-75 group-hover:scale-100 transition-transform duration-500">
+                      <PlayCircle className="w-10 h-10 text-white" />
+                    </div>
+                  </div>
+
+                  <div className="absolute bottom-4 left-4 right-4 z-30">
+                    <div className="flex items-center gap-2 mb-1">
+                       <span className="w-4 h-0.5 bg-yellow-500"></span>
+                       <span className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Live Sync</span>
+                    </div>
                     <h3 className="text-white font-black text-lg uppercase tracking-tight leading-none group-hover:text-yellow-400 transition-colors drop-shadow-md">{featured.title}</h3>
-                    <p className="text-yellow-500/80 text-[10px] font-bold uppercase tracking-widest mt-1 truncate">{featured.subtitle}</p>
+                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mt-1 truncate">{featured.subtitle}</p>
                   </div>
                 </div>
               </Link>
             ))}
-          </div>
-        </section>
+          </div>        </section>
       )}
 
       {/* Video Grid Section */}
