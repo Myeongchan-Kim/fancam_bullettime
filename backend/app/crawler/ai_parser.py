@@ -148,19 +148,34 @@ async def parse_fancam_metadata_async(title: str, channel_name: str, description
 # 최대 5번 재시도, 대기 시간은 10초부터 시작해서 최대 60초까지 지수적으로 증가
 @retry(
     retry=retry_if_exception_type(APIError) | retry_if_exception_type(Exception),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=10, min=10, max=65),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=10, min=10, max=60),
     reraise=True
 )
 def _generate_content_sync(user_prompt: str):
-    return client.models.generate_content(
-        model="gemini-2.0-flash",
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=create_system_prompt(),
-            response_mime_type="application/json"
-        )
-    )
+    last_exception = None
+    
+    for model_name in FALLBACK_MODELS:
+        try:
+            return client.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=create_system_prompt(),
+                    response_mime_type="application/json"
+                )
+            )
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                logger.warning(f"⏳ [Quota Exceeded] Sync Model {model_name} hit limit. Trying next model...")
+                last_exception = e
+                continue
+            else:
+                raise e
+                
+    logger.error("🚨 All sync fallback models exhausted their quotas.")
+    raise last_exception if last_exception else Exception("All models failed")
 
 def parse_fancam_metadata(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
