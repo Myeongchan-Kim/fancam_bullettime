@@ -91,22 +91,48 @@ def should_retry(exception):
             return True
     return False
 
-# 최대 5번 재시도, 대기 시간은 10초부터 시작해서 최대 60초까지 지수적으로 증가 (10, 20, 40, 60...)
+# Fallback 모델 리스트 (무료 할당량을 최대한 활용하기 위함)
+FALLBACK_MODELS = [
+    "gemini-3.1-flash-lite", # RPD 500, RPM 15 (가장 넉넉함)
+    "gemini-2.5-flash-lite", # RPD 20, RPM 10
+    "gemini-2.5-flash",      # RPD 20, RPM 5
+    "gemini-3-flash"         # RPD 20, RPM 5
+]
+
+# 최대 3번 재시도, 대기 시간은 10초부터 시작
 @retry(
     retry=retry_if_exception_type(APIError) | retry_if_exception_type(Exception),
-    stop=stop_after_attempt(5),
-    wait=wait_exponential(multiplier=10, min=10, max=65),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=10, min=10, max=60),
     reraise=True
 )
 async def _generate_content_async(user_prompt: str):
-    return await client.aio.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=user_prompt,
-        config=types.GenerateContentConfig(
-            system_instruction=create_system_prompt(),
-            response_mime_type="application/json"
-        )
-    )
+    last_exception = None
+    
+    # 모델 리스트를 순회하며 시도
+    for model_name in FALLBACK_MODELS:
+        try:
+            return await client.aio.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=create_system_prompt(),
+                    response_mime_type="application/json"
+                )
+            )
+        except Exception as e:
+            error_str = str(e)
+            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                logger.warning(f"⏳ [Quota Exceeded] Model {model_name} hit limit. Trying next model...")
+                last_exception = e
+                continue # 다음 모델 시도
+            else:
+                # 429가 아닌 다른 에러(예: 파싱 에러, 네트워크 에러)는 즉시 던져서 재시도 로직을 탐
+                raise e
+                
+    # 모든 모델이 429 에러를 뱉었다면, 바깥의 @retry 데코레이터가 받아서 잠시 쉬었다가 전체 다시 시도
+    logger.error("🚨 All fallback models exhausted their quotas.")
+    raise last_exception if last_exception else Exception("All models failed")
 
 async def parse_fancam_metadata_async(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
     """(비동기) 유튜브 영상 제목, 채널명, 설명을 입력받아 JSON 형태로 변환 반환"""
