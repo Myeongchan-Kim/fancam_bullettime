@@ -100,7 +100,7 @@ def should_retry(exception):
 )
 async def _generate_content_async(user_prompt: str):
     return await client.aio.models.generate_content(
-        model="gemini-2.0-flash",
+        model="gemini-2.5-flash",
         contents=user_prompt,
         config=types.GenerateContentConfig(
             system_instruction=create_system_prompt(),
