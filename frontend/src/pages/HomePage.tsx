@@ -41,7 +41,7 @@ const FEATURED_SYNC_VIDEOS = [
     subtitle: 'Incheon 2025 (Chaeyoung Solo)', 
     img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
     angleCount: 3,
-    extraImgs: ['https://i.ytimg.com/vi/bjDt0qM9Xkw/1.jpg']
+    extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
   },
 ];
 

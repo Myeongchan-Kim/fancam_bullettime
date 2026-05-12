@@ -258,7 +258,9 @@ def get_videos(
     if angle:
         query = query.filter(Video.angle == angle)
         
-    results = query.distinct().order_by(Video.created_at.desc()).all()
+    # Smart Sorting: Shorter videos first (Fancams > Full Concerts)
+    # Then newest first within same duration tier
+    results = query.distinct().order_by(Video.duration.asc(), Video.created_at.desc()).all()
     
     # 3. Post-process and Cache (Serialize within session)
     final_results = []

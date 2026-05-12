@@ -43,15 +43,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   
   // Slave videos that cover the current timeframe
   const slaveVideos = useMemo(() => {
-    return videos.filter(v => {
+    const filtered = videos.filter(v => {
       if (v.id === masterId) return false;
 
-      // Special Rule: Always show "Full Concert" videos as they are the backbone of syncing
-      const t = v.title.toLowerCase();
-      const isFullConcert = t.includes('full concert') || t.includes('full show') || t.includes('full live') || t.includes('full-concert');
-      if (isFullConcert) return true;
-
-      // Tight Time-based filtering (fancams)
+      // Strict Time-based filtering for all videos
       const PADDING = 30; // 30s as requested by the user
       const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
 
@@ -59,6 +54,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + PADDING);
 
       return hasStarted && !hasEnded;
+    });
+
+    // Sort to prioritize shorter, specific fancams over massive full concerts if they overlap
+    // Assuming full concerts have duration > 3600 (1 hour) or very large effectiveDuration
+    return filtered.sort((a, b) => {
+      const durA = (a.duration && a.duration > 0) ? a.duration : 9999;
+      const durB = (b.duration && b.duration > 0) ? b.duration : 9999;
+      return durA - durB;
     });
   }, [videos, masterId, currentConcertTime]);
 
@@ -258,7 +261,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                   onReady={(e) => handleReady(e, video.id)}
                   className="w-full h-full absolute inset-0 pointer-events-none"
                 />
-                <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
+                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
+                   <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-xs text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
+                     {video.title}
+                   </div>
                    <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
                      <Maximize2 className="w-3 h-3" /> SET AS MASTER
                    </div>
@@ -290,7 +296,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
               ADDITIONAL ANGLES ({slaveVideos.length - 3})
               <div className="h-px flex-1 bg-slate-800"></div>
             </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {slaveVideos.slice(3, 9).map(video => (
                 <div 
                   key={video.id} 
@@ -305,9 +311,12 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                       onReady={(e) => handleReady(e, video.id)}
                       className="w-full h-full absolute inset-0 pointer-events-none"
                     />
-                    <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/0 group-hover:bg-black/40 transition-colors">
-                       <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg transition-transform scale-90 group-hover:scale-100">
-                         SET MASTER
+                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
+                       <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-[10px] text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
+                         {video.title}
+                       </div>
+                       <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
+                         <Maximize2 className="w-3 h-3" /> SET MASTER
                        </div>
                     </div>
                   </div>
