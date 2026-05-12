@@ -247,10 +247,21 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
             {displaySongs.map((song) => {
               const isActive = song.order >= clampedStart && song.order <= clampedEnd;
               const isMajor = song.order % 5 === 0 || song.order === 1 || song.order === maxOrder;
+              const isBoundary = song.order === clampedStart || song.order === clampedEnd;
+              
+              // 모바일/태블릿에서는 주요 틱과 경계만 텍스트를 보여줌
+              const shouldShowText = isBoundary || isMajor;
+
               return (
                 <div key={song.id} className="absolute top-0 h-full transition-all duration-500" style={{ left: `${calculatePercent(song.order)}%` }}>
                   <div className={`w-px mx-auto transition-all duration-500 ${isActive ? 'h-6 bg-twice-magenta shadow-[0_0_8px_#FF1988]' : isMajor ? 'h-4 bg-slate-700' : 'h-2 bg-slate-800'}`}></div>
-                  <div className={`absolute top-8 left-0 origin-top-left rotate-45 transition-all duration-500 whitespace-nowrap ${isActive ? 'text-white text-[9px] font-black opacity-100 scale-105' : isMajor ? 'text-gray-500 text-[8px] font-bold opacity-60' : 'text-gray-700 text-[7px] font-medium opacity-30'}`} style={{ textShadow: isActive ? '0 0 10px rgba(255, 25, 136, 0.4)' : 'none' }}>
+                  <div 
+                    className={`absolute top-8 left-0 origin-top-left rotate-45 transition-all duration-500 whitespace-nowrap 
+                      ${isActive ? 'text-white text-[9px] font-black opacity-100 scale-105' : isMajor ? 'text-gray-500 text-[8px] font-bold opacity-60' : 'text-gray-700 text-[7px] font-medium opacity-30'}
+                      ${!shouldShowText ? 'hidden lg:block' : ''}
+                    `} 
+                    style={{ textShadow: isActive ? '0 0 10px rgba(255, 25, 136, 0.4)' : 'none' }}
+                  >
                     <span className="mr-2 opacity-40 font-mono">#{song.order.toString().padStart(2, '0')}</span>
                     {song.name}
                   </div>
