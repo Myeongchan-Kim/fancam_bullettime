@@ -108,7 +108,7 @@ const AboutPage = () => {
         </div>
         <div className="shrink-0 space-y-3 w-full md:w-auto">
           <div className="flex items-center justify-between bg-slate-950 p-4 rounded-xl border border-slate-800 min-w-[300px]">
-            <span className="font-mono text-gray-300 text-sm truncate mr-4">{email}</span>
+            <span className="font-mono text-gray-300 text-sm truncate mr-4 selection:bg-twice-magenta selection:text-white">{email}</span>
             <button
               onClick={copyToClipboard}
               className="p-2 hover:bg-slate-800 rounded-lg text-gray-400 hover:text-white transition-all active:scale-90"
@@ -117,12 +117,6 @@ const AboutPage = () => {
               {copied ? <Check className="w-5 h-5 text-green-500" /> : <Copy className="w-5 h-5" />}
             </button>
           </div>
-          <a 
-            href={`mailto:${email}`}
-            className="flex items-center justify-center space-x-2 w-full py-3 px-6 bg-twice-magenta hover:bg-twice-magenta/90 text-white rounded-xl font-black uppercase tracking-widest text-xs transition-all shadow-lg shadow-twice-magenta/20"
-          >
-            <span>Send Us Your Vision</span>
-          </a>
         </div>
       </section>
 
