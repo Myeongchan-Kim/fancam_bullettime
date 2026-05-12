@@ -2,6 +2,7 @@ import sys
 import os
 import json
 import requests
+import time
 from google import genai
 from google.genai import types
 from typing import Optional, List, Dict, Any
@@ -27,6 +28,13 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api")
+
+FALLBACK_MODELS = [
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-3-flash"
+]
 
 def get_gemini_suggestion(video: Video, setlist: List[ConcertSetlist]) -> Optional[Dict[str, Any]]:
     """Gemini를 사용하여 영상에 맞는 곡과 오프셋 제안 생성"""
@@ -79,25 +87,32 @@ Expected JSON schema:
   "reasoning": "brief explanation"
 }
 """
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=user_prompt,
-            config=types.GenerateContentConfig(
-                system_instruction=system_instruction,
-                response_mime_type="application/json"
+    
+    last_error = None
+    for model_name in FALLBACK_MODELS:
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=user_prompt,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    response_mime_type="application/json"
+                )
             )
-        )
-        
-        result = response.parsed if hasattr(response, 'parsed') else json.loads(response.text)
-        return result
-    except Exception as e:
-        print(f"\n❌ Gemini API Error Details:")
-        if "429" in str(e):
-            print(f"   [QUOTA EXCEEDED] You have hit the rate limit for Gemini API (Free Tier).")
-            print(f"   Please wait 30-60 seconds and try again.")
-        print(f"   Full Error: {e}\n")
-        return None
+            
+            result = response.parsed if hasattr(response, 'parsed') else json.loads(response.text)
+            return result
+        except Exception as e:
+            last_error = e
+            if "429" in str(e):
+                print(f"   [QUOTA] Model {model_name} exhausted. Trying next model...")
+                time.sleep(2)
+                continue
+            else:
+                break
+                
+    print(f"\n❌ Gemini API Error Details: {last_error}\n")
+    return None
 
 def contribute_ai_suggestion(video_id: int):
     db = SessionLocal()
@@ -165,10 +180,33 @@ def contribute_ai_suggestion(video_id: int):
     finally:
         db.close()
 
+def process_zero_offsets():
+    print("🚀 오프셋이 0인 영상들에 대해 일괄 AI 분석을 시작합니다...")
+    db = SessionLocal()
+    try:
+        videos = db.query(Video).filter(
+            Video.sync_offset == 0,
+            Video.angle != 'Full-Concert',
+            ~Video.title.like('%Full Concert%'),
+            Video.concert_id.isnot(None)
+        ).limit(50).all() # 한 번에 너무 많이 돌지 않도록 50개 제한
+        
+        print(f"🔍 보정 대상 {len(videos)}개 발견 (이번 회차 최대 50개)")
+        
+        for video in videos:
+            contribute_ai_suggestion(video.id)
+            time.sleep(2) # Rate limit 방지
+            
+    finally:
+        db.close()
+
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
+    if len(sys.argv) > 1 and sys.argv[1] == "--zero-offsets":
+        process_zero_offsets()
+    elif len(sys.argv) > 1:
+        video_id = int(sys.argv[1])
+        contribute_ai_suggestion(video_id)
+    else:
         print("Usage: uv run python ai_contributor_sync.py <video_id>")
+        print("       uv run python ai_contributor_sync.py --zero-offsets")
         sys.exit(1)
-    
-    video_id = int(sys.argv[1])
-    contribute_ai_suggestion(video_id)
