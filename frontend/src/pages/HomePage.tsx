@@ -227,8 +227,11 @@ const HomePage = () => {
   }, [visibleCount, filteredVideos.length, isLoading]);
 
   const fetchVideos = async () => {
-    // Only fetch separately if filters are active (concert or shorts)
-    if (!selectedConcert && !shortsOnly) return;
+    // If no filters are active, revert to the initial full list (via summary API)
+    if (!selectedConcert && !shortsOnly) {
+       loadSummary();
+       return;
+    }
 
     setIsLoading(true);
     try {
