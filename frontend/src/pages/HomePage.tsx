@@ -14,7 +14,7 @@ const FEATURED_SYNC_VIDEOS = [
   { 
     id: 215, 
     title: 'MOVE LIKE THAT', 
-    subtitle: 'Incheon 2025 (Momo Solo)', 
+    subtitle: 'Incheon 20250719 (Momo Solo)', 
     img: 'https://i.ytimg.com/vi/jDc_VSUS3AI/hqdefault.jpg',
     angleCount: 5,
     extraImgs: ['https://i.ytimg.com/vi/jDc_VSUS3AI/1.jpg', 'https://i.ytimg.com/vi/jDc_VSUS3AI/2.jpg']
@@ -22,7 +22,7 @@ const FEATURED_SYNC_VIDEOS = [
   { 
     id: 597, 
     title: 'CHESS', 
-    subtitle: 'Incheon 2025 (Dahyun Solo)', 
+    subtitle: 'Incheon 20250719 (Dahyun Solo)', 
     img: 'https://i.ytimg.com/vi/FGhOm91Zjvw/hqdefault.jpg',
     angleCount: 4,
     extraImgs: ['https://i.ytimg.com/vi/FGhOm91Zjvw/1.jpg']
@@ -30,7 +30,7 @@ const FEATURED_SYNC_VIDEOS = [
   { 
     id: 1137, 
     title: 'Feel Special', 
-    subtitle: 'Incheon 2025 (Momo & Sana)', 
+    subtitle: 'Incheon 20250719 (Momo & Sana)', 
     img: 'https://i.ytimg.com/vi/U6Fnd-6Lybk/hqdefault.jpg',
     angleCount: 6,
     extraImgs: ['https://i.ytimg.com/vi/U6Fnd-6Lybk/1.jpg', 'https://i.ytimg.com/vi/U6Fnd-6Lybk/2.jpg']
@@ -38,7 +38,7 @@ const FEATURED_SYNC_VIDEOS = [
   { 
     id: 43, 
     title: 'In my room', 
-    subtitle: 'Incheon 2025 (Chaeyoung Solo)', 
+    subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
     img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
     angleCount: 3,
     extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
