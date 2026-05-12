@@ -311,58 +311,60 @@ const HomePage = () => {
               Experience the perfect 360° stage
             </p>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
             {FEATURED_SYNC_VIDEOS.map((featured) => (
-              <Link to={`/video/${featured.id}`} key={featured.id} className="group relative transition-all duration-300">
+              <Link to={`/video/${featured.id}`} key={featured.id} className="group relative transition-all duration-300 block">
                 {/* Decorative Stack Behind */}
-                <div className="absolute -inset-1.5 bg-gradient-to-r from-twice-magenta/40 to-twice-apricot/40 rounded-3xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
+                <div className="absolute -inset-1.5 bg-gradient-to-r from-twice-magenta/40 to-twice-apricot/40 rounded-3xl blur opacity-0 group-hover:opacity-100 transition duration-500 z-0"></div>
 
-                <div className="relative aspect-video w-full rounded-2xl overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400 bg-slate-900 shadow-2xl transition-all duration-300">
-                  {/* Background Overlapping Images (Stack Effect) */}
+                <div className="relative aspect-video w-full">
+                  {/* Background Overlapping Images (Stack Effect) - Now positioned absolute relative to the outer container, peeking out */}
                   {featured.extraImgs.map((extra, idx) => (
                     <div 
                       key={idx}
-                      className="absolute inset-0 opacity-20 group-hover:opacity-40 transition-all duration-500"
+                      className="absolute inset-0 rounded-2xl overflow-hidden border border-slate-700/50 shadow-xl transition-all duration-500 z-0 origin-center"
                       style={{ 
-                        transform: `scale(${1.05 + idx * 0.05}) translate(${idx * 10}px, ${idx * -5}px)`,
-                        filter: 'blur(1px)'
+                        transform: `rotate(${idx % 2 === 0 ? -4 : 4}deg) translate(${idx % 2 === 0 ? -8 : 8}px, ${idx * 6 + 4}px) scale(0.95)`,
+                        opacity: 0.6 - (idx * 0.2)
                       }}
                     >
-                      <img src={extra} alt="" className="w-full h-full object-cover" />
+                      <img src={extra} alt="" className="w-full h-full object-cover grayscale brightness-50 mix-blend-screen" />
                     </div>
                   ))}
 
-                  {/* Main Image */}
-                  <img 
-                    src={featured.img} 
-                    alt={featured.title} 
-                    className="w-full h-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-700 relative z-10" 
-                  />
+                  {/* Main Image Container */}
+                  <div className="absolute inset-0 rounded-2xl overflow-hidden border border-yellow-500/30 group-hover:border-yellow-400 bg-slate-900 shadow-2xl transition-all duration-300 z-10 group-hover:-translate-y-1 group-hover:scale-[1.02]">
+                    <img 
+                      src={featured.img} 
+                      alt={featured.title} 
+                      className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-all duration-700 relative z-10" 
+                    />
 
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent z-20"></div>
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent z-20"></div>
 
-                  {/* Multi-Angle Badge */}
-                  <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1">
-                    <div className="bg-twice-magenta text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 border border-white/20 animate-pulse">
-                      <Compass className="h-3 w-3" />
-                      {featured.angleCount} ANGLES
+                    {/* Multi-Angle Badge */}
+                    <div className="absolute top-3 right-3 z-30 flex flex-col items-end gap-1">
+                      <div className="bg-twice-magenta text-white text-[10px] font-black px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 border border-white/20 animate-pulse">
+                        <Compass className="h-3 w-3" />
+                        {featured.angleCount} ANGLES
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Floating Play Button */}
-                  <div className="absolute inset-0 flex items-center justify-center z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <div className="bg-white/10 backdrop-blur-md p-4 rounded-full border border-white/30 scale-75 group-hover:scale-100 transition-transform duration-500">
-                      <PlayCircle className="w-10 h-10 text-white" />
+                    {/* Floating Play Button */}
+                    <div className="absolute inset-0 flex items-center justify-center z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                      <div className="bg-white/10 backdrop-blur-md p-4 rounded-full border border-white/30 scale-75 group-hover:scale-100 transition-transform duration-500">
+                        <PlayCircle className="w-10 h-10 text-white" />
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="absolute bottom-4 left-4 right-4 z-30">
-                    <div className="flex items-center gap-2 mb-1">
-                       <span className="w-4 h-0.5 bg-yellow-500"></span>
-                       <span className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Live Sync</span>
+                    <div className="absolute bottom-4 left-4 right-4 z-30">
+                      <div className="flex items-center gap-2 mb-1">
+                         <span className="w-4 h-0.5 bg-yellow-500"></span>
+                         <span className="text-[9px] font-black text-yellow-500 uppercase tracking-[0.2em]">Live Sync</span>
+                      </div>
+                      <h3 className="text-white font-black text-lg uppercase tracking-tight leading-none group-hover:text-yellow-400 transition-colors drop-shadow-md">{featured.title}</h3>
+                      <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mt-1 truncate">{featured.subtitle}</p>
                     </div>
-                    <h3 className="text-white font-black text-lg uppercase tracking-tight leading-none group-hover:text-yellow-400 transition-colors drop-shadow-md">{featured.title}</h3>
-                    <p className="text-white/60 text-[10px] font-bold uppercase tracking-widest mt-1 truncate">{featured.subtitle}</p>
                   </div>
                 </div>
               </Link>
