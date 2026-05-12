@@ -319,8 +319,14 @@ def run_auto_daemon(interval_minutes=3):
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
-        # 특정 도시 수동 모드
-        run_deep_dive(sys.argv[1])
+        # 특정 도시들 수동 모드 (여러 도시 리스트 지원)
+        cities = sys.argv[1:]
+        logger.info(f"📍 지정된 {len(cities)}개 도시 리스트를 순차적으로 공략합니다: {', '.join(cities)}")
+        for city in cities:
+            try:
+                run_deep_dive(city)
+            except Exception as e:
+                logger.error(f"❌ '{city}' 공략 중 에러 발생: {e}")
     else:
         # 자동 데몬 모드
         run_auto_daemon(interval_minutes=3)
