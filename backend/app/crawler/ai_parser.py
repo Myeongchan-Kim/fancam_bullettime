@@ -94,9 +94,8 @@ def should_retry(exception):
 # Fallback 모델 리스트 (무료 할당량을 최대한 활용하기 위함)
 FALLBACK_MODELS = [
     "gemini-3.1-flash-lite", # RPD 500, RPM 15 (가장 넉넉함)
-    "gemini-2.5-flash-lite", # RPD 20, RPM 10
     "gemini-2.5-flash",      # RPD 20, RPM 5
-    "gemini-3-flash"         # RPD 20, RPM 5
+    "gemini-2.5-flash-lite"  # RPD 20, RPM 10
 ]
 
 # 최대 3번 재시도, 대기 시간은 10초부터 시작
@@ -107,6 +106,7 @@ FALLBACK_MODELS = [
     reraise=True
 )
 async def _generate_content_async(user_prompt: str):
+    import asyncio
     last_exception = None
     
     # 모델 리스트를 순회하며 시도
@@ -122,16 +122,22 @@ async def _generate_content_async(user_prompt: str):
             )
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                logger.warning(f"⏳ [Quota Exceeded] Model {model_name} hit limit. Trying next model...")
+            # 404 Not Found (지원하지 않는 모델 등)이면 그냥 다음 모델로 넘어감
+            if "404" in error_str or "NOT_FOUND" in error_str:
+                logger.warning(f"⚠️ [Model Error] Model {model_name} not found or unsupported. Skipping...")
                 last_exception = e
+                continue
+            elif "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                logger.warning(f"⏳ [Quota Exceeded] Model {model_name} hit limit. Trying next model after 3s...")
+                last_exception = e
+                await asyncio.sleep(3) # 폴백 모델로 넘어가기 전 짧은 대기
                 continue # 다음 모델 시도
             else:
-                # 429가 아닌 다른 에러(예: 파싱 에러, 네트워크 에러)는 즉시 던져서 재시도 로직을 탐
+                # 429, 404가 아닌 다른 에러는 즉시 던져서 재시도 로직을 탐
                 raise e
                 
-    # 모든 모델이 429 에러를 뱉었다면, 바깥의 @retry 데코레이터가 받아서 잠시 쉬었다가 전체 다시 시도
-    logger.error("🚨 All fallback models exhausted their quotas.")
+    # 모든 모델이 에러를 뱉었다면, 바깥의 @retry 데코레이터가 받아서 잠시 쉬었다가 전체 다시 시도
+    logger.error("🚨 All fallback models exhausted their quotas or failed.")
     raise last_exception if last_exception else Exception("All models failed")
 
 async def parse_fancam_metadata_async(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
@@ -153,6 +159,7 @@ async def parse_fancam_metadata_async(title: str, channel_name: str, description
     reraise=True
 )
 def _generate_content_sync(user_prompt: str):
+    import time
     last_exception = None
     
     for model_name in FALLBACK_MODELS:
@@ -167,14 +174,19 @@ def _generate_content_sync(user_prompt: str):
             )
         except Exception as e:
             error_str = str(e)
-            if "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
-                logger.warning(f"⏳ [Quota Exceeded] Sync Model {model_name} hit limit. Trying next model...")
+            if "404" in error_str or "NOT_FOUND" in error_str:
+                logger.warning(f"⚠️ [Model Error] Sync Model {model_name} not found or unsupported. Skipping...")
                 last_exception = e
+                continue
+            elif "429" in error_str or "RESOURCE_EXHAUSTED" in error_str:
+                logger.warning(f"⏳ [Quota Exceeded] Sync Model {model_name} hit limit. Trying next model after 3s...")
+                last_exception = e
+                time.sleep(3)
                 continue
             else:
                 raise e
                 
-    logger.error("🚨 All sync fallback models exhausted their quotas.")
+    logger.error("🚨 All sync fallback models exhausted their quotas or failed.")
     raise last_exception if last_exception else Exception("All models failed")
 
 def parse_fancam_metadata(title: str, channel_name: str, description: str = "") -> Optional[Dict[str, Any]]:
