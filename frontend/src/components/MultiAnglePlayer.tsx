@@ -183,20 +183,24 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     height: '100%',
     playerVars: {
       autoplay: 1 as const,
+      mute: 1 as const, // Must be muted to autoplay on mobile iOS/Android
       modestbranding: 1 as const,
       rel: 0 as const,
       start: initialTime,
+      playsinline: 1 as const, // Crucial for iOS inline playback
     },
   };
   const optsSlave = {
     width: '100%',
     height: '100%',
     playerVars: {
-      autoplay: 0 as const,
+      autoplay: 1 as const,
+      mute: 1 as const, // Slaves must always be muted and autoplay
       modestbranding: 1 as const,
       rel: 0 as const,
       controls: 0 as const, // Hide controls on slave to prevent user tampering
       disablekb: 1 as const,
+      playsinline: 1 as const,
     },
   };
 
