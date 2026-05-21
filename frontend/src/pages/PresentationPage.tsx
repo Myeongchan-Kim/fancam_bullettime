@@ -20,7 +20,7 @@ const PresentationPage = () => {
           </h2>
           
           {/* Step 1: K-POP Title */}
-          <h1 className={`text-6xl md:text-8xl font-black italic twice-text-gradient tracking-tighter transition-all duration-1000 ${step >= 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
+          <h1 className={`text-6xl md:text-8xl font-black italic twice-text-gradient tracking-tighter pr-4 transition-all duration-1000 ${step >= 1 ? 'opacity-100 scale-100' : 'opacity-0 scale-50'}`}>
             K-POP
           </h1>
 
