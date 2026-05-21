@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
-import stageMapImg from '../assets/stage_map.png';
+import StageMap from '../components/StageMap';
 
 const PresentationPage = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -62,8 +62,8 @@ const PresentationPage = () => {
 
           {/* Step 1: Stage Map & 360 Context */}
           <div className={`flex flex-col items-center space-y-6 transition-all duration-1000 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-            <div className="relative w-48 md:w-64 aspect-square bg-slate-900/50 rounded-full p-6 border border-slate-700 shadow-[0_0_50px_rgba(255,105,180,0.15)] flex items-center justify-center">
-              <img src={stageMapImg} alt="Stage Map" className="w-full h-full object-contain filter drop-shadow-2xl" />
+            <div className="relative w-48 md:w-64 aspect-square bg-slate-900/50 rounded-full p-2 border border-slate-700 shadow-[0_0_50px_rgba(255,105,180,0.15)] flex items-center justify-center">
+              <StageMap angle="" sizeClass="w-full" stageScale={0.8} />
             </div>
             <p className="text-xl md:text-2xl text-slate-300 leading-relaxed font-medium">
               Thousands of fans surrounding this stage were recording <br className="hidden md:block" />
