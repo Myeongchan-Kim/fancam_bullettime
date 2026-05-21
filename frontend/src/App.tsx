@@ -4,6 +4,7 @@ import HomePage from './pages/HomePage';
 import VideoDetailPage from './pages/VideoDetailPage';
 import AboutPage from './pages/AboutPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
+import PresentationPage from './pages/PresentationPage';
 import { Candy, LayoutDashboard } from 'lucide-react';
 import { API_BASE_URL } from './constants';
 
@@ -60,6 +61,7 @@ function App() {
             <Route path="/video/:id" element={<VideoDetailPage />} />
             <Route path="/about" element={<AboutPage />} />
             <Route path="/admin" element={<AdminDashboardPage />} />
+            <Route path="/presentation" element={<PresentationPage />} />
           </Routes>
         </main>
 
