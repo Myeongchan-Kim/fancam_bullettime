@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Play } from 'lucide-react';
+import stageMapImg from '../assets/stage_map.png';
 
 const PresentationPage = () => {
   const [currentSlide, setCurrentSlide] = useState(0);
@@ -48,32 +49,38 @@ const PresentationPage = () => {
     },
     {
       id: 2,
-      maxSteps: 2,
+      maxSteps: 3,
       content: (step: number) => (
-        <div className="flex flex-col items-center justify-center h-full space-y-12 max-w-5xl mx-auto px-6 text-center">
+        <div className="flex flex-col items-center justify-center h-full space-y-10 max-w-5xl mx-auto px-6 text-center">
           
           {/* Step 0: The Motivation */}
-          <div className={`space-y-6 transition-all duration-1000 ${step >= 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-            <p className="text-3xl md:text-4xl font-light text-slate-300">
+          <div className={`transition-all duration-1000 ${step >= 0 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+            <p className="text-3xl md:text-5xl font-light text-slate-300">
               4 weeks ago, <span className="text-twice-magenta font-bold">TWICE</span> in Boston.
             </p>
-            <h3 className="text-2xl md:text-3xl font-bold text-white italic">
-              "What if we could synchronize all these scattered <br className="hidden md:block" /> 
-              perspectives into one <span className="twice-text-gradient underline underline-offset-8">360° archive?</span>"
+          </div>
+
+          {/* Step 1: Stage Map & 360 Context */}
+          <div className={`flex flex-col items-center space-y-6 transition-all duration-1000 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+            <div className="relative w-48 md:w-64 aspect-square bg-slate-900/50 rounded-full p-6 border border-slate-700 shadow-[0_0_50px_rgba(255,105,180,0.15)] flex items-center justify-center">
+              <img src={stageMapImg} alt="Stage Map" className="w-full h-full object-contain filter drop-shadow-2xl" />
+            </div>
+            <p className="text-xl md:text-2xl text-slate-300 leading-relaxed font-medium">
+              Thousands of fans surrounding this stage were recording <br className="hidden md:block" />
+              the performance from <span className="text-twice-apricot font-bold text-2xl md:text-3xl">every angle in 360°</span>.
+            </p>
+          </div>
+
+          {/* Step 2: Vision Statement */}
+          <div className={`transition-all duration-1000 ${step >= 2 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
+            <h3 className="text-2xl md:text-3xl font-bold text-white italic leading-snug">
+              "What if we could synchronize all these scattered perspectives <br className="hidden md:block" /> 
+              into one <span className="twice-text-gradient underline underline-offset-8">360° archive?</span>"
             </h3>
           </div>
 
-          {/* Step 1: Vision Statement */}
-          <div className={`max-w-3xl transition-all duration-1000 ${step >= 1 ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-10'}`}>
-            <p className="text-xl text-slate-400 leading-relaxed">
-              By collecting and aligning these distributed fancams on a unified timeline, 
-              we can recreate the concert experience from every possible angle, 
-              creating a much more beautiful and immersive digital stage.
-            </p>
-          </div>
-
-          {/* Step 2: The Demo Button */}
-          <div className={`transition-all duration-1000 ${step >= 2 ? 'opacity-100 scale-100' : 'opacity-0 scale-50 pointer-events-none'}`}>
+          {/* Step 3: The Demo Button */}
+          <div className={`pt-4 transition-all duration-1000 ${step >= 3 ? 'opacity-100 scale-100' : 'opacity-0 scale-50 pointer-events-none'}`}>
             <button 
               onClick={(e) => {
                 e.stopPropagation();
@@ -142,7 +149,7 @@ const PresentationPage = () => {
       </div>
 
       {/* Content Area */}
-      <div className="relative w-full h-full pt-10">
+      <div key={slides[currentSlide].id} className="relative w-full h-full pt-10">
         {slides[currentSlide].content(currentStep)}
       </div>
 
