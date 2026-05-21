@@ -176,12 +176,12 @@ const StageMap: React.FC<StageMapProps> = ({
           </div>
           
           {/* PIT 2 (Top Right Cutout) */}
-          <div className="absolute top-0 right-[15%] w-[32%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
+          <div className="absolute top-0 right-[15%] w-[28%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-bl-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             PIT 2
           </div>
           
           {/* PIT 1 (Bottom Left Cutout) */}
-          <div className="absolute bottom-0 left-[15%] w-[32%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
+          <div className="absolute bottom-0 left-[15%] w-[28%] h-[65%] bg-[#0f172a] border-2 border-slate-700 rounded-tr-2xl flex items-center justify-center text-[7px] sm:text-[9px] text-gray-500 font-bold tracking-widest z-20 shadow-inner">
             PIT 1
           </div>
         </div>
