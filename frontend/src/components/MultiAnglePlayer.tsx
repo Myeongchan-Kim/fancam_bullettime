@@ -190,19 +190,36 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       playsinline: 1 as const, // Crucial for iOS inline playback
     },
   };
-  const optsSlave = {
-    width: '100%',
-    height: '100%',
-    playerVars: {
-      autoplay: 1 as const,
-      mute: 1 as const, // Slaves must always be muted and autoplay
-      modestbranding: 1 as const,
-      rel: 0 as const,
-      controls: 0 as const, // Hide controls on slave to prevent user tampering
-      disablekb: 1 as const,
-      playsinline: 1 as const,
-    },
+  const getSlaveOpts = (slaveVideo: Video) => {
+    // We'll use a one-time calculation for the initial start time 
+    // to avoid the player restarting when currentConcertTime updates.
+    const initialConcertTime = initialTime + (masterVideo?.sync_offset || 0);
+    const targetTime = Math.max(0, initialConcertTime - (slaveVideo.sync_offset || 0));
+
+    return {
+      width: '100%',
+      height: '100%',
+      playerVars: {
+        autoplay: 1 as const,
+        mute: 1 as const,
+        modestbranding: 1 as const,
+        rel: 0 as const,
+        controls: 0 as const,
+        disablekb: 1 as const,
+        playsinline: 1 as const,
+        start: Math.floor(targetTime),
+      },
+    };
   };
+
+  // Only show slave videos that are actually active at the CURRENT concert time
+  const activeSlaveVideos = useMemo(() => {
+    return slaveVideos.filter(v => {
+      const targetTime = currentConcertTime - (v.sync_offset || 0);
+      const duration = (v.duration && v.duration > 0) ? v.duration : 9999;
+      return targetTime >= 0 && targetTime <= duration;
+    });
+  }, [slaveVideos, currentConcertTime]);
 
   return (
     <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-950 p-4 xl:p-6">
@@ -251,7 +268,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             <div className="h-px flex-1 bg-slate-800"></div>
           </h3>
           
-          {slaveVideos.slice(0, 3).map(video => (
+          {activeSlaveVideos.slice(0, 3).map(video => (
             <div 
               key={video.id} 
               className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"
@@ -259,9 +276,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             >
               <div className="aspect-video relative bg-black">
                 <YouTube 
-                  key={`slave-${video.id}`}
+                  key={`slave-static-${video.id}`}
                   videoId={video.youtube_id} 
-                  opts={optsSlave} 
+                  opts={getSlaveOpts(video)} 
                   onReady={(e) => handleReady(e, video.id)}
                   className="w-full h-full absolute inset-0 pointer-events-none"
                 />
@@ -285,7 +302,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             </div>
           ))}
 
-          {slaveVideos.length === 0 && (
+          {activeSlaveVideos.length === 0 && (
             <div className="py-10 text-center border-2 border-dashed border-slate-800 rounded-2xl">
               <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">No Live Angles</span>
             </div>
@@ -293,15 +310,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
 
         {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
-        {slaveVideos.length > 3 && (
+        {activeSlaveVideos.length > 3 && (
           <div className="xl:col-span-3 flex flex-col space-y-4">
             <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              ADDITIONAL ANGLES ({slaveVideos.length - 3})
+              ADDITIONAL ANGLES ({activeSlaveVideos.length - 3})
               <div className="h-px flex-1 bg-slate-800"></div>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {slaveVideos.slice(3, 9).map(video => (
+              {activeSlaveVideos.slice(3, 9).map(video => (
                 <div 
                   key={video.id} 
                   className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"
@@ -309,9 +326,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 >
                   <div className="aspect-video relative bg-black">
                     <YouTube 
-                      key={`slave-${video.id}`}
+                      key={`slave-static-extra-${video.id}`}
                       videoId={video.youtube_id} 
-                      opts={optsSlave} 
+                      opts={getSlaveOpts(video)} 
                       onReady={(e) => handleReady(e, video.id)}
                       className="w-full h-full absolute inset-0 pointer-events-none"
                     />
