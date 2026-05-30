@@ -55,7 +55,7 @@ def warm_up_cache():
         for v in results:
             v.members = ensure_list(v.members)
             # Convert to schema first to trigger all lazy loads within the session
-            detail = VideoDetail.model_validate(v).model_dump(mode='json')
+            detail = VideoDetail.model_validate(v)
             final_results.append(detail)
             
         with CACHE_LOCK:
@@ -266,7 +266,7 @@ def get_videos(
     final_results = []
     for v in results:
         v.members = ensure_list(v.members)
-        detail = VideoDetail.model_validate(v).model_dump(mode='json')
+        detail = VideoDetail.model_validate(v)
         final_results.append(detail)
     
     with CACHE_LOCK:
@@ -325,8 +325,8 @@ def get_home_summary(db: Session = Depends(get_db)):
         concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
 
         # Serialize metadata to be safe
-        songs = [SongBase.model_validate(s).model_dump(mode='json') for s in songs_query]
-        concerts = [ConcertBase.model_validate(c).model_dump(mode='json') for c in concerts_query]
+        songs = [SongBase.model_validate(s) for s in songs_query]
+        concerts = [ConcertBase.model_validate(c) for c in concerts_query]
 
         # 2. Get default videos (Home Page view)
         cache_key = "none:none:none:none:none:none:False:False"
@@ -342,7 +342,7 @@ def get_home_summary(db: Session = Depends(get_db)):
                 videos = []
                 for v in results:
                     v.members = ensure_list(v.members)
-                    detail = VideoDetail.model_validate(v).model_dump(mode='json')
+                    detail = VideoDetail.model_validate(v)
                     videos.append(detail)
                 VIDEO_CACHE[cache_key] = videos
 
