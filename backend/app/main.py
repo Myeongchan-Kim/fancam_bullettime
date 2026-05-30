@@ -46,7 +46,7 @@ def warm_up_cache():
         # Load everything in one go to prevent DetachedInstanceError
         query = db.query(Video).options(
             joinedload(Video.songs),
-            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+            joinedload(Video.concert)
         )
         results = query.distinct().order_by(Video.created_at.desc()).all()
         
@@ -75,14 +75,16 @@ DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(DATABASE_URL)
+    from sqlalchemy.pool import NullPool
+    engine = create_engine(DATABASE_URL, poolclass=NullPool)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Warm up cache in background
-    threading.Thread(target=warm_up_cache, daemon=True).start()
+    # Startup: Warm up cache in background (Skip on Vercel serverless to avoid startup timeouts/freezes)
+    if not os.getenv("VERCEL"):
+        threading.Thread(target=warm_up_cache, daemon=True).start()
     yield
     # Shutdown logic (if any) could go here
 
@@ -242,7 +244,7 @@ def get_videos(
 
     query = db.query(Video).options(
         joinedload(Video.songs),
-        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        joinedload(Video.concert)
     )
 
     # Basic Filtering
@@ -336,7 +338,7 @@ def get_home_summary(db: Session = Depends(get_db)):
             else:
                 query = db.query(Video).options(
                     joinedload(Video.songs),
-                    joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+                    joinedload(Video.concert)
                 )
                 results = query.distinct().order_by(Video.created_at.desc()).all()
                 videos = []

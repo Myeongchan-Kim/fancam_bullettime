@@ -35,6 +35,16 @@ class ConcertBase(BaseModel):
     class Config:
         from_attributes = True
 
+class ConcertMini(BaseModel):
+    id: int
+    date: datetime
+    city: str
+    country: str
+    venue: str
+
+    class Config:
+        from_attributes = True
+
 class VideoBase(BaseModel):
     id: int
     youtube_id: str
@@ -57,7 +67,7 @@ class VideoBase(BaseModel):
 class VideoDetail(VideoBase):
     song: Optional[SongBase] = None # Deprecated
     songs: List[SongBase] = []
-    concert: Optional[ConcertBase] = None
+    concert: Optional[ConcertMini] = None
 
 class VideoUpdate(BaseModel):
     title: Optional[str] = None

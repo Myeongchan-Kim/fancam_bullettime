@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type } from 'lucide-react';
@@ -17,6 +17,11 @@ const VideoDetailPage = () => {
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   const [contributions, setContributions] = useState<Contribution[]>([]);
+
+  const fullConcert = useMemo(() => {
+    if (!video || !video.concert || !concerts) return null;
+    return concerts.find(c => c.id === video.concert?.id) || null;
+  }, [video, concerts]);
 
   
   // Admin State
@@ -290,7 +295,7 @@ const VideoDetailPage = () => {
                   <div className="space-y-2">
                     <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
                       <Clock className="h-3 w-3"/> Concert Offset (sec)
-                      {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
+                      {fullConcert && fullConcert.setlist && fullConcert.setlist.length > 0 && (
                         <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
                           <Info className="h-3 w-3 text-twice-magenta" />
                         </button>
@@ -403,7 +408,7 @@ const VideoDetailPage = () => {
                 <div className="space-y-2">
                   <label className="text-[11px] font-black text-gray-600 uppercase tracking-widest ml-1 flex items-center gap-2">
                     <Clock className="h-3 w-3"/> Concert Offset (sec)
-                    {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
+                    {fullConcert && fullConcert.setlist && fullConcert.setlist.length > 0 && (
                       <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
                         <Info className="h-3 w-3 text-twice-magenta" />
                       </button>
@@ -439,7 +444,7 @@ const VideoDetailPage = () => {
                       <select className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-2 text-xs outline-none focus:ring-2 focus:ring-twice-magenta text-white appearance-none cursor-pointer"
                         value={editData.suggested_setlist_id || 0} onChange={e => setEditData({...editData, suggested_setlist_id: parseInt(e.target.value)})}>
                         <option value="0">--- Create New Custom Scene ---</option>
-                        {video.concert?.setlist?.map(sl => (
+                        {fullConcert?.setlist?.map(sl => (
                           <option key={sl.id} value={sl.id}>
                             {sl.event_name || sl.song?.name}
                           </option>
@@ -528,7 +533,7 @@ const VideoDetailPage = () => {
                         <div className="text-[10px] bg-indigo-500/20 p-1.5 rounded border border-indigo-500/30">
                           <div className="text-indigo-300 font-black uppercase text-[8px] mb-1 flex items-center gap-1"><Clock className="h-2 w-2"/> Timeline Edit</div>
                           <div className="font-bold text-white">
-                            {c.suggested_setlist_id ? `Update: ${video.concert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.event_name || video.concert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.song?.name}` : `New Scene: ${c.suggested_event_name}`}
+                            {c.suggested_setlist_id ? `Update: ${fullConcert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.event_name || fullConcert?.setlist?.find(sl => sl.id === c.suggested_setlist_id)?.song?.name}` : `New Scene: ${c.suggested_event_name}`}
                           </div>
                           <div className="text-[9px] text-twice-magenta font-black">Time: {c.suggested_start_time}s</div>
                         </div>
@@ -542,13 +547,13 @@ const VideoDetailPage = () => {
           )}
         </div>
       </div>
-      {showTimelineInfo && video.concert && (
+      {showTimelineInfo && fullConcert && (
         <ConcertTimelineModal 
-          concert={video.concert} 
+          concert={fullConcert} 
           onClose={() => setShowTimelineInfo(false)} 
           onSelect={(seconds) => {
             // 해당 시간대에 맞는 곡 ID도 찾아보기
-            const matchedSetlistItem = video.concert?.setlist?.find(sl => sl.start_time === seconds);
+            const matchedSetlistItem = fullConcert?.setlist?.find(sl => sl.start_time === seconds);
             setEditData(prev => ({
               ...prev,
               sync_offset: seconds.toString(),
