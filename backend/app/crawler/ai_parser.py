@@ -145,7 +145,10 @@ async def parse_fancam_metadata_async(title: str, channel_name: str, description
     try:
         user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
         response = await _generate_content_async(user_prompt)
-        result_json = response.parsed if hasattr(response, 'parsed') else json.loads(clean_json_response(response.text))
+        if hasattr(response, 'parsed') and response.parsed is not None:
+            result_json = response.parsed
+        else:
+            result_json = json.loads(clean_json_response(response.text))
         return result_json
     except Exception as e:
         logger.error(f"[AI Parser Async Error] 최종 실패: {e}")
@@ -194,7 +197,10 @@ def parse_fancam_metadata(title: str, channel_name: str, description: str = "") 
     try:
         user_prompt = f"Video Title: {title}\nChannel Name: {channel_name}\nDescription: {description}"
         response = _generate_content_sync(user_prompt)
-        result_json = response.parsed if hasattr(response, 'parsed') else json.loads(clean_json_response(response.text))
+        if hasattr(response, 'parsed') and response.parsed is not None:
+            result_json = response.parsed
+        else:
+            result_json = json.loads(clean_json_response(response.text))
         return result_json
     except Exception as e:
         logger.error(f"[AI Parser Error] 최종 실패: {e}")
