@@ -31,15 +31,11 @@ DATABASE_URL = settings.DATABASE_URL
 if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    # pool_pre_ping=True added to handle unexpected connection closures (SSL error fix)
-    # pool_recycle=300 added to prevent connection timeout
-    # pool_size=5, max_overflow=10 to manage serverless connection limits
+    # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
+    from sqlalchemy.pool import NullPool
     engine = create_engine(
-        DATABASE_URL, 
-        pool_pre_ping=True,
-        pool_recycle=300,
-        pool_size=5,
-        max_overflow=10
+        DATABASE_URL,
+        poolclass=NullPool
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
