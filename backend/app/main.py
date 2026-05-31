@@ -32,7 +32,15 @@ if DATABASE_URL.startswith("sqlite"):
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     # pool_pre_ping=True added to handle unexpected connection closures (SSL error fix)
-    engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+    # pool_recycle=300 added to prevent connection timeout
+    # pool_size=5, max_overflow=10 to manage serverless connection limits
+    engine = create_engine(
+        DATABASE_URL, 
+        pool_pre_ping=True,
+        pool_recycle=300,
+        pool_size=5,
+        max_overflow=10
+    )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
