@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import or_, not_, select, func
+from sqlalchemy import or_, not_, select, func, create_engine
+from sqlalchemy.orm import sessionmaker
 from typing import List, Optional
 from datetime import datetime
 import os
@@ -9,23 +10,63 @@ import logging
 import json
 import re
 import traceback
+import threading
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate, HomeSummary
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
-
+from app.core.config import settings
 from app.crawler.recheck_worker import run_recheck_job, recheck_status
-
-import threading
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# Cache for video list API
+# --- Database Setup ---
+# 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용 (settings 객체 사용 권장)
+DATABASE_URL = settings.DATABASE_URL
+
+# SQLite인 경우에만 check_same_thread 옵션 추가
+if DATABASE_URL.startswith("sqlite"):
+    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+else:
+    engine = create_engine(DATABASE_URL)
+
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# --- Utility Functions ---
+def ensure_list(data):
+    """문자열이 리스트가 될 때까지 반복적으로 파싱하는 안전장치 (Iterative)"""
+    if data is None:
+        return []
+    current = data
+    # 리스트가 나올 때까지 최대 5번 시도 (보통 1-2번이면 충분)
+    for _ in range(5):
+        if isinstance(current, list):
+            return current
+        if not isinstance(current, str):
+            break
+        try:
+            current = json.loads(current)
+        except (json.JSONDecodeError, TypeError):
+            break
+            
+    if not isinstance(current, list):
+        logger.warning(f"⚠️ JSON 데이터 디코딩 실패 (5회 시도): {data}")
+        return []
+        
+    return current
+
+# --- Caching System ---
+# Cache for video list API. Stores Pydantic models (VideoDetail) to prevent DetachedInstanceError.
 VIDEO_CACHE = {}
 CACHE_LOCK = threading.Lock()
 
@@ -37,7 +78,7 @@ def clear_video_cache():
     threading.Thread(target=warm_up_cache, daemon=True).start()
 
 def warm_up_cache():
-    """Pre-cache the default video list with all relationships loaded and serialized."""
+    """Pre-cache the default video list with all relationships loaded and serialized into Pydantic models."""
     try:
         db = SessionLocal()
         logger.info("🔥 Warming up video cache...")
@@ -50,7 +91,7 @@ def warm_up_cache():
         )
         results = query.distinct().order_by(Video.created_at.desc()).all()
         
-        # Serialize to Pydantic models then to dicts to be session-independent
+        # Serialize to Pydantic models to be session-independent
         final_results = []
         for v in results:
             v.members = ensure_list(v.members)
@@ -66,19 +107,26 @@ def warm_up_cache():
         logger.error(f"Failed to warm up cache: {e}")
         logger.error(traceback.format_exc())
 
-from app.core.config import settings
+# --- Admin Authentication ---
+def verify_admin(
+    x_admin_key: Optional[str] = Header(None),
+    authorization: Optional[str] = Header(None)
+):
+    admin_pass = settings.ADMIN_KEY
+    
+    # Check X-Admin-Key header
+    if x_admin_key == admin_pass:
+        return True
+        
+    # Check Authorization: Bearer <key> header
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ")[1]
+        if token == admin_pass:
+            return True
+            
+    raise HTTPException(status_code=403, detail="Admin access denied")
 
-# 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용
-DATABASE_URL = settings.DATABASE_URL
-
-# SQLite인 경우에만 check_same_thread 옵션 추가
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    engine = create_engine(DATABASE_URL)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+# --- FastAPI App Setup ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup: Warm up cache in background
@@ -94,7 +142,7 @@ origins = [
     "http://127.0.0.1:5173",
     "http://localhost:3000",
     "https://twice-fancam-archive.vercel.app",
-    "https://fancam-bullettime.vercel.app", # 현재 실제 배포 주소
+    "https://fancam-bullettime.vercel.app",
 ]
 
 app.add_middleware(
@@ -108,33 +156,7 @@ app.add_middleware(
 # Vercel handler
 app_handler = app
 
-# DB 의존성
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
-# Admin Auth 의존성
-def verify_admin(
-    x_admin_key: Optional[str] = Header(None),
-    authorization: Optional[str] = Header(None)
-):
-    admin_pass = os.getenv("ADMIN_SECRET_KEY", "twice360")
-    
-    # Check X-Admin-Key header
-    if x_admin_key == admin_pass:
-        return True
-        
-    # Check Authorization: Bearer <key> header
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        if token == admin_pass:
-            return True
-            
-    raise HTTPException(status_code=403, detail="Admin access denied")
-
+# --- Internal Helpers ---
 def _maybe_auto_approve(db: Session, contribution_id: int):
     """Internal helper to auto-approve if global setting is enabled."""
     if os.getenv("AUTO_APPROVE", "false").lower() == "true":
@@ -199,29 +221,8 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
             logger.info(f"Created new setlist item: {contrib.suggested_event_name} for concert {concert_id}")
 
     contrib.is_processed = True
-    # COMMIT REMOVED - Caller must handle transaction atomicity
 
-def ensure_list(data):
-    """문자열이 리스트가 될 때까지 반복적으로 파싱하는 안전장치 (Iterative)"""
-    if data is None:
-        return []
-    current = data
-    # 리스트가 나올 때까지 최대 5번 시도 (보통 1-2번이면 충분)
-    for _ in range(5):
-        if isinstance(current, list):
-            return current
-        if not isinstance(current, str):
-            break
-        try:
-            current = json.loads(current)
-        except (json.JSONDecodeError, TypeError):
-            break
-            
-    if not isinstance(current, list):
-        logger.warning(f"⚠️ JSON 데이터 디코딩 실패 (5회 시도): {data}")
-        return []
-        
-    return current
+# --- API Endpoints ---
 
 @app.get("/api/videos", response_model=List[VideoDetail])
 def get_videos(
@@ -283,7 +284,6 @@ def get_video(video_id: int, db: Session = Depends(get_db)):
     video.members = ensure_list(video.members)
     return video
 
-
 @app.patch("/api/videos/{video_id}", response_model=VideoDetail)
 def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     db_video = db.query(Video).filter(Video.id == video_id).first()
@@ -320,7 +320,7 @@ def get_concerts(db: Session = Depends(get_db)):
 def get_home_summary(db: Session = Depends(get_db)):
     """Optimized endpoint for initial page load, providing all metadata and default videos."""
     try:
-        # 1. Fetch songs and concerts (Need to serialize these too)
+        # 1. Fetch songs and concerts
         songs_query = db.query(Song).order_by(Song.order).all()
         concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
 
@@ -398,7 +398,6 @@ def create_general_contribution(
     db.refresh(new_contrib)
 
     _maybe_auto_approve(db, new_contrib.id)
-    # If auto-approved, video list might have changed
     if os.getenv("AUTO_APPROVE", "false").lower() == "true":
         clear_video_cache()
             
@@ -411,7 +410,6 @@ def create_contribution(
     request: Request,
     db: Session = Depends(get_db)
 ):
-    # 영상 존재 여부 확인
     video = db.query(Video).filter(Video.id == video_id).first()
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
@@ -419,7 +417,6 @@ def create_contribution(
     new_contrib = Contribution(
         video_id=video_id,
         suggested_title=contribution.suggested_title,
-        suggested_song_id=contribution.suggested_song_id, # Deprecated
         suggested_song_ids=contribution.suggested_song_ids,
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members,
@@ -455,7 +452,6 @@ def get_contributions(video_id: int, db: Session = Depends(get_db)):
             "video_title": r.video.title if r.video else None,
             "suggested_url": r.suggested_url,
             "suggested_title": r.suggested_title,
-            "suggested_song_id": r.suggested_song_id,
             "suggested_song_ids": ensure_list(r.suggested_song_ids),
             "suggested_concert_id": r.suggested_concert_id,
             "suggested_members": ensure_list(r.suggested_members),
@@ -485,7 +481,6 @@ def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depen
             "video_title": r.video.title if r.video else None,
             "suggested_url": r.suggested_url,
             "suggested_title": r.suggested_title,
-            "suggested_song_id": r.suggested_song_id,
             "suggested_song_ids": ensure_list(r.suggested_song_ids),
             "suggested_concert_id": r.suggested_concert_id,
             "suggested_members": ensure_list(r.suggested_members),
@@ -521,7 +516,7 @@ def update_setlist_item(
 @app.post("/api/admin/concerts/{concert_id}/setlist")
 def import_setlist(
     concert_id: int,
-    items: List[dict], # List of {song_id, event_name, start_time}
+    items: List[dict],
     db: Session = Depends(get_db),
     admin: bool = Depends(verify_admin)
 ):
@@ -529,7 +524,6 @@ def import_setlist(
     if not concert:
         raise HTTPException(status_code=404, detail="Concert not found")
     
-    # Remove existing setlist for this concert
     db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).delete()
     
     for idx, item in enumerate(items):
@@ -552,14 +546,10 @@ def internal_approve_contribution(db: Session, contribution_id: int):
     if not contrib:
         raise Exception("Contribution not found")
     
-    # Check if this is a video-related contribution
     if contrib.video_id is not None or contrib.suggested_url:
         if contrib.video_id is None:
-            if not contrib.suggested_url:
-                raise Exception("suggested_url is required for new videos")
             yt_id = get_video_id(contrib.suggested_url)
-            if not yt_id:
-                raise Exception("Invalid YouTube URL")
+            if not yt_id: raise Exception("Invalid YouTube URL")
                 
             existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
             if existing:
@@ -570,25 +560,22 @@ def internal_approve_contribution(db: Session, contribution_id: int):
                     url=contrib.suggested_url,
                     title=contrib.suggested_title or "Unknown Title",
                     thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
-                    members=contrib.suggested_members or [],
+                    members=ensure_list(contrib.suggested_members),
                     angle=contrib.suggested_angle or "Unknown",
                     duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
                     concert_id=contrib.suggested_concert_id
                 )
                 db.add(video)
-                db.flush() # Generate ID within transaction
+                db.flush()
             
             contrib.video_id = video.id
             apply_contribution_to_video(db, video, contrib)
         else:
             video = db.query(Video).filter(Video.id == contrib.video_id).first()
-            if not video:
-                raise Exception("Video not found")
-            
+            if not video: raise Exception("Video not found")
             apply_contribution_to_video(db, video, contrib)
         return video
     else:
-        # Pure Setlist / Other contribution
         apply_contribution_to_video(db, None, contrib)
         return None
 
@@ -600,16 +587,14 @@ def approve_contribution(
 ):
     try:
         video = internal_approve_contribution(db, contribution_id)
-        db.commit() # Atomic commit
-        clear_video_cache() # Data changed!
+        db.commit() 
+        clear_video_cache()
 
         if video:
             result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
-            if not result:
-                raise Exception("Video not found after approval")
             return result
         else:
-            return {"message": "Contribution approved (Non-video related)"}
+            return {"message": "Contribution approved"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
@@ -632,7 +617,7 @@ def approve_all_contributions(
             continue
             
     db.commit()
-    clear_video_cache() # All data might have changed
+    clear_video_cache()
     return {"message": f"Successfully approved {count} contributions", "errors": errors}
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
@@ -642,9 +627,7 @@ def delete_contribution(
     admin: bool = Depends(verify_admin)
 ):
     contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
-    if not contrib:
-        raise HTTPException(status_code=404, detail="Contribution not found")
-    
+    if not contrib: raise HTTPException(status_code=404, detail="Contribution not found")
     db.delete(contrib)
     db.commit()
     return None
