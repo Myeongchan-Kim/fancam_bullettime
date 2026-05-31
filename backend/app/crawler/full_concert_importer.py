@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 DATABASE_URL = settings.DATABASE_URL
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-ADMIN_KEY = os.getenv("ADMIN_KEY", "twice360")
+ADMIN_KEY = settings.ADMIN_KEY
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -109,11 +109,25 @@ def run_full_concert_importer(city_name: str = None, limit: int = 5):
                     if len(ai_setlist) >= 20: # 🛡️ 안전장치: 20곡 이상
                         logger.info(f"📝 {concert_obj.city} ({concert_obj.date}) 공연의 셋리스트 {len(ai_setlist)}개를 자동 생성(API)합니다.")
                         setlist_payload = []
+                        all_songs = db.query(Song).all()
+                        
+                        import re
                         for item in ai_setlist:
                             s_name = item["song_name"]
                             s_ts = item["timestamp"]
                             s_sec = timestamp_to_seconds(s_ts)
+                            
+                            # Improved matching logic
                             song_obj = db.query(Song).filter(Song.name == s_name).first()
+                            if not song_obj:
+                                # Try fuzzy match or keyword match by removing anything in parentheses
+                                s_name_clean = re.sub(r'\(.*?\)', '', s_name.lower()).strip()
+                                for s in all_songs:
+                                    s_db_clean = re.sub(r'\(.*?\)', '', s.name.lower()).strip()
+                                    if s_name_clean == s_db_clean and len(s_name_clean) > 2:
+                                        song_obj = s
+                                        break
+                            
                             setlist_payload.append({
                                 "song_id": song_obj.id if song_obj else None,
                                 "event_name": s_name,
