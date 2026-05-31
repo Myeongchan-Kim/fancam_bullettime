@@ -29,19 +29,19 @@ DATABASE_URL = settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
 
-# Supabase Pooler (port 6543) requires explicit SSL and disabling prepared statements
-if "pooler.supabase.com" in DATABASE_URL or ":6543" in DATABASE_URL:
-    if "sslmode" not in DATABASE_URL:
-        DATABASE_URL += ("&" if "?" in DATABASE_URL else "?") + "sslmode=require"
-    if "prepared_statements" not in DATABASE_URL:
-        DATABASE_URL += ("&" if "?" in DATABASE_URL else "?") + "prepared_statements=false"
-
 # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
 from sqlalchemy.pool import NullPool
+
+# Supabase requires sslmode=require for pooled connections (port 6543)
+connect_args = {}
+if "supabase" in DATABASE_URL:
+    connect_args["sslmode"] = "require"
+
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
-    pool_pre_ping=True  # Ensure connection is fresh
+    pool_pre_ping=True,
+    connect_args=connect_args
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
