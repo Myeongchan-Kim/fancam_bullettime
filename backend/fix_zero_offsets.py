@@ -4,10 +4,6 @@ import os
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-from app.models.models import Video, ConcertSetlist, Song
-
 # backend 폴더 내부에서 실행됨을 가정
 from app.main import SessionLocal
 from app.models.models import Video, ConcertSetlist, Song

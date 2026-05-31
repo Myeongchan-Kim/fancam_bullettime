@@ -16,25 +16,27 @@ The project follows a standard decoupled frontend/backend architecture:
   - `pages/`: Main view components (Home, Video Detail).
   - `types/`: Shared TypeScript interfaces.
 
-## 2. Database Design (SQLite)
-- **Engine:** SQLite with WAL mode enabled for concurrent crawler/web access.
-- **ORM Handling:** Custom `JSONEncodedList` TypeDecorator handles automatic serialization between Python lists/dicts and SQLite strings.
+## 2. Database Design (Supabase / PostgreSQL)
+- **Engine:** PostgreSQL hosted on Supabase.
+- **ORM Handling:** SQLAlchemy with `psycopg2`. Custom `JSONEncodedList` TypeDecorator handles serialization between Python lists/dicts and JSONB/JSON fields.
 - **Master Tables:**
   - `Video`: Master store for video metadata, members (JSON), and stage coordinates.
   - `Song`: Global catalog of songs. Includes `is_solo` flag and `member_name`.
   - `Concert`: Tour stops with date, city, and venue.
-  - `ConcertSetlist`: **New** - Defines the *actual* sequence of songs for a specific concert. Enables concert-specific timeline navigation.
+  - `ConcertSetlist`: Defines the *actual* sequence of songs for a specific concert. Enables concert-specific timeline navigation.
 - **Relationship Tables:**
   - `video_song_association`: Many-to-many link between videos and the songs they contain.
 - **Wiki System:**
   - `Contribution`: Buffer for user/AI submissions. Automatically applied to `Video` upon admin approval.
 
 ## 3. Key Backend Logic
-- **Iterative JSON Parser:** `main.py` uses an iterative `ensure_list` failsafe to handle multi-encoded JSON strings from legacy data or SQLite limitations, ensuring Pydantic validation always succeeds.
+- **Iterative JSON Parser:** `main.py` uses an iterative `ensure_list` failsafe to handle multi-encoded JSON strings or legacy data inconsistencies, ensuring Pydantic validation always succeeds.
+- **Serverless Optimization:** Uses `NullPool` to avoid connection leaks in Vercel's ephemeral environment.
 - **Dynamic Timeline Filtering:** 
   - If a `concert_id` is provided, the API filters videos based on the `display_order` in `ConcertSetlist`.
   - If no concert or setlist is found, it falls back to the global `Song.order`.
-- **Admin Security:** Simple header-based validation (`X-Admin-Key`) using a secret defined in `.env`.
+- **Admin Security:** Header-based validation using `X-Admin-Key` or Bearer token.
+
 
 ## 4. AI Crawler Pipeline
 - **Methodology:** 3-step autonomous pipeline using Playwright and Gemini 2.0 Flash.

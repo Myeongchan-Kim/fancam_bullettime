@@ -6,9 +6,10 @@ sys.path.append(os.path.join(os.getcwd()))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from app.models.models import Video, Song
+from app.models.models import Video, Song, ConcertSetlist
+from app.core.config import settings
 
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()

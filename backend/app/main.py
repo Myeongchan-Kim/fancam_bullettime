@@ -24,19 +24,17 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- Database Setup ---
-# 환경변수에서 DATABASE_URL을 가져오고, 없으면 로컬 SQLite 사용 (settings 객체 사용 권장)
 DATABASE_URL = settings.DATABASE_URL
 
-# SQLite인 경우에만 check_same_thread 옵션 추가
-if DATABASE_URL.startswith("sqlite"):
-    engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
-else:
-    # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
-    from sqlalchemy.pool import NullPool
-    engine = create_engine(
-        DATABASE_URL,
-        poolclass=NullPool
-    )
+if not DATABASE_URL:
+    raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
+
+# Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
+from sqlalchemy.pool import NullPool
+engine = create_engine(
+    DATABASE_URL,
+    poolclass=NullPool
+)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

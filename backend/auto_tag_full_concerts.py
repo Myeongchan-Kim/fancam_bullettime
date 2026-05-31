@@ -7,9 +7,10 @@ sys.path.append(os.path.join(os.getcwd(), "backend"))
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 from app.models.models import Video, ConcertSetlist, Song
+from app.core.config import settings
 
 # Since we run this from within 'backend' folder
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()

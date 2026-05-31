@@ -7,7 +7,7 @@ import json
 Base = declarative_base()
 
 class JSONEncodedList(TypeDecorator):
-    """Enables JSON storage of lists/dicts in SQLite by automatic string conversion."""
+    """Enables JSON storage of lists/dicts by automatic string conversion."""
     impl = String
     cache_ok = True
 
