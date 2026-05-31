@@ -96,6 +96,7 @@ Every 0.01-second adjustment helps make the stage more immersive. Feel free to c
 ```bash
 cd backend
 # Recommended using 'uv' package manager
+# Ensure DATABASE_URL (Supabase/PostgreSQL) is set in .env
 uv run python -m app.main
 ```
 

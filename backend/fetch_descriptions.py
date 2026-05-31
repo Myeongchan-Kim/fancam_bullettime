@@ -11,16 +11,12 @@ sys.path.append(os.path.join(os.getcwd(), "backend"))
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.models.models import Video
+from app.core.config import settings
 
-# .env 로드
-dotenv_path = os.path.join(os.getcwd(), "backend", ".env")
-load_dotenv(dotenv_path)
-
-# 유튜브 API 설정
 YOUTUBE_API_KEY = os.environ.get("YOUTUBE_API_KEY")
 youtube = build("youtube", "v3", developerKey=YOUTUBE_API_KEY)
 
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()

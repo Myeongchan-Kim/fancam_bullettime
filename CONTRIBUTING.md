@@ -34,7 +34,7 @@ npm run prepare # Initializes husky hooks
 ### Backend (FastAPI)
 1. Navigate to the backend directory: `cd backend`
 2. Install dependencies using `uv`: `uv sync` (or your preferred python package manager)
-3. Set up your `.env` file (copy from `.env.example`). You can use a local SQLite DB (`sqlite:///./twice_fancam.db`) for development or connect to your own Supabase instance.
+3. Set up your `.env` file (copy from `.env.example`). You must provide a valid `DATABASE_URL` for a Supabase/PostgreSQL instance.
 4. Run the development server: `uv run python -m app.main` (Available at `http://localhost:8000`)
 
 ### Frontend (React/Vite)

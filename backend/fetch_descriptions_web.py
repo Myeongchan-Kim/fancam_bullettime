@@ -8,8 +8,9 @@ from playwright.async_api import async_playwright
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 from app.models.models import Video
+from app.core.config import settings
 
-DATABASE_URL = "sqlite:///twice_fancam.db"
+DATABASE_URL = settings.DATABASE_URL
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
