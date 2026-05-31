@@ -29,6 +29,14 @@ DATABASE_URL = settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
 
+# psycopg2 does not support 'prepared_statements' parameter in DSN
+if "prepared_statements" in DATABASE_URL:
+    import re
+    # Remove prepared_statements=... from the URL
+    DATABASE_URL = re.sub(r'([?&])prepared_statements=[^&]*', r'\1', DATABASE_URL)
+    # Clean up trailing ? or &
+    DATABASE_URL = DATABASE_URL.rstrip('?&').replace('?&', '?')
+
 # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
 from sqlalchemy.pool import NullPool
 
