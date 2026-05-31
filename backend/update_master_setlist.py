@@ -106,6 +106,37 @@ def run_migration():
     try:
         print("Starting Master Setlist Migration (Consolidated)...")
         
+        # 0. Manual merge for known duplicates not in rename_map
+        manual_merges = [
+            (101, 41), # FOUR (Intro)
+            (106, 38), # DAT AHH DAT OOH
+            (107, 39), # BATTITUDE
+        ]
+        from app.models.models import Video, ConcertSetlist, Contribution
+        from sqlalchemy import select
+        
+        for old_id, new_id in manual_merges:
+            old_song = db.query(Song).filter(Song.id == old_id).first()
+            new_song = db.query(Song).filter(Song.id == new_id).first()
+            if old_song and new_song:
+                print(f"Manually merging ID {old_id} into {new_id} ({old_song.name})...")
+                subq = select(video_song_association.c.video_id).where(video_song_association.c.song_id == new_id)
+                db.execute(
+                    video_song_association.delete()
+                    .where(video_song_association.c.song_id == old_id)
+                    .where(video_song_association.c.video_id.in_(subq))
+                )
+                db.execute(
+                    video_song_association.update()
+                    .where(video_song_association.c.song_id == old_id)
+                    .values(song_id=new_id)
+                )
+                db.query(Video).filter(Video.song_id == old_id).update({Video.song_id: new_id})
+                db.query(ConcertSetlist).filter(ConcertSetlist.song_id == old_id).update({ConcertSetlist.song_id: new_id})
+                db.query(Contribution).filter(Contribution.suggested_song_id == old_id).update({Contribution.suggested_song_id: new_id})
+                db.delete(old_song)
+        db.flush()
+
         # 1. Rename existing songs based on the map
         for old_name, new_name in rename_map.items():
             old_song = db.query(Song).filter(Song.name == old_name).first()
@@ -134,8 +165,14 @@ def run_migration():
                     )
                     
                     # 3. Update deprecated song_id in Video table if any
-                    from app.models.models import Video
+                    from app.models.models import Video, ConcertSetlist, Contribution
                     db.query(Video).filter(Video.song_id == old_song.id).update({Video.song_id: new_song_exists.id})
+                    
+                    # 4. Update ConcertSetlist references
+                    db.query(ConcertSetlist).filter(ConcertSetlist.song_id == old_song.id).update({ConcertSetlist.song_id: new_song_exists.id})
+                    
+                    # 5. Update Contribution references
+                    db.query(Contribution).filter(Contribution.suggested_song_id == old_song.id).update({Contribution.suggested_song_id: new_song_exists.id})
                     
                     db.delete(old_song)
                 else:
