@@ -203,6 +203,7 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
         if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
         if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
         if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
+        if contrib.suggested_is_shorts is not None: video.is_shorts = contrib.suggested_is_shorts
     
     # Handle setlist timing or create new setlist item if suggested
     concert_id = contrib.suggested_concert_id or (video.concert_id if video else None)
@@ -395,6 +396,7 @@ def create_general_contribution(
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members or [],
         suggested_duration=contribution.suggested_duration,
+        suggested_is_shorts=contribution.suggested_is_shorts or False,
         suggested_angle=contribution.suggested_angle or "Unknown",
         suggested_setlist_id=contribution.suggested_setlist_id,
         suggested_start_time=contribution.suggested_start_time,
@@ -429,6 +431,7 @@ def create_contribution(
         suggested_concert_id=contribution.suggested_concert_id,
         suggested_members=contribution.suggested_members,
         suggested_duration=contribution.suggested_duration,
+        suggested_is_shorts=contribution.suggested_is_shorts or False,
         suggested_angle=contribution.suggested_angle,
         suggested_coordinate_x=contribution.suggested_coordinate_x,
         suggested_coordinate_y=contribution.suggested_coordinate_y,
@@ -571,6 +574,7 @@ def internal_approve_contribution(db: Session, contribution_id: int):
                     members=ensure_list(contrib.suggested_members),
                     angle=contrib.suggested_angle or "Unknown",
                     duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
+                    is_shorts=contrib.suggested_is_shorts or False,
                     concert_id=contrib.suggested_concert_id
                 )
                 db.add(video)

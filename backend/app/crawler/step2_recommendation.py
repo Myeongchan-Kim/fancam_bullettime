@@ -116,7 +116,7 @@ async def run_recommendation_chain_async(depth=30):
                     start_url = f"https://www.youtube.com/watch?v={start_video.get('youtube_id')}"
                 else:
                     logger.info("🎯 마스터급 콘서트 영상 검색으로 시작점을 잡습니다...")
-                    search_query = "TWICE THIS IS FOR World Tour Full Concert 4K"
+                    search_query = "TWICE THIS IS FOR World Tour Full Concert"
                     await page.goto(f"https://www.youtube.com/results?search_query={quote(search_query)}")
                     await page.wait_for_selector("a#video-title", timeout=15000)
                     first_v = await page.locator("a#video-title").first

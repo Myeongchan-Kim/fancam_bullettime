@@ -135,7 +135,7 @@ def get_video_info(url: str):
             browser.close()
             return None, 0, "", ""
 
-def run_deep_dive(target_city, limit_videos_per_query=5):
+def run_deep_dive(target_city, limit_videos_per_query=20):
     """특정 도시를 집중적으로 수집하는 로직"""
     engine = create_engine(DATABASE_URL)
     SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -164,7 +164,7 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
         queries.append(f"TWICE {target_city} {member} Focus")
         queries.append(f"TWICE {target_city} {member} 직캠")
     for song in MAIN_SONGS:
-        queries.append(f"TWICE {target_city} {song} Fancam 4K")
+        queries.append(f"TWICE {target_city} {song} Fancam")
     
     random.shuffle(queries)
 
@@ -279,8 +279,8 @@ def run_deep_dive(target_city, limit_videos_per_query=5):
                             time.sleep(5) # Watch for 5 seconds for training
                             v_page.close()
 
-                            logger.info("    💤 영상 처리 후 1분 쿨타임 대기 중...")
-                            time.sleep(60) # 1 minute cooldown per video
+                            logger.info("    💤 영상 처리 후 쿨타임 대기 중...")
+                            time.sleep(10) # 10 seconds cooldown per video
                     except Exception as e:
                         logger.warning(f"    ⚠️ 개별 영상 처리 오류: {e}")
                         continue
