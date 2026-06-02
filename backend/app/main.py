@@ -1,11 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
-from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import or_, not_, select, func, create_engine
-from sqlalchemy.orm import sessionmaker
-from typing import List, Optional
-from datetime import datetime
 import os
+import sys
 import logging
 import json
 import re
@@ -13,6 +7,20 @@ import traceback
 import threading
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+
+# Add the backend directory to sys.path to support absolute imports of 'app'
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session, joinedload, selectinload
+from sqlalchemy import or_, not_, select, func, create_engine
+from sqlalchemy.orm import sessionmaker
+from typing import List, Optional
+from datetime import datetime
 
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate, HomeSummary
@@ -34,10 +42,12 @@ from sqlalchemy.pool import NullPool
 
 # Supabase requires sslmode=require for pooled connections (port 6543)
 # We pass this via connect_args to avoid "invalid dsn" errors with psycopg2
+# We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect, which crashes Supavisor transaction poolers.
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
     pool_pre_ping=True,
+    use_native_hstore=False,
     connect_args={"sslmode": "require"} if "supabase" in DATABASE_URL else {}
 )
 
@@ -74,43 +84,60 @@ def ensure_list(data):
     return current
 
 # --- Caching System ---
-# Cache for video list API. Stores Pydantic models (VideoDetail) to prevent DetachedInstanceError.
+# Cache for video list API and metadata. Stores Pydantic models to prevent DetachedInstanceError.
 VIDEO_CACHE = {}
+METADATA_CACHE = {}
 CACHE_LOCK = threading.Lock()
 
-def clear_video_cache():
+def clear_all_caches():
     with CACHE_LOCK:
         VIDEO_CACHE.clear()
-        logger.info("🧹 Video cache cleared due to data update.")
-    # Warm up the most common query in background
+        METADATA_CACHE.clear()
+        logger.info("🧹 All caches cleared due to data update.")
+    # Warm up in background
     threading.Thread(target=warm_up_cache, daemon=True).start()
 
 def warm_up_cache():
-    """Pre-cache the default video list with all relationships loaded and serialized into Pydantic models."""
+    """Pre-cache metadata and the default video list."""
     try:
         db = SessionLocal()
-        logger.info("🔥 Warming up video cache...")
-        cache_key = "none:none:none:none:none:none:False:False"
+        logger.info("🔥 Warming up caches...")
         
-        # Load everything in one go to prevent DetachedInstanceError
+        # 1. Warm up Songs
+        songs_query = db.query(Song).order_by(Song.order).all()
+        songs = [SongBase.model_validate(s) for s in songs_query]
+        
+        # 2. Warm up Concerts
+        concerts_query = db.query(Concert).options(
+            selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        ).order_by(Concert.date.desc()).all()
+        concerts = [ConcertBase.model_validate(c) for c in concerts_query]
+        
+        with CACHE_LOCK:
+            METADATA_CACHE["songs"] = songs
+            METADATA_CACHE["concerts"] = concerts
+            
+        # 3. Warm up default Video list
+        # Match the 5-segment key used in get_videos: song_id, concert_id, member, angle, shorts_only
+        cache_key = "none:none:none:none:False"
+        
         query = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         )
         results = query.distinct().order_by(Video.created_at.desc()).all()
         
-        # Serialize to Pydantic models to be session-independent
         final_results = []
         for v in results:
             v.members = ensure_list(v.members)
-            # Convert to schema first to trigger all lazy loads within the session
             detail = VideoDetail.model_validate(v)
             final_results.append(detail)
             
         with CACHE_LOCK:
             VIDEO_CACHE[cache_key] = final_results
+            
         db.close()
-        logger.info(f"✨ Cache warm-up complete. ({len(final_results)} videos)")
+        logger.info(f"✨ Cache warm-up complete. ({len(songs)} songs, {len(concerts)} concerts, {len(final_results)} videos)")
     except Exception as e:
         logger.error(f"Failed to warm up cache: {e}")
         logger.error(traceback.format_exc())
@@ -312,33 +339,67 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
         setattr(db_video, key, value)
     
     db.commit()
-    clear_video_cache() # Invalidate cache
+    clear_all_caches() # Invalidate cache
     db.refresh(db_video)
     # Refresh with joined load to return full detail
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
 
 @app.get("/api/songs", response_model=List[SongBase])
 def get_songs(db: Session = Depends(get_db)):
-    return db.query(Song).order_by(Song.order).all()
+    with CACHE_LOCK:
+        if "songs" in METADATA_CACHE:
+            return METADATA_CACHE["songs"]
+            
+    songs = db.query(Song).order_by(Song.order).all()
+    # Serialize to Pydantic
+    results = [SongBase.model_validate(s) for s in songs]
+    
+    with CACHE_LOCK:
+        METADATA_CACHE["songs"] = results
+    return results
 
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
-    return db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+    with CACHE_LOCK:
+        if "concerts" in METADATA_CACHE:
+            return METADATA_CACHE["concerts"]
+            
+    concerts = db.query(Concert).options(
+        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).order_by(Concert.date.desc()).all()
+    # Serialize to Pydantic
+    results = [ConcertBase.model_validate(c) for c in concerts]
+    
+    with CACHE_LOCK:
+        METADATA_CACHE["concerts"] = results
+    return results
 
 @app.get("/api/home/summary", response_model=HomeSummary)
 def get_home_summary(db: Session = Depends(get_db)):
     """Optimized endpoint for initial page load, providing all metadata and default videos."""
     try:
-        # 1. Fetch songs and concerts
-        songs_query = db.query(Song).order_by(Song.order).all()
-        concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
-
-        # Serialize metadata to be safe
-        songs = [SongBase.model_validate(s) for s in songs_query]
-        concerts = [ConcertBase.model_validate(c) for c in concerts_query]
+        # 1. Fetch songs and concerts from cache or DB
+        with CACHE_LOCK:
+            cached_songs = METADATA_CACHE.get("songs")
+            cached_concerts = METADATA_CACHE.get("concerts")
+            
+        if cached_songs and cached_concerts:
+            songs = cached_songs
+            concerts = cached_concerts
+        else:
+            songs_query = db.query(Song).order_by(Song.order).all()
+            concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+            
+            songs = [SongBase.model_validate(s) for s in songs_query]
+            concerts = [ConcertBase.model_validate(c) for c in concerts_query]
+            
+            with CACHE_LOCK:
+                METADATA_CACHE["songs"] = songs
+                METADATA_CACHE["concerts"] = concerts
 
         # 2. Get default videos (Home Page view)
-        cache_key = "none:none:none:none:none:none:False:False"
+        # Match the 5-segment key: song_id, concert_id, member, angle, shorts_only
+        cache_key = "none:none:none:none:False"
         with CACHE_LOCK:
             if cache_key in VIDEO_CACHE:
                 videos = VIDEO_CACHE[cache_key]
@@ -409,7 +470,7 @@ def create_general_contribution(
 
     _maybe_auto_approve(db, new_contrib.id)
     if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        clear_video_cache()
+        clear_all_caches()
             
     return new_contrib
 
@@ -447,7 +508,7 @@ def create_contribution(
 
     _maybe_auto_approve(db, new_contrib.id)
     if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        clear_video_cache()
+        clear_all_caches()
         
     return new_contrib
 
@@ -548,7 +609,7 @@ def import_setlist(
         db.add(new_entry)
     
     db.commit()
-    clear_video_cache()
+    clear_all_caches()
     return {"message": f"Successfully imported {len(items)} setlist items"}
 
 def internal_approve_contribution(db: Session, contribution_id: int):
@@ -600,7 +661,7 @@ def approve_contribution(
     try:
         video = internal_approve_contribution(db, contribution_id)
         db.commit() 
-        clear_video_cache()
+        clear_all_caches()
 
         if video:
             result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
@@ -629,7 +690,7 @@ def approve_all_contributions(
             continue
             
     db.commit()
-    clear_video_cache()
+    clear_all_caches()
     return {"message": f"Successfully approved {count} contributions", "errors": errors}
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)

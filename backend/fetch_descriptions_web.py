@@ -18,10 +18,10 @@ db = SessionLocal()
 async def fetch_description_web():
     print("🚀 Playwright 기반 마스터 영상 설명 수집 시작 (89개)...")
     
+    target_ids = [506, 507, 508, 270, 927, 1117, 1170]
     target_videos = db.query(Video).filter(
-        (Video.angle == 'Full-Concert') | (Video.title.like('%Full Concert%')),
-        (Video.description == None) | (Video.description == "")
-    ).limit(10).all() # Limit to 10 for quick testing
+        Video.id.in_(target_ids)
+    ).all()
     
     if not target_videos:
         print("✅ 업데이트 대상이 없습니다.")
