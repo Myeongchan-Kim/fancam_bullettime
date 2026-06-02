@@ -55,19 +55,21 @@ if not DATABASE_URL:
 # Using pooler host on port 5432 (Session Mode) provides best IPv4 stability.
 if "supabase" in DATABASE_URL:
     import re
-    # Extract project ref
-    user_match = re.search(r'postgres\.([a-z0-9]{20})', DATABASE_URL)
-    if not user_match: # try alternative pattern
-        user_match = re.search(r'postgres:.*@db\.([a-z0-9]{20})', DATABASE_URL)
+    # Extract project ref from username or host
+    ref_match = re.search(r'postgres\.([a-z0-9]{20})', DATABASE_URL)
+    if not ref_match:
+        ref_match = re.search(r'@db\.([a-z0-9]{20})\.', DATABASE_URL)
         
-    if user_match:
-        project_ref = user_match.group(1)
-        # Use Pooler Host but Port 5432 for Session Mode (more stable than Direct IPv6)
+    if ref_match:
+        project_ref = ref_match.group(1)
+        # Use Pooler Host for IPv4 stability
         DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
+        # Force standard port 5432 (Session Mode)
         DATABASE_URL = re.sub(r':\d+/', ':5432/', DATABASE_URL)
-        # Ensure simplified username
-        DATABASE_URL = DATABASE_URL.replace(f"postgres.{project_ref}", "postgres")
-        # Strip params
+        # CRITICAL: Username MUST be postgres.[ref] for pooler routing
+        if f"postgres.{project_ref}" not in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
+        # Strip all query params to avoid DSN errors
         DATABASE_URL = DATABASE_URL.split('?')[0] if '?' in DATABASE_URL else DATABASE_URL
 
 # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
@@ -80,8 +82,7 @@ engine = create_engine(
     use_native_hstore=False,
     connect_args={
         "sslmode": "require",
-        "connect_timeout": 10,
-        "gssencmode": "disable" # Fix for certain 'Cannot assign address' errors
+        "connect_timeout": 10
     } if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
 )
 
