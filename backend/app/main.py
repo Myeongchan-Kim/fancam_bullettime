@@ -43,16 +43,28 @@ def get_sanitized_url(url: str) -> str:
 
 logger.error(f"🔍 INITIAL_URL: {get_sanitized_url(DATABASE_URL)}")
 
-# Minimal Rewriter: Only ensure we're using a stable host/port if needed
-# but try to keep it as close to the user's input as possible.
+# Minimal Rewriter: Ensuring Transaction Mode and disabling prepared statements for Vercel stability
 if "supabase" in DATABASE_URL:
     import re
-    # If the user provided the direct 'db' host, keep it but watch for IPv6 issues.
-    # If the user provided the 'pooler' host, ensure we use port 6543 for pooling.
-    if "pooler.supabase.com" in DATABASE_URL and ":5432" in DATABASE_URL:
-        # User put pooler on 5432 (Session Mode), this is fine but has 15 limit.
-        # We'll leave it as is for now to see if it works.
-        pass
+    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
+    if ref_match:
+        project_ref = ref_match.group(1)
+        # Force Pooler Host and Transaction Port (6543)
+        DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
+        if ":5432" in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
+        elif ":6543" not in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
+        
+        # Ensure project identifier is in the username
+        if f"postgres.{project_ref}" not in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
+        
+        # Disable prepared statements (Crucial for Supavisor in serverless)
+        if "?" not in DATABASE_URL:
+            DATABASE_URL += "?prepared_statements=false"
+        elif "prepared_statements" not in DATABASE_URL:
+            DATABASE_URL += "&prepared_statements=false"
 
 logger.error(f"🚀 FINAL_URL: {get_sanitized_url(DATABASE_URL)}")
 
