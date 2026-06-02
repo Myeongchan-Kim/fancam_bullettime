@@ -36,22 +36,28 @@ DATABASE_URL = settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
 
-# Supabase Pooler (Supavisor) Optimization for Serverless:
-# 1. Use port 6543 for Transaction Mode if pooler host is detected
-# 2. Force prepared_statements=false which is mandatory for Transaction Mode
+# [Crucial] Reverting to Direct Connection for Vercel Stability
+# The Supabase Pooler (Supavisor) has been unstable in this serverless env.
+# We detect the pooler host and automatically rewrite to the Direct Host (db.<ref>.supabase.co)
 if "pooler.supabase.com" in DATABASE_URL:
-    if ":5432" in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
-    
-    # Add prepared_statements=false to connection string
-    sep = "&" if "?" in DATABASE_URL else "?"
-    if "prepared_statements" not in DATABASE_URL:
-        DATABASE_URL += f"{sep}prepared_statements=false"
+    import re
+    # Extract project ref from username (postgres.<project_ref>)
+    user_match = re.search(r'postgres\.([a-z0-9]{20})', DATABASE_URL)
+    if user_match:
+        project_ref = user_match.group(1)
+        # 1. Simplify username: postgres.ref -> postgres
+        DATABASE_URL = DATABASE_URL.replace(f"postgres.{project_ref}", "postgres")
+        # 2. Change host: aws-0-us-west-2.pooler.supabase.com -> db.ref.supabase.co
+        DATABASE_URL = re.sub(r'@[^/:]+', f'@db.{project_ref}.supabase.co', DATABASE_URL)
+        # 3. Force standard port 5432 (bypass proxy)
+        DATABASE_URL = re.sub(r':\d+/', ':5432/', DATABASE_URL)
+        # 4. Strip any problematic pooler-specific params
+        DATABASE_URL = DATABASE_URL.split('?')[0] if '?' in DATABASE_URL else DATABASE_URL
 
 # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
 from sqlalchemy.pool import NullPool
 
-# Supabase requires sslmode=require for pooled connections
+# Supabase Direct Connection (Standard)
 # We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect.
 engine = create_engine(
     DATABASE_URL,
@@ -60,7 +66,7 @@ engine = create_engine(
     connect_args={
         "sslmode": "require",
         "connect_timeout": 10
-    } if "supabase" in DATABASE_URL else {}
+    } if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
