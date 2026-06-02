@@ -49,8 +49,16 @@ if "supabase" in DATABASE_URL:
         project_ref = ref_match.group(1)
         # Use Pooler Host
         DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
-        # FORCE Port 6543 for Transaction Mode (Allows many concurrent serverless calls)
-        DATABASE_URL = re.sub(r':\d+/', ':6543/', DATABASE_URL)
+        
+        # [FORCE] Transaction Mode (Port 6543) is required for serverless concurrency
+        if ":5432" in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
+        elif ":" not in DATABASE_URL.split("@")[1]: # No port specified, add it
+            DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
+        else:
+            # Fallback for any other port
+            DATABASE_URL = re.sub(r':\d+/', ':6543/', DATABASE_URL)
+
         # Ensure project ref is in username for routing
         if f"postgres.{project_ref}" not in DATABASE_URL:
             DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
