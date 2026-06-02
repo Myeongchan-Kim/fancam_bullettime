@@ -35,10 +35,21 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
-    # Adding more detail to help debug if it still fails
-    env_keys = list(os.environ.keys())
-    logger.error(f"❌ DATABASE_URL missing. Available env vars: {', '.join([k for k in env_keys if 'DATABASE' in k or 'URL' in k])}")
-    raise ValueError("DATABASE_URL environment variable is not set in Vercel. Please check Production Environment Variables.")
+    # Comprehensive Sanitized Debugger
+    all_keys = sorted(os.environ.keys())
+    debug_report = []
+    for k in all_keys:
+        val = os.environ.get(k, "")
+        status = "SET" if val else "EMPTY"
+        # Mask sensitive keys but show length for verification
+        if any(s in k.upper() for s in ["DATABASE", "KEY", "SECRET", "PASSWORD", "AUTH", "TOKEN", "URL"]):
+            debug_report.append(f"{k}: {status} (len={len(val)})")
+        else:
+            debug_report.append(f"{k}: {status} ({val[:30]}...)")
+    
+    full_msg = "❌ DATABASE_URL MISSING. Env State:\n" + "\n".join(debug_report)
+    logger.error(full_msg)
+    raise ValueError(full_msg)
 
 # [Crucial] Reverting to Direct Connection for Vercel Stability
 # The Supabase Pooler (Supavisor) has been unstable in this serverless env.
