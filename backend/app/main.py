@@ -1,87 +1,39 @@
 import os
-import sys
-import logging
 import json
+import logging
 import re
-import traceback
-from contextlib import asynccontextmanager
-from dotenv import load_dotenv
-
-# Add the backend directory to sys.path to support absolute imports of 'app'
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
+from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session, joinedload, selectinload
-from sqlalchemy import or_, not_, select, func, create_engine
-from sqlalchemy.orm import sessionmaker
-from typing import List, Optional
-from datetime import datetime
+from sqlalchemy import create_engine, func
+from sqlalchemy.orm import sessionmaker, Session, joinedload, selectinload
+from sqlalchemy.pool import NullPool
+from dotenv import load_dotenv
 
-from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
-from app.schemas.schemas import VideoDetail, SongBase, ConcertBase, ContributionBase, ContributionCreate, VideoUpdate, HomeSummary
-from app.core.config import settings
-from app.crawler.recheck_worker import run_recheck_job, recheck_status
+from .models.models import Base, Video, Song, Concert, ConcertSetlist, Contribution
+from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary
+from .core.config import settings
+from .crawler.recheck_worker import run_recheck_job, recheck_status
+
+# --- Logging Setup ---
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-logger = logging.getLogger(__name__)
-
 # --- Database Setup ---
-# Prioritize direct environment variable for Vercel stability
+# Use standard DATABASE_URL from environment with NullPool for Serverless stability
 DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set in Vercel.")
+    raise ValueError("DATABASE_URL environment variable is not set.")
 
-# [DEBUG] Log sanitized URL at ERROR level to ensure it shows in Vercel
-def get_sanitized_url(url: str) -> str:
-    return re.sub(r':([^@]+)@', ':****@', url)
-
-logger.error(f"🔍 INITIAL_URL: {get_sanitized_url(DATABASE_URL)}")
-
-# Minimal Rewriter: Ensuring Transaction Mode and disabling prepared statements for Vercel stability
-if "supabase" in DATABASE_URL:
-    import re
-    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
-    if ref_match:
-        project_ref = ref_match.group(1)
-        # Force Pooler Host and Transaction Port (6543)
-        DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
-        if ":5432" in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
-        elif ":6543" not in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
-        
-        # Ensure project identifier is in the username
-        if f"postgres.{project_ref}" not in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
-        
-        # Disable prepared statements (Crucial for Supavisor in serverless)
-        if "?" not in DATABASE_URL:
-            DATABASE_URL += "?prepared_statements=false"
-        elif "prepared_statements" not in DATABASE_URL:
-            DATABASE_URL += "&prepared_statements=false"
-
-logger.error(f"🚀 FINAL_URL: {get_sanitized_url(DATABASE_URL)}")
-
-# Use NullPool for Serverless environments (Vercel)
-from sqlalchemy.pool import NullPool
-
-# Supabase Optimized Connection
+# Standard SQLAlchemy setup for Vercel
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
-    use_native_hstore=False,
-    connect_args={
-        "sslmode": "require",
-        "connect_timeout": 10
-    } if "supabase" in DATABASE_URL else {}
+    connect_args={"sslmode": "require"} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
 )
-
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -110,51 +62,27 @@ def ensure_list(data):
             
     if not isinstance(current, list):
         return []
-    return current
 
-# --- Admin Authentication ---
-def verify_admin(
-    x_admin_key: Optional[str] = Header(None),
-    authorization: Optional[str] = Header(None)
-):
-    admin_pass = settings.ADMIN_KEY
-    if x_admin_key == admin_pass:
-        return True
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ")[1]
-        if token == admin_pass:
-            return True
-    raise HTTPException(status_code=403, detail="Admin access denied")
-
-# --- FastAPI App Setup ---
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # No aggressive cache warming - relying on DB indexes and optimized queries
-    yield
-
-app = FastAPI(title="TWICE World Tour 360° Fancam Archive API", lifespan=lifespan)
-
-origins = [
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",
-    "https://twice-fancam-archive.vercel.app",
-    "https://fancam-bullettime.vercel.app",
-]
+# --- FastAPI App ---
+app = FastAPI(title="TWICE World Tour 360° Fancam Archive API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app_handler = app
+def verify_admin(x_admin_key: Optional[str] = Header(None)):
+    if not settings.ADMIN_SECRET_KEY:
+        return False
+    if x_admin_key != settings.ADMIN_SECRET_KEY:
+        raise HTTPException(status_code=403, detail="Invalid admin key")
+    return True
 
-# --- Internal Helpers ---
 def _maybe_auto_approve(db: Session, contribution_id: int):
-    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
+    if settings.AUTO_APPROVE:
         try:
             internal_approve_contribution(db, contribution_id)
             db.commit()
@@ -277,7 +205,7 @@ def get_home_summary(db: Session = Depends(get_db)):
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
 
-        # 2. Get all videos ordered by creation date
+        # 2. Get latest videos (indexed query)
         videos = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
