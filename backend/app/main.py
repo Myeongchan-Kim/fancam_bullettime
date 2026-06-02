@@ -35,23 +35,10 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
-    # Comprehensive Sanitized Debugger
-    all_keys = sorted(os.environ.keys())
-    debug_report = []
-    for k in all_keys:
-        val = os.environ.get(k, "")
-        status = "SET" if val else "EMPTY"
-        # Mask sensitive keys but show length for verification
-        if any(s in k.upper() for s in ["DATABASE", "KEY", "SECRET", "PASSWORD", "AUTH", "TOKEN", "URL"]):
-            debug_report.append(f"{k}: {status} (len={len(val)})")
-        else:
-            debug_report.append(f"{k}: {status} ({val[:30]}...)")
-    
-    full_msg = "❌ DATABASE_URL MISSING. Env State:\n" + "\n".join(debug_report)
-    logger.error(full_msg)
-    raise ValueError(full_msg)
+    raise ValueError("DATABASE_URL environment variable is not set in Vercel. Please check Production Environment Variables.")
 
 # [Crucial] Stable Connection Rewriter for Vercel
+
 # Using pooler host on port 5432 (Session Mode) provides best IPv4 stability.
 if "supabase" in DATABASE_URL:
     import re
