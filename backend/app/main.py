@@ -41,12 +41,20 @@ from sqlalchemy.pool import NullPool
 
 # Supabase requires sslmode=require for pooled connections (port 6543)
 # We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect, which crashes Supavisor transaction poolers.
+# Hardening connection with keepalives and timeouts for serverless stability.
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
-    pool_pre_ping=True,
+    pool_pre_ping=False, # Avoid extra round-trip in NullPool
     use_native_hstore=False,
-    connect_args={"sslmode": "require"} if "supabase" in DATABASE_URL else {}
+    connect_args={
+        "sslmode": "require",
+        "connect_timeout": 10,
+        "keepalives": 1,
+        "keepalives_idle": 30,
+        "keepalives_interval": 10,
+        "keepalives_count": 5,
+    } if "supabase" in DATABASE_URL else {}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
