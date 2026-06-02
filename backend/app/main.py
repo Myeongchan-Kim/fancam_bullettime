@@ -4,8 +4,6 @@ import logging
 import json
 import re
 import traceback
-import threading
-import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -42,7 +40,6 @@ if not DATABASE_URL:
 from sqlalchemy.pool import NullPool
 
 # Supabase requires sslmode=require for pooled connections (port 6543)
-# We pass this via connect_args to avoid "invalid dsn" errors with psycopg2
 # We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect, which crashes Supavisor transaction poolers.
 engine = create_engine(
     DATABASE_URL,
@@ -67,7 +64,6 @@ def ensure_list(data):
     if data is None:
         return []
     current = data
-    # 리스트가 나올 때까지 최대 5번 시도 (보통 1-2번이면 충분)
     for _ in range(5):
         if isinstance(current, list):
             return current
@@ -79,73 +75,8 @@ def ensure_list(data):
             break
             
     if not isinstance(current, list):
-        logger.warning(f"⚠️ JSON 데이터 디코딩 실패 (5회 시도): {data}")
         return []
-        
     return current
-
-# --- Caching System ---
-# Cache for video list API and metadata. Stores Pydantic models to prevent DetachedInstanceError.
-VIDEO_CACHE = {}
-METADATA_CACHE = {}
-CACHE_LOCK = threading.Lock()
-
-def clear_all_caches():
-    with CACHE_LOCK:
-        VIDEO_CACHE.clear()
-        METADATA_CACHE.clear()
-        logger.info("🧹 All caches cleared due to data update.")
-    # Warm up in background
-    threading.Thread(target=warm_up_cache, daemon=True).start()
-
-def warm_up_cache():
-    """Pre-cache metadata and the default video list with retries for DB stability."""
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            db = SessionLocal()
-            logger.info(f"🔥 Warming up caches (attempt {attempt + 1})...")
-            
-            # 1. Warm up Songs
-            songs_query = db.query(Song).order_by(Song.order).all()
-            songs = [SongBase.model_validate(s) for s in songs_query]
-            
-            # 2. Warm up Concerts
-            concerts_query = db.query(Concert).options(
-                selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-            ).order_by(Concert.date.desc()).all()
-            concerts = [ConcertBase.model_validate(c) for c in concerts_query]
-            
-            with CACHE_LOCK:
-                METADATA_CACHE["songs"] = songs
-                METADATA_CACHE["concerts"] = concerts
-                
-            # 3. Warm up default Video list
-            cache_key = "none:none:none:none:False"
-            query = db.query(Video).options(
-                joinedload(Video.songs),
-                joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-            )
-            results = query.distinct().order_by(Video.created_at.desc()).all()
-            
-            final_results = []
-            for v in results:
-                v.members = ensure_list(v.members)
-                detail = VideoDetail.model_validate(v)
-                final_results.append(detail)
-                
-            with CACHE_LOCK:
-                VIDEO_CACHE[cache_key] = final_results
-                
-            db.close()
-            logger.info(f"✨ Cache warm-up complete. ({len(songs)} songs, {len(concerts)} concerts, {len(final_results)} videos)")
-            return # Success
-        except Exception as e:
-            logger.error(f"⚠️ Cache warm-up attempt {attempt + 1} failed: {e}")
-            if attempt < max_retries - 1:
-                time.sleep(2) # Wait before retry
-            else:
-                logger.error("❌ All cache warm-up attempts failed.")
 
 # --- Admin Authentication ---
 def verify_admin(
@@ -153,32 +84,22 @@ def verify_admin(
     authorization: Optional[str] = Header(None)
 ):
     admin_pass = settings.ADMIN_KEY
-    
-    # Check X-Admin-Key header
     if x_admin_key == admin_pass:
         return True
-        
-    # Check Authorization: Bearer <key> header
     if authorization and authorization.startswith("Bearer "):
         token = authorization.split(" ")[1]
         if token == admin_pass:
             return True
-            
     raise HTTPException(status_code=403, detail="Admin access denied")
 
 # --- FastAPI App Setup ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Warm up cache immediately
-    # We do this synchronously to ensure the first request has cached data 
-    # and to stabilize the DB connection during function init.
-    warm_up_cache()
+    # No aggressive cache warming - relying on DB indexes and optimized queries
     yield
-    # Shutdown logic (if any) could go here
 
 app = FastAPI(title="TWICE World Tour 360° Fancam Archive API", lifespan=lifespan)
 
-# CORS 설정 (Vercel 배포 시 필요)
 origins = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
@@ -195,12 +116,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Vercel handler
 app_handler = app
 
 # --- Internal Helpers ---
 def _maybe_auto_approve(db: Session, contribution_id: int):
-    """Internal helper to auto-approve if global setting is enabled."""
     if os.getenv("AUTO_APPROVE", "false").lower() == "true":
         try:
             internal_approve_contribution(db, contribution_id)
@@ -209,22 +128,15 @@ def _maybe_auto_approve(db: Session, contribution_id: int):
             logger.error(f"Auto-approve failed for contribution {contribution_id}: {str(e)}")
 
 def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Contribution):
-    """Apply contribution values to a video (if any) and handle setlist timing/creation."""
     if video:
         if contrib.suggested_title is not None: video.title = contrib.suggested_title
-        
-        # Sync song updates across both deprecated and new fields
         suggested_song_ids = getattr(contrib, 'suggested_song_ids', None)
         if suggested_song_ids is not None and isinstance(suggested_song_ids, list):
             requested_ids = suggested_song_ids
             found_songs = db.query(Song).filter(Song.id.in_(requested_ids)).all() if requested_ids else []
-            # Only apply if all requested songs exist to prevent partial data corruption
             if len(found_songs) == len(requested_ids):
                 video.songs = found_songs
-                if found_songs:
-                    video.song_id = found_songs[0].id
-                else:
-                    video.song_id = None
+                video.song_id = found_songs[0].id if found_songs else None
         elif contrib.suggested_song_id is not None:
             video.song_id = contrib.suggested_song_id
             song = db.query(Song).filter(Song.id == contrib.suggested_song_id).first()
@@ -239,19 +151,14 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
         if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
         if contrib.suggested_is_shorts is not None: video.is_shorts = contrib.suggested_is_shorts
     
-    # Handle setlist timing or create new setlist item if suggested
     concert_id = contrib.suggested_concert_id or (video.concert_id if video else None)
     if concert_id:
         if contrib.suggested_setlist_id is not None:
             setlist_item = db.query(ConcertSetlist).filter(ConcertSetlist.id == contrib.suggested_setlist_id).first()
             if setlist_item:
-                if contrib.suggested_start_time is not None:
-                    setlist_item.start_time = contrib.suggested_start_time
-                if contrib.suggested_event_name:
-                    setlist_item.event_name = contrib.suggested_event_name
-                logger.info(f"Updated setlist item {setlist_item.id} to {setlist_item.start_time}")
+                if contrib.suggested_start_time is not None: setlist_item.start_time = contrib.suggested_start_time
+                if contrib.suggested_event_name: setlist_item.event_name = contrib.suggested_event_name
         elif contrib.suggested_event_name:
-            # Create new setlist item
             max_order_result = db.query(func.max(ConcertSetlist.display_order)).filter(ConcertSetlist.concert_id == concert_id).scalar()
             max_order = max_order_result if max_order_result is not None else 0
             new_item = ConcertSetlist(
@@ -261,8 +168,6 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
                 display_order=max_order + 1
             )
             db.add(new_item)
-            logger.info(f"Created new setlist item: {contrib.suggested_event_name} for concert {concert_id}")
-
     contrib.is_processed = True
 
 # --- API Endpoints ---
@@ -274,188 +179,100 @@ def get_videos(
     member: Optional[str] = None,
     angle: Optional[str] = None,
     shorts_only: bool = Query(False),
+    limit: int = Query(100),
     db: Session = Depends(get_db)
 ):
-    # 0. Check Cache
-    params = [song_id, concert_id, member, angle, shorts_only]
-    cache_key = ":".join([str(p) if p is not None else "none" for p in params])
-    
-    with CACHE_LOCK:
-        if cache_key in VIDEO_CACHE:
-            return VIDEO_CACHE[cache_key]
-
     query = db.query(Video).options(
         joinedload(Video.songs),
         joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
     )
 
-    # Basic Filtering
-    if shorts_only:
-        query = query.filter(Video.is_shorts == True)
-    if concert_id:
-        query = query.filter(Video.concert_id == concert_id)
-    if song_id:
-        query = query.filter(Video.songs.any(Song.id == song_id))
+    if shorts_only: query = query.filter(Video.is_shorts == True)
+    if concert_id: query = query.filter(Video.concert_id == concert_id)
+    if song_id: query = query.filter(Video.songs.any(Song.id == song_id))
     if member:
         from sqlalchemy import String
         query = query.filter(Video.members.cast(String).like(f"%{member}%"))
-    if angle:
-        query = query.filter(Video.angle == angle)
+    if angle: query = query.filter(Video.angle == angle)
         
-    # Smart Sorting: Shorter videos first (Fancams > Full Concerts)
-    # Then newest first within same duration tier
-    results = query.distinct().order_by(Video.duration.asc(), Video.created_at.desc()).all()
+    results = query.distinct().order_by(Video.duration.asc(), Video.created_at.desc()).limit(limit).all()
     
-    # 3. Post-process and Cache (Serialize within session)
-    final_results = []
     for v in results:
         v.members = ensure_list(v.members)
-        detail = VideoDetail.model_validate(v)
-        final_results.append(detail)
-    
-    with CACHE_LOCK:
-        VIDEO_CACHE[cache_key] = final_results
-        
-    return final_results
+    return results
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
     video = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
+    if not video: raise HTTPException(status_code=404, detail="Video not found")
     video.members = ensure_list(video.members)
     return video
 
 @app.patch("/api/videos/{video_id}", response_model=VideoDetail)
 def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     db_video = db.query(Video).filter(Video.id == video_id).first()
-    if not db_video:
-        raise HTTPException(status_code=404, detail="Video not found")
+    if not db_video: raise HTTPException(status_code=404, detail="Video not found")
     
     update_data = video_update.model_dump(exclude_unset=True)
-    
     if "song_ids" in update_data:
         song_ids = update_data.pop("song_ids")
-        if song_ids is not None:
-            db_video.songs = db.query(Song).filter(Song.id.in_(song_ids)).all()
-        else:
-            db_video.songs = []
+        db_video.songs = db.query(Song).filter(Song.id.in_(song_ids)).all() if song_ids is not None else []
 
     for key, value in update_data.items():
         setattr(db_video, key, value)
     
     db.commit()
-    clear_all_caches() # Invalidate cache
     db.refresh(db_video)
-    # Refresh with joined load to return full detail
     return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
 
 @app.get("/api/songs", response_model=List[SongBase])
 def get_songs(db: Session = Depends(get_db)):
-    with CACHE_LOCK:
-        if "songs" in METADATA_CACHE:
-            return METADATA_CACHE["songs"]
-            
-    songs = db.query(Song).order_by(Song.order).all()
-    # Serialize to Pydantic
-    results = [SongBase.model_validate(s) for s in songs]
-    
-    with CACHE_LOCK:
-        METADATA_CACHE["songs"] = results
-    return results
+    return db.query(Song).order_by(Song.order).all()
 
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
-    with CACHE_LOCK:
-        if "concerts" in METADATA_CACHE:
-            return METADATA_CACHE["concerts"]
-            
-    concerts = db.query(Concert).options(
-        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-    ).order_by(Concert.date.desc()).all()
-    # Serialize to Pydantic
-    results = [ConcertBase.model_validate(c) for c in concerts]
-    
-    with CACHE_LOCK:
-        METADATA_CACHE["concerts"] = results
-    return results
+    return db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
 
 @app.get("/api/home/summary", response_model=HomeSummary)
 def get_home_summary(db: Session = Depends(get_db)):
-    """Optimized endpoint for initial page load, providing all metadata and default videos."""
+    """Optimized endpoint for initial page load without memory caching."""
     try:
-        # 1. Fetch songs and concerts from cache or DB
-        with CACHE_LOCK:
-            cached_songs = METADATA_CACHE.get("songs")
-            cached_concerts = METADATA_CACHE.get("concerts")
-            
-        if cached_songs and cached_concerts:
-            songs = cached_songs
-            concerts = cached_concerts
-        else:
-            songs_query = db.query(Song).order_by(Song.order).all()
-            concerts_query = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
-            
-            songs = [SongBase.model_validate(s) for s in songs_query]
-            concerts = [ConcertBase.model_validate(c) for c in concerts_query]
-            
-            with CACHE_LOCK:
-                METADATA_CACHE["songs"] = songs
-                METADATA_CACHE["concerts"] = concerts
+        # 1. Fetch metadata (small datasets)
+        songs = db.query(Song).order_by(Song.order).all()
+        concerts = db.query(Concert).options(
+            selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        ).order_by(Concert.date.desc()).all()
 
-        # 2. Get default videos (Home Page view)
-        # Match the 5-segment key: song_id, concert_id, member, angle, shorts_only
-        cache_key = "none:none:none:none:False"
-        with CACHE_LOCK:
-            if cache_key in VIDEO_CACHE:
-                videos = VIDEO_CACHE[cache_key]
-            else:
-                query = db.query(Video).options(
-                    joinedload(Video.songs),
-                    joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-                )
-                results = query.distinct().order_by(Video.created_at.desc()).all()
-                videos = []
-                for v in results:
-                    v.members = ensure_list(v.members)
-                    detail = VideoDetail.model_validate(v)
-                    videos.append(detail)
-                VIDEO_CACHE[cache_key] = videos
+        # 2. Get latest videos with a reasonable limit
+        videos = db.query(Video).options(
+            joinedload(Video.songs),
+            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        ).distinct().order_by(Video.created_at.desc()).limit(60).all()
+
+        for v in videos:
+            v.members = ensure_list(v.members)
 
         return {
             "songs": songs,
             "concerts": concerts,
             "videos": videos,
-            "total_videos": len(videos)
+            "total_videos": db.query(Video).count()
         }
     except Exception as e:
         logger.error(f"❌ Error in get_home_summary: {str(e)}")
-        logger.error(traceback.format_exc())
         raise HTTPException(status_code=500, detail=str(e))
 
 def get_video_id(url: str):
-    # Robust pattern for 11-char ID preceded by common delimiters
     pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
     match = re.search(pattern, url)
     return match.group(1) if match else None
 
 @app.post("/api/contributions", response_model=ContributionBase)
-def create_general_contribution(
-    contribution: ContributionCreate, 
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    if not contribution.suggested_url:
-        raise HTTPException(status_code=400, detail="suggested_url is required for new videos")
-        
+def create_general_contribution(contribution: ContributionCreate, request: Request, db: Session = Depends(get_db)):
+    if not contribution.suggested_url: raise HTTPException(status_code=400, detail="suggested_url is required")
     yt_id = get_video_id(contribution.suggested_url)
-    if not yt_id:
-        raise HTTPException(status_code=400, detail="Invalid YouTube URL")
-        
-    existing_video = db.query(Video).filter(Video.youtube_id == yt_id).first()
-    if existing_video:
-        raise HTTPException(status_code=400, detail="Video already exists in the archive")
+    if not yt_id: raise HTTPException(status_code=400, detail="Invalid YouTube URL")
+    if db.query(Video).filter(Video.youtube_id == yt_id).first(): raise HTTPException(status_code=400, detail="Video already exists")
         
     new_contrib = Contribution(
         suggested_url=contribution.suggested_url,
@@ -474,24 +291,12 @@ def create_general_contribution(
     db.add(new_contrib)
     db.commit()
     db.refresh(new_contrib)
-
     _maybe_auto_approve(db, new_contrib.id)
-    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        clear_all_caches()
-            
     return new_contrib
 
 @app.post("/api/videos/{video_id}/contributions", response_model=ContributionBase)
-def create_contribution(
-    video_id: int, 
-    contribution: ContributionCreate, 
-    request: Request,
-    db: Session = Depends(get_db)
-):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
-        raise HTTPException(status_code=404, detail="Video not found")
-    
+def create_contribution(video_id: int, contribution: ContributionCreate, request: Request, db: Session = Depends(get_db)):
+    if not db.query(Video).filter(Video.id == video_id).first(): raise HTTPException(status_code=404, detail="Video not found")
     new_contrib = Contribution(
         video_id=video_id,
         suggested_title=contribution.suggested_title,
@@ -512,142 +317,73 @@ def create_contribution(
     db.add(new_contrib)
     db.commit()
     db.refresh(new_contrib)
-
     _maybe_auto_approve(db, new_contrib.id)
-    if os.getenv("AUTO_APPROVE", "false").lower() == "true":
-        clear_all_caches()
-        
     return new_contrib
 
 @app.get("/api/videos/{video_id}/contributions", response_model=List[ContributionBase])
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
     results = db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
-    
     output = []
     for r in results:
         output.append({
-            "id": r.id,
-            "video_id": r.video_id,
-            "video_title": r.video.title if r.video else None,
-            "suggested_url": r.suggested_url,
-            "suggested_title": r.suggested_title,
-            "suggested_song_ids": ensure_list(r.suggested_song_ids),
-            "suggested_concert_id": r.suggested_concert_id,
-            "suggested_members": ensure_list(r.suggested_members),
-            "suggested_duration": r.suggested_duration,
-            "suggested_angle": r.suggested_angle,
-            "suggested_coordinate_x": r.suggested_coordinate_x,
-            "suggested_coordinate_y": r.suggested_coordinate_y,
-            "suggested_sync_offset": r.suggested_sync_offset,
-            "suggested_setlist_id": r.suggested_setlist_id,
-            "suggested_start_time": r.suggested_start_time,
-            "suggested_event_name": r.suggested_event_name,
-            "is_processed": r.is_processed,
-            "created_at": r.created_at
+            "id": r.id, "video_id": r.video_id, "video_title": r.video.title if r.video else None,
+            "suggested_url": r.suggested_url, "suggested_title": r.suggested_title,
+            "suggested_song_ids": ensure_list(r.suggested_song_ids), "suggested_concert_id": r.suggested_concert_id,
+            "suggested_members": ensure_list(r.suggested_members), "suggested_duration": r.suggested_duration,
+            "suggested_angle": r.suggested_angle, "suggested_coordinate_x": r.suggested_coordinate_x,
+            "suggested_coordinate_y": r.suggested_coordinate_y, "suggested_sync_offset": r.suggested_sync_offset,
+            "suggested_setlist_id": r.suggested_setlist_id, "suggested_start_time": r.suggested_start_time,
+            "suggested_event_name": r.suggested_event_name, "is_processed": r.is_processed, "created_at": r.created_at
         })
-        
     return output
 
 @app.get("/api/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
-    
     output = []
     for r in results:
         output.append({
-            "id": r.id,
-            "video_id": r.video_id,
-            "video_title": r.video.title if r.video else None,
-            "suggested_url": r.suggested_url,
-            "suggested_title": r.suggested_title,
-            "suggested_song_ids": ensure_list(r.suggested_song_ids),
-            "suggested_concert_id": r.suggested_concert_id,
-            "suggested_members": ensure_list(r.suggested_members),
-            "suggested_duration": r.suggested_duration,
-            "suggested_angle": r.suggested_angle,
-            "suggested_coordinate_x": r.suggested_coordinate_x,
-            "suggested_coordinate_y": r.suggested_coordinate_y,
-            "suggested_sync_offset": r.suggested_sync_offset,
-            "suggested_setlist_id": r.suggested_setlist_id,
-            "suggested_start_time": r.suggested_start_time,
-            "suggested_event_name": r.suggested_event_name,
-            "is_processed": r.is_processed,
-            "created_at": r.created_at
+            "id": r.id, "video_id": r.video_id, "video_title": r.video.title if r.video else None,
+            "suggested_url": r.suggested_url, "suggested_title": r.suggested_title,
+            "suggested_song_ids": ensure_list(r.suggested_song_ids), "suggested_concert_id": r.suggested_concert_id,
+            "suggested_members": ensure_list(r.suggested_members), "suggested_duration": r.suggested_duration,
+            "suggested_angle": r.suggested_angle, "suggested_coordinate_x": r.suggested_coordinate_x,
+            "suggested_coordinate_y": r.suggested_coordinate_y, "suggested_sync_offset": r.suggested_sync_offset,
+            "suggested_setlist_id": r.suggested_setlist_id, "suggested_start_time": r.suggested_start_time,
+            "suggested_event_name": r.suggested_event_name, "is_processed": r.is_processed, "created_at": r.created_at
         })
-            
     return output
 
 @app.patch("/api/admin/setlist/{item_id}")
-def update_setlist_item(
-    item_id: int,
-    start_time: float = Query(...),
-    db: Session = Depends(get_db),
-    admin: bool = Depends(verify_admin)
-):
+def update_setlist_item(item_id: int, start_time: float = Query(...), db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     item = db.query(ConcertSetlist).filter(ConcertSetlist.id == item_id).first()
-    if not item:
-        raise HTTPException(status_code=404, detail="Setlist item not found")
-    
+    if not item: raise HTTPException(status_code=404, detail="Setlist item not found")
     item.start_time = start_time
     db.commit()
     return {"message": "Updated setlist timing", "new_time": start_time}
 
 @app.post("/api/admin/concerts/{concert_id}/setlist")
-def import_setlist(
-    concert_id: int,
-    items: List[dict],
-    db: Session = Depends(get_db),
-    admin: bool = Depends(verify_admin)
-):
-    concert = db.query(Concert).filter(Concert.id == concert_id).first()
-    if not concert:
-        raise HTTPException(status_code=404, detail="Concert not found")
-    
+def import_setlist(concert_id: int, items: List[dict], db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
+    if not db.query(Concert).filter(Concert.id == concert_id).first(): raise HTTPException(status_code=404, detail="Concert not found")
     db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert_id).delete()
-    
     for idx, item in enumerate(items):
-        new_entry = ConcertSetlist(
-            concert_id=concert_id,
-            song_id=item.get("song_id"),
-            event_name=item.get("event_name"),
-            start_time=item.get("start_time"),
-            display_order=idx
-        )
-        db.add(new_entry)
-    
+        db.add(ConcertSetlist(concert_id=concert_id, song_id=item.get("song_id"), event_name=item.get("event_name"), start_time=item.get("start_time"), display_order=idx))
     db.commit()
-    clear_all_caches()
     return {"message": f"Successfully imported {len(items)} setlist items"}
 
 def internal_approve_contribution(db: Session, contribution_id: int):
-    """Internal helper to approve a single contribution. Does NOT commit."""
     contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
-    if not contrib:
-        raise Exception("Contribution not found")
-    
+    if not contrib: raise Exception("Contribution not found")
     if contrib.video_id is not None or contrib.suggested_url:
         if contrib.video_id is None:
             yt_id = get_video_id(contrib.suggested_url)
             if not yt_id: raise Exception("Invalid YouTube URL")
-                
             existing = db.query(Video).filter(Video.youtube_id == yt_id).first()
-            if existing:
-                video = existing
+            if existing: video = existing
             else:
-                video = Video(
-                    youtube_id=yt_id,
-                    url=contrib.suggested_url,
-                    title=contrib.suggested_title or "Unknown Title",
-                    thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg",
-                    members=ensure_list(contrib.suggested_members),
-                    angle=contrib.suggested_angle or "Unknown",
-                    duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0,
-                    is_shorts=contrib.suggested_is_shorts or False,
-                    concert_id=contrib.suggested_concert_id
-                )
+                video = Video(youtube_id=yt_id, url=contrib.suggested_url, title=contrib.suggested_title or "Unknown Title", thumbnail_url=f"https://img.youtube.com/vi/{yt_id}/hqdefault.jpg", members=ensure_list(contrib.suggested_members), angle=contrib.suggested_angle or "Unknown", duration=contrib.suggested_duration if contrib.suggested_duration is not None else 9999.0, is_shorts=contrib.suggested_is_shorts or False, concert_id=contrib.suggested_concert_id)
                 db.add(video)
                 db.flush()
-            
             contrib.video_id = video.id
             apply_contribution_to_video(db, video, contrib)
         else:
@@ -660,52 +396,31 @@ def internal_approve_contribution(db: Session, contribution_id: int):
         return None
 
 @app.post("/api/contributions/{contribution_id}/approve")
-def approve_contribution(
-    contribution_id: int, 
-    db: Session = Depends(get_db),
-    admin: bool = Depends(verify_admin)
-):
+def approve_contribution(contribution_id: int, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     try:
         video = internal_approve_contribution(db, contribution_id)
         db.commit() 
-        clear_all_caches()
-
-        if video:
-            result = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
-            return result
-        else:
-            return {"message": "Contribution approved"}
+        if video: return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video.id).first()
+        return {"message": "Contribution approved"}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
 
 @app.post("/api/admin/contributions/approve-all")
-def approve_all_contributions(
-    db: Session = Depends(get_db),
-    admin: bool = Depends(verify_admin)
-):
+def approve_all_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     pending = db.query(Contribution).filter(Contribution.is_processed == False).all()
-    count = 0
-    errors = []
-    
+    count, errors = 0, []
     for contrib in pending:
         try:
             internal_approve_contribution(db, contrib.id)
             count += 1
         except Exception as e:
             errors.append(f"ID {contrib.id}: {str(e)}")
-            continue
-            
     db.commit()
-    clear_all_caches()
     return {"message": f"Successfully approved {count} contributions", "errors": errors}
 
 @app.delete("/api/contributions/{contribution_id}", status_code=204)
-def delete_contribution(
-    contribution_id: int, 
-    db: Session = Depends(get_db),
-    admin: bool = Depends(verify_admin)
-):
+def delete_contribution(contribution_id: int, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     contrib = db.query(Contribution).filter(Contribution.id == contribution_id).first()
     if not contrib: raise HTTPException(status_code=404, detail="Contribution not found")
     db.delete(contrib)
@@ -714,8 +429,7 @@ def delete_contribution(
 
 @app.post("/api/admin/recheck/start")
 def start_recheck(background_tasks: BackgroundTasks, admin: bool = Depends(verify_admin)):
-    if recheck_status["status"] == "Running":
-        raise HTTPException(status_code=400, detail="Recheck job is already running")
+    if recheck_status["status"] == "Running": raise HTTPException(status_code=400, detail="Recheck job is already running")
     background_tasks.add_task(run_recheck_job)
     return {"message": "Recheck job started"}
 
