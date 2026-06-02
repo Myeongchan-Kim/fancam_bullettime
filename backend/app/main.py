@@ -267,11 +267,11 @@ def get_home_summary(db: Session = Depends(get_db)):
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
 
-        # 2. Get latest videos with a reasonable limit
+        # 2. Get all videos ordered by creation date
         videos = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        ).distinct().order_by(Video.created_at.desc()).limit(60).all()
+        ).distinct().order_by(Video.created_at.desc()).all()
 
         for v in videos:
             v.members = ensure_list(v.members)
