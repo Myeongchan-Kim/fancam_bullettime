@@ -31,10 +31,14 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- Database Setup ---
-DATABASE_URL = settings.DATABASE_URL
+# Prioritize direct environment variable for Vercel stability
+DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
+    # Adding more detail to help debug if it still fails
+    env_keys = list(os.environ.keys())
+    logger.error(f"❌ DATABASE_URL missing. Available env vars: {', '.join([k for k in env_keys if 'DATABASE' in k or 'URL' in k])}")
+    raise ValueError("DATABASE_URL environment variable is not set in Vercel. Please check Production Environment Variables.")
 
 # [Crucial] Reverting to Direct Connection for Vercel Stability
 # The Supabase Pooler (Supavisor) has been unstable in this serverless env.
