@@ -36,24 +36,30 @@ DATABASE_URL = settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set. Supabase connection is required.")
 
+# Supabase Pooler (Supavisor) Optimization for Serverless:
+# 1. Use port 6543 for Transaction Mode if pooler host is detected
+# 2. Force prepared_statements=false which is mandatory for Transaction Mode
+if "pooler.supabase.com" in DATABASE_URL:
+    if ":5432" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
+    
+    # Add prepared_statements=false to connection string
+    sep = "&" if "?" in DATABASE_URL else "?"
+    if "prepared_statements" not in DATABASE_URL:
+        DATABASE_URL += f"{sep}prepared_statements=false"
+
 # Use NullPool for Serverless environments (Vercel) to avoid stale connection issues
 from sqlalchemy.pool import NullPool
 
-# Supabase requires sslmode=require for pooled connections (port 6543)
-# We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect, which crashes Supavisor transaction poolers.
-# Hardening connection with keepalives and timeouts for serverless stability.
+# Supabase requires sslmode=require for pooled connections
+# We use use_native_hstore=False to prevent psycopg2 from querying pg_type for hstore on connect.
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
-    pool_pre_ping=False, # Avoid extra round-trip in NullPool
     use_native_hstore=False,
     connect_args={
         "sslmode": "require",
-        "connect_timeout": 10,
-        "keepalives": 1,
-        "keepalives_idle": 30,
-        "keepalives_interval": 10,
-        "keepalives_count": 5,
+        "connect_timeout": 10
     } if "supabase" in DATABASE_URL else {}
 )
 
