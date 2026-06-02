@@ -37,33 +37,30 @@ DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set in Vercel. Please check Production Environment Variables.")
 
-# [Crucial] High-Concurrency Connection for Vercel
-# Using Transaction Mode (port 6543) to avoid EMAXCONNSESSION (15 limit).
+# [Crucial] Stable Connection Rewriter for Vercel
 if "supabase" in DATABASE_URL:
     import re
-    ref_match = re.search(r'postgres\.([a-z0-9]{20})', DATABASE_URL)
-    if not ref_match:
-        ref_match = re.search(r'@db\.([a-z0-9]{20})\.', DATABASE_URL)
-
+    # Simple and explicit rewrite for Vercel
+    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
     if ref_match:
         project_ref = ref_match.group(1)
-        # Use Pooler Host
+        # Force the most stable pooler host and port for Transaction Mode
         DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
-        
-        # [FORCE] Transaction Mode (Port 6543) is required for serverless concurrency
         if ":5432" in DATABASE_URL:
             DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
-        elif ":" not in DATABASE_URL.split("@")[1]: # No port specified, add it
+        elif ":6543" not in DATABASE_URL:
+            # If no port, append it before the path
             DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
-        else:
-            # Fallback for any other port
-            DATABASE_URL = re.sub(r':\d+/', ':6543/', DATABASE_URL)
-
-        # Ensure project ref is in username for routing
+        
+        # Ensure the correct user format for the pooler
         if f"postgres.{project_ref}" not in DATABASE_URL:
             DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
-        # Strip all query params to avoid psycopg2 'invalid connection option' errors
-        DATABASE_URL = DATABASE_URL.split('?')[0] if '?' in DATABASE_URL else DATABASE_URL
+        
+        # Remove any existing query params to keep it clean
+        DATABASE_URL = DATABASE_URL.split('?')[0]
+
+# [DEBUG] Output the final URL to Vercel logs to identify the cause
+logger.info(f"🚀 ATTEMPTING DB CONNECTION WITH: {DATABASE_URL}")
 
 # Use NullPool for Serverless environments (Vercel)
 from sqlalchemy.pool import NullPool
@@ -76,7 +73,7 @@ engine = create_engine(
     connect_args={
         "sslmode": "require",
         "connect_timeout": 10
-    } if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
+    } if "supabase" in DATABASE_URL else {}
 )
 
 
