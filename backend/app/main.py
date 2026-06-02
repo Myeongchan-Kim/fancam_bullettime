@@ -35,32 +35,26 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set in Vercel. Please check Production Environment Variables.")
+    raise ValueError("DATABASE_URL environment variable is not set in Vercel.")
 
-# [Crucial] Stable Connection Rewriter for Vercel
+# [DEBUG] Log sanitized URL at ERROR level to ensure it shows in Vercel
+def get_sanitized_url(url: str) -> str:
+    return re.sub(r':([^@]+)@', ':****@', url)
+
+logger.error(f"🔍 INITIAL_URL: {get_sanitized_url(DATABASE_URL)}")
+
+# Minimal Rewriter: Only ensure we're using a stable host/port if needed
+# but try to keep it as close to the user's input as possible.
 if "supabase" in DATABASE_URL:
     import re
-    # Simple and explicit rewrite for Vercel
-    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
-    if ref_match:
-        project_ref = ref_match.group(1)
-        # Force the most stable pooler host and port for Transaction Mode
-        DATABASE_URL = re.sub(r'@[^/:]+', '@aws-0-us-west-2.pooler.supabase.com', DATABASE_URL)
-        if ":5432" in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
-        elif ":6543" not in DATABASE_URL:
-            # If no port, append it before the path
-            DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
-        
-        # Ensure the correct user format for the pooler
-        if f"postgres.{project_ref}" not in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
-        
-        # Remove any existing query params to keep it clean
-        DATABASE_URL = DATABASE_URL.split('?')[0]
+    # If the user provided the direct 'db' host, keep it but watch for IPv6 issues.
+    # If the user provided the 'pooler' host, ensure we use port 6543 for pooling.
+    if "pooler.supabase.com" in DATABASE_URL and ":5432" in DATABASE_URL:
+        # User put pooler on 5432 (Session Mode), this is fine but has 15 limit.
+        # We'll leave it as is for now to see if it works.
+        pass
 
-# [DEBUG] Output the final URL to Vercel logs to identify the cause
-logger.info(f"🚀 ATTEMPTING DB CONNECTION WITH: {DATABASE_URL}")
+logger.error(f"🚀 FINAL_URL: {get_sanitized_url(DATABASE_URL)}")
 
 # Use NullPool for Serverless environments (Vercel)
 from sqlalchemy.pool import NullPool
