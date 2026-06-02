@@ -5,6 +5,7 @@ import json
 import re
 import traceback
 import threading
+import time
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -98,49 +99,53 @@ def clear_all_caches():
     threading.Thread(target=warm_up_cache, daemon=True).start()
 
 def warm_up_cache():
-    """Pre-cache metadata and the default video list."""
-    try:
-        db = SessionLocal()
-        logger.info("🔥 Warming up caches...")
-        
-        # 1. Warm up Songs
-        songs_query = db.query(Song).order_by(Song.order).all()
-        songs = [SongBase.model_validate(s) for s in songs_query]
-        
-        # 2. Warm up Concerts
-        concerts_query = db.query(Concert).options(
-            selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        ).order_by(Concert.date.desc()).all()
-        concerts = [ConcertBase.model_validate(c) for c in concerts_query]
-        
-        with CACHE_LOCK:
-            METADATA_CACHE["songs"] = songs
-            METADATA_CACHE["concerts"] = concerts
+    """Pre-cache metadata and the default video list with retries for DB stability."""
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            db = SessionLocal()
+            logger.info(f"🔥 Warming up caches (attempt {attempt + 1})...")
             
-        # 3. Warm up default Video list
-        # Match the 5-segment key used in get_videos: song_id, concert_id, member, angle, shorts_only
-        cache_key = "none:none:none:none:False"
-        
-        query = db.query(Video).options(
-            joinedload(Video.songs),
-            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        )
-        results = query.distinct().order_by(Video.created_at.desc()).all()
-        
-        final_results = []
-        for v in results:
-            v.members = ensure_list(v.members)
-            detail = VideoDetail.model_validate(v)
-            final_results.append(detail)
+            # 1. Warm up Songs
+            songs_query = db.query(Song).order_by(Song.order).all()
+            songs = [SongBase.model_validate(s) for s in songs_query]
             
-        with CACHE_LOCK:
-            VIDEO_CACHE[cache_key] = final_results
+            # 2. Warm up Concerts
+            concerts_query = db.query(Concert).options(
+                selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+            ).order_by(Concert.date.desc()).all()
+            concerts = [ConcertBase.model_validate(c) for c in concerts_query]
             
-        db.close()
-        logger.info(f"✨ Cache warm-up complete. ({len(songs)} songs, {len(concerts)} concerts, {len(final_results)} videos)")
-    except Exception as e:
-        logger.error(f"Failed to warm up cache: {e}")
-        logger.error(traceback.format_exc())
+            with CACHE_LOCK:
+                METADATA_CACHE["songs"] = songs
+                METADATA_CACHE["concerts"] = concerts
+                
+            # 3. Warm up default Video list
+            cache_key = "none:none:none:none:False"
+            query = db.query(Video).options(
+                joinedload(Video.songs),
+                joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+            )
+            results = query.distinct().order_by(Video.created_at.desc()).all()
+            
+            final_results = []
+            for v in results:
+                v.members = ensure_list(v.members)
+                detail = VideoDetail.model_validate(v)
+                final_results.append(detail)
+                
+            with CACHE_LOCK:
+                VIDEO_CACHE[cache_key] = final_results
+                
+            db.close()
+            logger.info(f"✨ Cache warm-up complete. ({len(songs)} songs, {len(concerts)} concerts, {len(final_results)} videos)")
+            return # Success
+        except Exception as e:
+            logger.error(f"⚠️ Cache warm-up attempt {attempt + 1} failed: {e}")
+            if attempt < max_retries - 1:
+                time.sleep(2) # Wait before retry
+            else:
+                logger.error("❌ All cache warm-up attempts failed.")
 
 # --- Admin Authentication ---
 def verify_admin(
@@ -164,8 +169,10 @@ def verify_admin(
 # --- FastAPI App Setup ---
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup: Warm up cache in background
-    threading.Thread(target=warm_up_cache, daemon=True).start()
+    # Startup: Warm up cache immediately
+    # We do this synchronously to ensure the first request has cached data 
+    # and to stabilize the DB connection during function init.
+    warm_up_cache()
     yield
     # Shutdown logic (if any) could go here
 
