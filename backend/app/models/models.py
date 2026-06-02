@@ -48,8 +48,8 @@ class Video(Base):
     url = Column(String)
     
     # Labeling
-    song_id = Column(Integer, ForeignKey("songs.id"))
-    concert_id = Column(Integer, ForeignKey("concerts.id"))
+    song_id = Column(Integer, ForeignKey("songs.id"), index=True)
+    concert_id = Column(Integer, ForeignKey("concerts.id"), index=True)
     members = Column(JSONEncodedList) # List of member names
     
     # Multi-Angle & Sync
@@ -57,10 +57,10 @@ class Video(Base):
     coordinate_x = Column(Float, nullable=True)
     coordinate_y = Column(Float, nullable=True)
     sync_offset = Column(Float, default=0.0)
-    duration = Column(Float, default=9999.0) # in seconds
+    duration = Column(Float, default=9999.0, index=True) # in seconds
     is_shorts = Column(Boolean, default=False)
     
-    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), index=True)
     
     # Relationships
     song = relationship("Song", back_populates="videos", overlaps="songs,videos_list") # Deprecated
@@ -72,7 +72,7 @@ class Song(Base):
     __tablename__ = "songs"
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, index=True)
-    order = Column(Integer, nullable=True)
+    order = Column(Integer, nullable=True, index=True)
     is_solo = Column(Boolean, nullable=False, default=False)
     member_name = Column(String, nullable=True) # if solo
     
@@ -105,7 +105,7 @@ class ConcertSetlist(Base):
     start_time = Column(Float, index=True, nullable=True) 
     
     # Order in the setlist
-    display_order = Column(Integer)
+    display_order = Column(Integer, index=True)
 
     concert = relationship("Concert", back_populates="setlist")
     song = relationship("Song")
