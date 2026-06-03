@@ -11,7 +11,7 @@ from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 from .models.models import Base, Video, Song, Concert, ConcertSetlist, Contribution
-from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary
+from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary, VideoFullDetail
 from .core.config import settings
 from .crawler.recheck_worker import run_recheck_job, recheck_status
 
@@ -39,32 +39,10 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
-    """Database session dependency with one-time retry logic for transient SSL/Pooler errors."""
+    """Simple database session dependency."""
     db = SessionLocal()
     try:
-        # Simple health check to ensure connection is valid
-        db.execute(func.now())
         yield db
-    except Exception as e:
-        error_msg = str(e)
-        logger.warning(f"⚠️ First DB connection attempt failed: {error_msg}. Retrying...")
-        db.close()
-        # Retry once
-        db = SessionLocal()
-        try:
-            db.execute(func.now())
-            yield db
-        except Exception as retry_e:
-            retry_error_msg = str(retry_e)
-            logger.error(f"❌ DB connection failed after retry: {retry_error_msg}")
-            # Log the type of error to help narrow it down
-            if "EMAXCONNSESSION" in retry_error_msg:
-                detail = "Database has too many active connections (limit reached). Please wait a moment."
-            elif "SSL connection has been closed" in retry_error_msg:
-                detail = "Database connection was dropped by the provider. Please try again."
-            else:
-                detail = f"Database connection error: {retry_error_msg[:100]}"
-            raise HTTPException(status_code=500, detail=detail)
     finally:
         db.close()
 
@@ -247,6 +225,59 @@ def get_home_summary(db: Session = Depends(get_db)):
     except Exception as e:
         logger.error(f"❌ Error in get_home_summary: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/videos/{video_id}/full", response_model=VideoFullDetail)
+def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
+    """Combined endpoint to fetch everything needed for the detail page in ONE request."""
+    # 1. Video Detail
+    video = db.query(Video).options(
+        joinedload(Video.songs), 
+        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).filter(Video.id == video_id).first()
+    
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    
+    video.members = ensure_list(video.members)
+
+    # 2. Related Videos (same concert)
+    related_videos = []
+    if video.concert_id:
+        related_videos = db.query(Video).options(
+            joinedload(Video.songs)
+        ).filter(Video.concert_id == video.concert_id, Video.id != video_id).all()
+        for v in related_videos:
+            v.members = ensure_list(v.members)
+
+    # 3. Metadata
+    songs = db.query(Song).order_by(Song.order).all()
+    concerts = db.query(Concert).options(
+        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).order_by(Concert.date.desc()).all()
+
+    # 4. Contributions
+    contribs = db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+    
+    formatted_contribs = []
+    for r in contribs:
+        formatted_contribs.append({
+            "id": r.id, "video_id": r.video_id, "video_title": video.title,
+            "suggested_url": r.suggested_url, "suggested_title": r.suggested_title,
+            "suggested_song_ids": ensure_list(r.suggested_song_ids), "suggested_concert_id": r.suggested_concert_id,
+            "suggested_members": ensure_list(r.suggested_members), "suggested_duration": r.suggested_duration,
+            "suggested_angle": r.suggested_angle, "suggested_coordinate_x": r.suggested_coordinate_x,
+            "suggested_coordinate_y": r.suggested_coordinate_y, "suggested_sync_offset": r.suggested_sync_offset,
+            "suggested_setlist_id": r.suggested_setlist_id, "suggested_start_time": r.suggested_start_time,
+            "suggested_event_name": r.suggested_event_name, "is_processed": r.is_processed, "created_at": r.created_at
+        })
+
+    return {
+        "video": video,
+        "related_videos": related_videos,
+        "songs": songs,
+        "concerts": concerts,
+        "contributions": formatted_contribs
+    }
 
 def get_video_id(url: str):
     pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
