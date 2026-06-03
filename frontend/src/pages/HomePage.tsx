@@ -153,26 +153,18 @@ const HomePage = () => {
   };
 
   useEffect(() => {
+    // 🧹 Cleanup old unsustainable cache
+    localStorage.removeItem('home_summary_cache');
+    localStorage.removeItem('home_summary_version');
     loadSummary();
   }, []);
 
   const loadSummary = async () => {
-    // 1. Try to load from LocalStorage for instant render
-    const cached = localStorage.getItem('home_summary_cache');
-    if (cached) {
-      try {
-        const data = JSON.parse(cached);
-        setSongs(data.songs || []);
-        setConcerts(data.concerts || []);
-        setVideos(data.videos || []);
-        setIsLoading(false);
-        console.log("⚡ Instant render from cache");
-      } catch (e) {
-        console.error("Cache parse error", e);
-      }
-    }
+    // 🛡️ Remove huge localStorage cache to prevent QuotaExceededError
+    // Caching 1220+ videos with full metadata exceeds the 5MB browser limit.
+    // The indexed API is now fast enough (~200ms) for direct use.
 
-    // 2. Fetch fresh data from optimized summary endpoint
+    // Fetch fresh data from optimized summary endpoint
     try {
       const res = await axios.get(`${API_BASE_URL}/home/summary`);
       const data = res.data;
@@ -182,9 +174,7 @@ const HomePage = () => {
       setVideos(data.videos);
       setIsLoading(false);
       
-      // Update cache
-      localStorage.setItem('home_summary_cache', JSON.stringify(data));
-      console.log("✨ Data refreshed from server");
+      console.log("✨ Data loaded from server");
     } catch (err) {
       console.error("Error fetching summary", err);
       setIsLoading(false);
