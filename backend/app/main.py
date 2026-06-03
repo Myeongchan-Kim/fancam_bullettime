@@ -22,17 +22,33 @@ logger = logging.getLogger(__name__)
 load_dotenv()
 
 # --- Database Setup ---
-# Use standard DATABASE_URL from environment with NullPool for Serverless stability
 DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
+# [Crucial] Stable Connection Rewriter for Vercel Concurrency
+# We use Port 6543 (Transaction Mode) to support many simultaneous connections.
+if "pooler.supabase.com" in DATABASE_URL:
+    import re
+    # Force Transaction Mode Port
+    if ":5432" in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
+    elif ":6543" not in DATABASE_URL:
+        DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
+    
+    # Ensure username has the project ref (postgres.[ref]) for routing
+    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
+    if ref_match:
+        project_ref = ref_match.group(1)
+        if f"postgres.{project_ref}" not in DATABASE_URL:
+            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
+
 # Standard SQLAlchemy setup for Vercel
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
-    connect_args={"sslmode": "require"} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
+    connect_args={"sslmode": "require", "connect_timeout": 10} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -45,7 +61,8 @@ def get_db():
         db.execute(func.now())
         yield db
     except Exception as e:
-        logger.warning(f"⚠️ First DB connection attempt failed: {str(e)}. Retrying...")
+        error_msg = str(e)
+        logger.warning(f"⚠️ First DB connection attempt failed: {error_msg}. Retrying...")
         db.close()
         # Retry once
         db = SessionLocal()
@@ -53,8 +70,16 @@ def get_db():
             db.execute(func.now())
             yield db
         except Exception as retry_e:
-            logger.error(f"❌ DB connection failed after retry: {str(retry_e)}")
-            raise HTTPException(status_code=500, detail="Database connection unstable. Please try again.")
+            retry_error_msg = str(retry_e)
+            logger.error(f"❌ DB connection failed after retry: {retry_error_msg}")
+            # Log the type of error to help narrow it down
+            if "EMAXCONNSESSION" in retry_error_msg:
+                detail = "Database has too many active connections (limit reached). Please wait a moment."
+            elif "SSL connection has been closed" in retry_error_msg:
+                detail = "Database connection was dropped by the provider. Please try again."
+            else:
+                detail = f"Database connection error: {retry_error_msg[:100]}"
+            raise HTTPException(status_code=500, detail=detail)
     finally:
         db.close()
 
