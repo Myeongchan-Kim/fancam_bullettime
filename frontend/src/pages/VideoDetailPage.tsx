@@ -46,52 +46,36 @@ const VideoDetailPage = () => {
 
   useEffect(() => {
     setVideo(null); // Reset state when switching videos
-    fetchVideoDetail();
-    fetchMetadata();
-    fetchContributions();
+    fetchFullData();
   }, [id]);
 
-  const fetchVideoDetail = async () => {
+  const fetchFullData = async () => {
     try {
-      const res = await axios.get(`${API_BASE_URL}/videos/${id}`);
-      setVideo(res.data);
+      const res = await axios.get(`${API_BASE_URL}/videos/${id}/full`);
+      const { video: videoData, related_videos: relatedData, songs: songsData, concerts: concertsData, contributions: contribsData } = res.data;
+      
+      setVideo(videoData);
+      setRelatedVideos(relatedData);
+      setSongs(songsData);
+      setConcerts(concertsData);
+      setContributions(contribsData);
+
       setEditData({
-        title: res.data.title,
-        song_ids: res.data.songs?.map((s: Song) => s.id) || [],
-        concert_id: res.data.concert?.id || 0,
-        members: res.data.members || [],
-        coordinate_x: res.data.coordinate_x,
-        coordinate_y: res.data.coordinate_y,
-        sync_offset: res.data.sync_offset,
-        duration: res.data.duration,
+        title: videoData.title,
+        song_ids: videoData.songs?.map((s: Song) => s.id) || [],
+        concert_id: videoData.concert?.id || 0,
+        members: videoData.members || [],
+        coordinate_x: videoData.coordinate_x,
+        coordinate_y: videoData.coordinate_y,
+        sync_offset: videoData.sync_offset,
+        duration: videoData.duration,
         suggested_setlist_id: 0,
         suggested_start_time: '',
         suggested_event_name: ''
       });
-
-      if (res.data.concert?.id) {
-        // Fetch all videos from the same concert to allow syncing any angle from the show
-        const relatedRes = await axios.get(`${API_BASE_URL}/videos?concert_id=${res.data.concert.id}`);
-        setRelatedVideos(relatedRes.data.filter((v: Video) => v.id !== parseInt(id!)));
-      }    } catch (err) { console.error("Error fetching video detail", err); }
-  };
-
-  const fetchMetadata = async () => {
-    try {
-      const [sRes, cRes] = await Promise.all([
-        axios.get(`${API_BASE_URL}/songs`),
-        axios.get(`${API_BASE_URL}/concerts`)
-      ]);
-      setSongs(sRes.data);
-      setConcerts(cRes.data);
-    } catch (err) { console.error("Error fetching metadata", err); }
-  };
-
-  const fetchContributions = async () => {
-    try {
-      const res = await axios.get(`${API_BASE_URL}/videos/${id}/contributions`);
-      setContributions(res.data);
-    } catch (err) { console.error("Error fetching contributions", err); }
+    } catch (err) { 
+      console.error("Error fetching full video data", err); 
+    }
   };
 
   const handleUpdate = async () => {
@@ -108,7 +92,7 @@ const VideoDetailPage = () => {
         duration: parseFloat(editData.duration.toString()) || 0
       }, { headers: { 'X-Admin-Key': adminKey } });
       setIsEditing(false);
-      fetchVideoDetail();
+      fetchFullData();
     } catch (err) { alert("Error updating details"); }
     finally { setIsSubmitting(false); }
   };
@@ -132,7 +116,7 @@ const VideoDetailPage = () => {
         suggested_event_name: editData.suggested_event_name || null
       });
       alert("Contribution submitted! Thank you for improving the archive.");
-      fetchContributions();
+      fetchFullData();
     } catch (err) { alert("Error submitting contribution"); }
     finally { setIsSubmitting(false); }
   };
@@ -143,8 +127,7 @@ const VideoDetailPage = () => {
         headers: { 'X-Admin-Key': adminKey }
       });
       alert("Contribution approved!");
-      fetchVideoDetail();
-      fetchContributions();
+      fetchFullData();
       setPreviewContrib(null);
     } catch (err) { alert("Approve failed"); }
   };
@@ -155,7 +138,7 @@ const VideoDetailPage = () => {
       await axios.delete(`${API_BASE_URL}/contributions/${cId}`, {
         headers: { 'X-Admin-Key': adminKey }
       });
-      fetchContributions();
+      fetchFullData();
       if (previewContrib?.id === cId) setPreviewContrib(null);
     } catch (err) { alert("Delete failed"); }
   };

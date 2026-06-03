@@ -124,3 +124,13 @@ class HomeSummary(BaseModel):
 
     class Config:
         from_attributes = True
+
+class VideoFullDetail(BaseModel):
+    video: VideoDetail
+    related_videos: List[VideoDetail]
+    songs: List[SongBase]
+    concerts: List[ConcertBase]
+    contributions: List[ContributionBase]
+
+    class Config:
+        from_attributes = True
