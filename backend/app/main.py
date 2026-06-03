@@ -38,9 +38,23 @@ engine = create_engine(
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def get_db():
+    """Database session dependency with one-time retry logic for transient SSL/Pooler errors."""
     db = SessionLocal()
     try:
+        # Simple health check to ensure connection is valid
+        db.execute(func.now())
         yield db
+    except Exception as e:
+        logger.warning(f"⚠️ First DB connection attempt failed: {str(e)}. Retrying...")
+        db.close()
+        # Retry once
+        db = SessionLocal()
+        try:
+            db.execute(func.now())
+            yield db
+        except Exception as retry_e:
+            logger.error(f"❌ DB connection failed after retry: {str(retry_e)}")
+            raise HTTPException(status_code=500, detail="Database connection unstable. Please try again.")
     finally:
         db.close()
 
