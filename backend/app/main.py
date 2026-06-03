@@ -27,24 +27,9 @@ DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
-# [Crucial] Stable Connection Rewriter for Vercel Concurrency
-# We use Port 6543 (Transaction Mode) to support many simultaneous connections.
-if "pooler.supabase.com" in DATABASE_URL:
-    import re
-    # Force Transaction Mode Port
-    if ":5432" in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace(":5432", ":6543")
-    elif ":6543" not in DATABASE_URL:
-        DATABASE_URL = DATABASE_URL.replace("/postgres", ":6543/postgres")
-    
-    # Ensure username has the project ref (postgres.[ref]) for routing
-    ref_match = re.search(r'([a-z0-9]{20})', DATABASE_URL)
-    if ref_match:
-        project_ref = ref_match.group(1)
-        if f"postgres.{project_ref}" not in DATABASE_URL:
-            DATABASE_URL = DATABASE_URL.replace("postgres:", f"postgres.{project_ref}:")
+# Use NullPool for Serverless environments (Vercel) to ensure fresh connections
+from sqlalchemy.pool import NullPool
 
-# Standard SQLAlchemy setup for Vercel
 engine = create_engine(
     DATABASE_URL,
     poolclass=NullPool,
