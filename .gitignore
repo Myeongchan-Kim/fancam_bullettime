@@ -27,3 +27,5 @@ Thumbs.db
 
 # overkill (added by overkill init)
 .overkill/
+.vercel
+.env*

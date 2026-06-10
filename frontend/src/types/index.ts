@@ -63,3 +63,8 @@ export interface Contribution {
   is_processed: boolean;
   created_at: string;
 }
+
+export interface PaginatedVideos {
+  total_count: number;
+  videos: Video[];
+}

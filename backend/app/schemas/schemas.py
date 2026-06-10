@@ -134,3 +134,11 @@ class VideoFullDetail(BaseModel):
 
     class Config:
         from_attributes = True
+
+class VideoPagination(BaseModel):
+    total_count: int
+    videos: List[VideoDetail]
+
+    class Config:
+        from_attributes = True
+
