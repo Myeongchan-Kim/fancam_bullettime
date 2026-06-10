@@ -41,6 +41,7 @@ const HomePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [videos, setVideos] = useState<Video[]>([]);
+  const [mappedVideos, setMappedVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -111,8 +112,12 @@ const HomePage = () => {
       // Failsafe for summary videos
       if (data.videos && Array.isArray(data.videos)) {
         setVideos(data.videos);
+        // Extract videos with coordinates for the persistent map markers
+        const withCoords = data.videos.filter((v: Video) => v.coordinate_x !== null && v.coordinate_y !== null);
+        setMappedVideos(withCoords);
       } else {
         setVideos([]);
+        setMappedVideos([]);
       }
       
       setTotalCount(data.total_videos ?? (data.videos ? data.videos.length : 0));
@@ -219,7 +224,7 @@ const HomePage = () => {
           <div className="flex-1 flex justify-center overflow-visible">
             <StageMap 
               angle="Unknown" 
-              videos={videos} 
+              videos={mappedVideos} 
               sizeClass="w-full max-w-[45rem]"
             />
           </div>
