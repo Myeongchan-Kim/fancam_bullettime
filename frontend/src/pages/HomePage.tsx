@@ -12,6 +12,14 @@ import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
 
 const FEATURED_SYNC_VIDEOS = [
   { 
+    id: 43, 
+    title: 'In my room', 
+    subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
+    img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
+    angleCount: 3,
+    extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
+  },
+  { 
     id: 215, 
     title: 'MOVE LIKE THAT', 
     subtitle: 'Incheon 20250719 (Momo Solo)', 
@@ -27,22 +35,6 @@ const FEATURED_SYNC_VIDEOS = [
     angleCount: 4,
     extraImgs: ['https://i.ytimg.com/vi/FGhOm91Zjvw/1.jpg']
   },
-  { 
-    id: 1137, 
-    title: 'Feel Special', 
-    subtitle: 'Incheon 20250719 (Momo & Sana)', 
-    img: 'https://i.ytimg.com/vi/U6Fnd-6Lybk/hqdefault.jpg',
-    angleCount: 6,
-    extraImgs: ['https://i.ytimg.com/vi/U6Fnd-6Lybk/1.jpg', 'https://i.ytimg.com/vi/U6Fnd-6Lybk/2.jpg']
-  },
-  { 
-    id: 43, 
-    title: 'In my room', 
-    subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
-    img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
-    angleCount: 3,
-    extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
-  },
 ];
 
 const HomePage = () => {
@@ -51,6 +43,7 @@ const HomePage = () => {
   const [videos, setVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   
   const maxSongOrder = songs.length > 0 ? Math.max(...songs.map(s => s.order || 0)) : 1;
   const selectedConcert = searchParams.get('concert') || '';
@@ -68,8 +61,9 @@ const HomePage = () => {
 
   const [showNewVideoModal, setShowNewVideoModal] = useState(false);
   const [showAdminModal, setShowAdminModal] = useState(false);
-  const [visibleCount, setVisibleCount] = useState(12);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [offset, setOffset] = useState(0);
   const adminKey = localStorage.getItem('admin_key') || '';
 
   // Local state for the input field to make it snappy
@@ -93,60 +87,6 @@ const HomePage = () => {
     return () => clearTimeout(handler);
   }, [localSearch, searchQuery, setSearchParams]);
 
-  const filteredVideos = useMemo(() => {
-    let filtered = videos;
-
-    // 1. Song Order Filtering (Instant Frontend Logic)
-    if (selectedConcert && activeConcertObj?.setlist) {
-      // Concert Mode: Filter by display_order in that concert's setlist
-      // Map setlist to song IDs for quick lookup
-      const setlistInRange = activeConcertObj.setlist.filter(item => 
-        item.display_order >= (startOrder - 1) && 
-        item.display_order <= (endOrder - 1)
-      );
-      const validSongIds = setlistInRange.map(item => item.song_id).filter(id => id !== null);
-      
-      filtered = filtered.filter(v => {
-        // Show if video's concert matches AND (it matches a song in range OR it has no song yet)
-        const matchesConcert = v.concert?.id?.toString() === selectedConcert;
-        if (!matchesConcert) return false;
-        
-        const hasSongInRange = v.songs?.some(s => validSongIds.includes(s.id));
-        const isUntagged = !v.songs || v.songs.length === 0;
-        
-        // Show untagged only if the range includes "end" (logic carried over from backend)
-        const showUntagged = endOrder >= effectiveMaxOrder;
-        
-        return hasSongInRange || (isUntagged && showUntagged);
-      });
-    } else if (!selectedConcert && songs.length > 0) {
-      // Global Mode: Filter by song's global order
-      filtered = filtered.filter(v => {
-        const hasSongInRange = v.songs?.some(s => {
-          const ord = s.order;
-          return ord !== null && ord !== undefined && ord >= startOrder && ord <= endOrder;
-        });
-        const isUntagged = !v.songs || v.songs.length === 0;
-        const showUntagged = endOrder >= effectiveMaxOrder;
-        
-        return hasSongInRange || (isUntagged && showUntagged);
-      });
-    }
-
-    // 2. Text Search Filtering
-    if (!searchQuery.trim()) return filtered;
-    const lowerQuery = searchQuery.toLowerCase();
-    return filtered.filter(v => {
-      return (
-        v.youtube_id?.toLowerCase().includes(lowerQuery) ||
-        v.title?.toLowerCase().includes(lowerQuery) ||
-        v.concert?.city?.toLowerCase().includes(lowerQuery) ||
-        v.concert?.venue?.toLowerCase().includes(lowerQuery) ||
-        v.songs?.some(s => s.name.toLowerCase().includes(lowerQuery))
-      );
-    });
-  }, [videos, searchQuery, selectedConcert, startOrder, endOrder, effectiveMaxOrder, activeConcertObj, songs.length]);
-
   const resetFilters = () => {
     setSearchParams(new URLSearchParams(), { replace: true });
     setLocalSearch(''); // Clear local input immediately
@@ -160,23 +100,26 @@ const HomePage = () => {
   }, []);
 
   const loadSummary = async () => {
-    // 🛡️ Remove huge localStorage cache to prevent QuotaExceededError
-    // Caching 1220+ videos with full metadata exceeds the 5MB browser limit.
-    // The indexed API is now fast enough (~200ms) for direct use.
-
-    // Fetch fresh data from optimized summary endpoint
     try {
+      setIsLoading(true);
       const res = await axios.get(`${API_BASE_URL}/home/summary`);
       const data = res.data;
       
-      setSongs(data.songs);
-      setConcerts(data.concerts);
-      setVideos(data.videos);
-      setIsLoading(false);
+      setSongs(data.songs || []);
+      setConcerts(data.concerts || []);
       
-      console.log("✨ Data loaded from server");
+      // Failsafe for summary videos
+      if (data.videos && Array.isArray(data.videos)) {
+        setVideos(data.videos);
+      } else {
+        setVideos([]);
+      }
+      
+      setTotalCount(data.total_videos ?? (data.videos ? data.videos.length : 0));
+      setOffset(0);
     } catch (err) {
       console.error("Error fetching summary", err);
+    } finally {
       setIsLoading(false);
     }
   };
@@ -191,22 +134,66 @@ const HomePage = () => {
     }
   }, [songs, searchParams, setSearchParams, effectiveMaxOrder]);
 
+  const fetchVideos = async (currentOffset: number = 0, isAppend: boolean = false) => {
+    if (currentOffset === 0) {
+      setIsLoading(true);
+    } else {
+      setIsLoadingMore(true);
+    }
+    try {
+      let url = `${API_BASE_URL}/videos?offset=${currentOffset}&limit=24`;
+      if (selectedConcert) url += `&concert_id=${selectedConcert}`;
+      if (shortsOnly) url += `&shorts_only=true`;
+      if (searchQuery.trim()) url += `&q=${encodeURIComponent(searchQuery.trim())}`;
+      
+      // Send setlist range if active
+      if (startOrder !== undefined && endOrder !== undefined) {
+        url += `&start_order=${startOrder}&end_order=${endOrder}`;
+      }
+      
+      const res = await axios.get(url);
+      
+      // Failsafe: Handle both new paginated response schema and old flat array response schema
+      let total = 0;
+      let newVideos: Video[] = [];
+      
+      if (Array.isArray(res.data)) {
+        newVideos = res.data;
+        total = res.data.length;
+      } else if (res.data && Array.isArray(res.data.videos)) {
+        newVideos = res.data.videos;
+        total = res.data.total_count ?? res.data.videos.length;
+      }
+      
+      if (isAppend) {
+        setVideos(prev => [...(prev || []), ...newVideos]);
+      } else {
+        setVideos(newVideos);
+      }
+      setTotalCount(total);
+    } catch (err) { 
+      console.error("Error fetching videos", err); 
+    } finally {
+      setIsLoading(false);
+      setIsLoadingMore(false);
+    }
+  };
+
   useEffect(() => {
     // Only call fetchVideos if we are not in the initial mount phase where loadSummary is handling it
     if (songs.length === 0) return; 
-    fetchVideos();
-  }, [selectedConcert, shortsOnly]);
-
-  useEffect(() => {
-    setVisibleCount(12); // Reset scroll when dataset or search changes
-  }, [videos, searchQuery, startOrder, endOrder]);
+    setOffset(0);
+    fetchVideos(0, false);
+  }, [selectedConcert, shortsOnly, searchQuery, startOrder, endOrder, songs.length]);
 
   // Infinite Scroll Observer
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting && visibleCount < filteredVideos.length) {
-          setVisibleCount(prev => prev + 12);
+        if (entries[0].isIntersecting && videos.length < totalCount && !isLoading && !isLoadingMore) {
+          const nextOffset = offset + 24;
+          setOffset(nextOffset);
+          fetchVideos(nextOffset, true);
         }
       },
       { threshold: 0, rootMargin: '200px' }
@@ -216,37 +203,12 @@ const HomePage = () => {
     if (sentinel) observer.observe(sentinel);
 
     return () => observer.disconnect();
-  }, [visibleCount, filteredVideos.length, isLoading]);
-
-  const fetchVideos = async () => {
-    setIsLoading(true);
-    try {
-      // If no filters are active, revert to the initial full list (via summary API)
-      if (!selectedConcert && !shortsOnly) {
-         // loadSummary does a full refresh, but we only need the videos array to reset.
-         // We can just fetch /home/summary again or if we had a pure /videos endpoint for all.
-         const res = await axios.get(`${API_BASE_URL}/home/summary`);
-         setVideos(res.data.videos);
-         return;
-      }
-
-      let url = `${API_BASE_URL}/videos?`;
-      if (selectedConcert) url += `concert_id=${selectedConcert}&`;
-      if (shortsOnly) url += `shorts_only=true&`;
-      
-      const res = await axios.get(url);
-      setVideos(res.data);
-    } catch (err) { 
-      console.error("Error fetching videos", err); 
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  }, [offset, videos.length, totalCount, isLoading, isLoadingMore]);
 
   return (
     <div className="space-y-12">
       {showNewVideoModal && <NewVideoSuggestionModal songs={songs} concerts={concerts} onClose={() => setShowNewVideoModal(false)} />}
-      {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(); }} />}
+      {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(0, false); }} />}
 
       {/* Huge Interactive Map Section with Sidebar Lists */}
       <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
@@ -384,7 +346,7 @@ const HomePage = () => {
         <div className="flex flex-col sm:flex-row items-center justify-between border-b border-slate-800 pb-4 gap-4">
           <h2 className="text-xl font-bold flex items-center gap-2 text-white min-w-max">
             <div className="w-1 h-6 twice-gradient rounded-full"></div>
-            <span>{isLoading ? 'Searching...' : `${filteredVideos.length} Performances Found`}</span>
+            <span>{isLoading ? 'Searching...' : `${totalCount} Performances Found`}</span>
           </h2>
           
           {/* Real-time Text Filter */}
@@ -430,7 +392,7 @@ const HomePage = () => {
         ) : (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 text-white">
-              {filteredVideos.slice(0, visibleCount).map(video => (
+              {videos.map(video => (
                 <Link to={`/video/${video.id}`} key={video.id} className="group bg-slate-800/40 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-magenta transition-all hover:shadow-lg hover:shadow-twice-magenta/10 cursor-pointer">
                   <div className="aspect-video relative overflow-hidden">
                     <img src={video.thumbnail_url} alt={video.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 opacity-80 group-hover:opacity-100" />
@@ -438,7 +400,7 @@ const HomePage = () => {
                       {video.members?.slice(0, 3).map(m => (
                         <span key={m} className="bg-twice-magenta/90 text-white px-2 py-0.5 text-[8px] font-black rounded uppercase tracking-wider shadow-lg">{m}</span>
                       ))}
-                      {video.members?.length > 3 && <span className="bg-black/60 text-white px-2 py-0.5 text-[8px] font-bold rounded">+{video.members.length - 3}</span>}
+                      {video.members?.length > 3 && <span className="bg-black/60 text-white px-2 py-0.5 text-[8px] font-bold rounded">+{video.members?.length - 3}</span>}
                     </div>
                     <div className="absolute bottom-2 left-2 flex gap-1">
                       {video.is_shorts && (
@@ -469,13 +431,13 @@ const HomePage = () => {
             </div>
 
             {/* Scroll Sentinel */}
-            {filteredVideos.length > visibleCount && (
+            {videos.length < totalCount && (
               <div id="scroll-sentinel" className="h-20 flex items-center justify-center">
                 <div className="w-6 h-6 border-4 border-twice-magenta/30 border-t-twice-magenta rounded-full animate-spin"></div>
               </div>
             )}
             
-            {filteredVideos.length === 0 && (
+            {videos.length === 0 && (
               <div className="text-center py-32 text-gray-600">
                 <Search className="h-16 w-16 mx-auto mb-4 opacity-10" />
                 <p className="text-lg font-black uppercase tracking-widest opacity-50">No results found</p>
