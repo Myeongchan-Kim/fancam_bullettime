@@ -165,18 +165,18 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                     value={selectedConcert}
                     onChange={(e) => onConcertChange(e.target.value)}
                   >
-                    <option value="">ALL CONCERTS</option>
+                    <option value="">ALL CONCERTS ({concerts.reduce((acc, c) => acc + (c.video_count || 0), 0)})</option>
                     {pastConcerts.map(c => {
                       const hasTimeline = c.setlist && c.setlist.length > 0;
                       return (
                         <option key={c.id} value={c.id} className={`bg-slate-900 font-bold ${hasTimeline ? 'text-twice-magenta' : ''}`}>
-                          {hasTimeline ? '✨ ' : ''}{c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()} {hasTimeline ? '(TIMELINE)' : ''}
+                          {hasTimeline ? '✨ ' : ''}{c.city.toUpperCase()} ({c.video_count || 0}) - {new Date(c.date).toLocaleDateString()} {hasTimeline ? '(TIMELINE)' : ''}
                         </option>
                       );
                     })}
                     {otherConcert && (
                       <option value={otherConcert.id} className="bg-slate-900 text-twice-apricot font-black">
-                        OTHER CONTENT / VLOGS
+                        OTHER CONTENT / VLOGS ({otherConcert.video_count || 0})
                       </option>
                     )}
                     {futureConcerts.length > 0 && (
@@ -184,7 +184,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
                         <option disabled className="bg-slate-950 text-gray-600 text-center">────────── UPCOMING ──────────</option>
                         {futureConcerts.map(c => (
                           <option key={c.id} value={c.id} className="bg-slate-900 opacity-50 italic">
-                            {c.city.toUpperCase()} - {new Date(c.date).toLocaleDateString()}
+                            {c.city.toUpperCase()} ({c.video_count || 0}) - {new Date(c.date).toLocaleDateString()}
                           </option>
                         ))}
                       </>

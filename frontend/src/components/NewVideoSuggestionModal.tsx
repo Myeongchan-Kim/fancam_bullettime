@@ -107,7 +107,7 @@ const NewVideoSuggestionModal: React.FC<Props> = ({ songs, concerts, onClose }) 
                 <option value="0">Unknown / Other</option>
                 {concerts.map(c => (
                   <option key={c.id} value={c.id}>
-                    {c.city} - {new Date(c.date).toLocaleDateString()}
+                    {c.city} ({c.video_count || 0}) - {new Date(c.date).toLocaleDateString()}
                   </option>
                 ))}
               </select>

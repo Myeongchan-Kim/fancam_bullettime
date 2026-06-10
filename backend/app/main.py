@@ -235,7 +235,14 @@ def get_songs(db: Session = Depends(get_db)):
 
 @app.get("/api/concerts", response_model=List[ConcertBase])
 def get_concerts(db: Session = Depends(get_db)):
-    return db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+    # Calculate counts per concert
+    concert_counts = db.query(Video.concert_id, func.count(Video.id)).group_by(Video.concert_id).all()
+    counts_dict = {c_id: count for c_id, count in concert_counts if c_id is not None}
+    
+    concerts = db.query(Concert).options(selectinload(Concert.setlist).joinedload(ConcertSetlist.song)).order_by(Concert.date.desc()).all()
+    for c in concerts:
+        c.video_count = counts_dict.get(c.id, 0)
+    return concerts
 
 @app.get("/api/home/summary", response_model=HomeSummary)
 def get_home_summary(db: Session = Depends(get_db)):
@@ -243,9 +250,17 @@ def get_home_summary(db: Session = Depends(get_db)):
     try:
         # 1. Fetch metadata (small datasets)
         songs = db.query(Song).order_by(Song.order).all()
+        
+        # Calculate counts per concert
+        concert_counts = db.query(Video.concert_id, func.count(Video.id)).group_by(Video.concert_id).all()
+        counts_dict = {c_id: count for c_id, count in concert_counts if c_id is not None}
+        
         concerts = db.query(Concert).options(
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
+        
+        for c in concerts:
+            c.video_count = counts_dict.get(c.id, 0)
 
         # 2. Get latest videos (indexed query) - limited to 24 for fast initial list
         latest_videos = db.query(Video).options(

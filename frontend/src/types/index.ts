@@ -22,6 +22,7 @@ export interface Concert {
   city: string;
   country: string;
   venue: string;
+  video_count?: number;
   setlist?: ConcertSetlist[];
 }
 

@@ -30,6 +30,7 @@ class ConcertBase(BaseModel):
     city: str
     country: str
     venue: str
+    video_count: int = 0
     setlist: List[ConcertSetlistBase] = []
 
     class Config:
