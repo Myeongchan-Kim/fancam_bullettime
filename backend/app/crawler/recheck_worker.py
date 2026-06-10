@@ -4,8 +4,7 @@ import time
 import logging
 import requests
 import traceback
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+from app.db import SessionLocal
 
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
@@ -42,8 +41,6 @@ def run_recheck_job():
     recheck_status["error_message"] = None
 
     try:
-        engine = create_engine(DATABASE_URL)
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
         db = SessionLocal()
 
         # 'Other' 콘서트 정보 가져오기
