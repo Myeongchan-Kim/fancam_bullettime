@@ -247,11 +247,27 @@ def get_home_summary(db: Session = Depends(get_db)):
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
 
-        # 2. Get latest videos (indexed query) - limited to 200 to ensure enough map markers are present
-        videos = db.query(Video).options(
+        # 2. Get latest videos (indexed query) - limited to 24 for fast initial list
+        latest_videos = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        ).distinct().order_by(Video.created_at.desc()).limit(200).all()
+        ).distinct().order_by(Video.created_at.desc()).limit(24).all()
+
+        # 3. Get ALL videos with coordinates to ensure the map is always full
+        mapped_videos = db.query(Video).options(
+            joinedload(Video.songs),
+            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        ).filter(Video.coordinate_x.isnot(None)).all()
+
+        # Merge and remove duplicates by ID
+        video_map = {v.id: v for v in mapped_videos}
+        for v in latest_videos:
+            if v.id not in video_map:
+                video_map[v.id] = v
+        
+        videos = list(video_map.values())
+        # Re-sort by created_at desc for consistency
+        videos.sort(key=lambda x: x.created_at, reverse=True)
 
         for v in videos:
             v.members = ensure_list(v.members)
