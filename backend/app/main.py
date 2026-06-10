@@ -33,13 +33,18 @@ from sqlalchemy.pool import NullPool, QueuePool
 # Detect if running on Vercel
 IS_VERCEL = os.getenv("VERCEL") == "1"
 
-engine = create_engine(
-    DATABASE_URL,
-    poolclass=NullPool if IS_VERCEL else QueuePool,
-    pool_size=5 if not IS_VERCEL else None,
-    max_overflow=0 if not IS_VERCEL else None,
-    connect_args={"sslmode": "require", "connect_timeout": 10} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
-)
+engine_kwargs = {
+    "connect_args": {"sslmode": "require", "connect_timeout": 10} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
+}
+
+if IS_VERCEL:
+    engine_kwargs["poolclass"] = NullPool
+else:
+    engine_kwargs["poolclass"] = QueuePool
+    engine_kwargs["pool_size"] = 5
+    engine_kwargs["max_overflow"] = 0
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
