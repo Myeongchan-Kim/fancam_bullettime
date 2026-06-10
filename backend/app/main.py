@@ -5,13 +5,13 @@ import re
 from typing import List, Optional
 from fastapi import FastAPI, Depends, HTTPException, Query, Request, Header, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, func
+from sqlalchemy import create_engine, func, or_, and_
 from sqlalchemy.orm import sessionmaker, Session, joinedload, selectinload
 from sqlalchemy.pool import NullPool
 from dotenv import load_dotenv
 
 from .models.models import Base, Video, Song, Concert, ConcertSetlist, Contribution
-from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary, VideoFullDetail
+from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary, VideoFullDetail, VideoPagination
 from .core.config import settings
 from .crawler.recheck_worker import run_recheck_job, recheck_status
 
@@ -27,12 +27,17 @@ DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL environment variable is not set.")
 
-# Use NullPool for Serverless environments (Vercel) to ensure fresh connections
-from sqlalchemy.pool import NullPool
+# Use NullPool for Serverless environments (Vercel), but use a small pool for persistent servers to prevent connection limits
+from sqlalchemy.pool import NullPool, QueuePool
+
+# Detect if running on Vercel
+IS_VERCEL = os.getenv("VERCEL") == "1"
 
 engine = create_engine(
     DATABASE_URL,
-    poolclass=NullPool,
+    poolclass=NullPool if IS_VERCEL else QueuePool,
+    pool_size=5 if not IS_VERCEL else None,
+    max_overflow=0 if not IS_VERCEL else None,
     connect_args={"sslmode": "require", "connect_timeout": 10} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
 )
 
@@ -136,14 +141,18 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
 
 # --- API Endpoints ---
 
-@app.get("/api/videos", response_model=List[VideoDetail])
+@app.get("/api/videos", response_model=VideoPagination)
 def get_videos(
     song_id: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
     angle: Optional[str] = None,
     shorts_only: bool = Query(False),
-    limit: int = Query(100),
+    q: Optional[str] = None,
+    start_order: Optional[int] = None,
+    end_order: Optional[int] = None,
+    offset: int = Query(0),
+    limit: int = Query(24),
     db: Session = Depends(get_db)
 ):
     query = db.query(Video).options(
@@ -158,12 +167,74 @@ def get_videos(
         from sqlalchemy import String
         query = query.filter(Video.members.cast(String).like(f"%{member}%"))
     if angle: query = query.filter(Video.angle == angle)
-        
-    results = query.distinct().order_by(Video.duration.asc(), Video.created_at.desc()).limit(limit).all()
+
+    # 1. Text Search Filter (q)
+    if q and q.strip():
+        q_lower = f"%{q.strip().lower()}%"
+        # Join related tables for search query
+        query = query.outerjoin(Video.concert).outerjoin(Video.songs)
+        query = query.filter(
+            or_(
+                func.lower(Video.title).like(q_lower),
+                func.lower(Video.youtube_id).like(q_lower),
+                func.lower(Concert.city).like(q_lower),
+                func.lower(Concert.venue).like(q_lower),
+                func.lower(Song.name).like(q_lower)
+            )
+        )
+
+    # 2. Song Order / Setlist Range Filtering
+    if start_order is not None and end_order is not None:
+        if concert_id:
+            # Concert Mode Setlist Filter
+            max_order_sub = db.query(func.count(ConcertSetlist.id)).filter(ConcertSetlist.concert_id == concert_id).scalar() or 1
+            show_untagged = end_order >= max_order_sub
+            
+            valid_song_ids = db.query(ConcertSetlist.song_id).filter(
+                ConcertSetlist.concert_id == concert_id,
+                ConcertSetlist.display_order >= (start_order - 1),
+                ConcertSetlist.display_order <= (end_order - 1),
+                ConcertSetlist.song_id.isnot(None)
+            ).all()
+            valid_song_ids = [r[0] for r in valid_song_ids]
+            
+            if show_untagged:
+                query = query.filter(
+                    or_(
+                        Video.songs.any(Song.id.in_(valid_song_ids)),
+                        ~Video.songs.any()
+                    )
+                )
+            else:
+                query = query.filter(Video.songs.any(Song.id.in_(valid_song_ids)))
+        else:
+            # Global Mode Song Order Filter
+            max_song_order = db.query(func.max(Song.order)).scalar() or 1
+            show_untagged = end_order >= max_song_order
+            
+            if show_untagged:
+                query = query.filter(
+                    or_(
+                        Video.songs.any(and_(Song.order >= start_order, Song.order <= end_order)),
+                        ~Video.songs.any()
+                    )
+                )
+            else:
+                query = query.filter(Video.songs.any(and_(Song.order >= start_order, Song.order <= end_order)))
+
+    # Get total count of matched elements (before paging)
+    total_count = query.distinct().count()
+    
+    # Fetch paginated results
+    results = query.distinct().order_by(
+        Video.duration.asc(), 
+        Video.created_at.desc()
+    ).offset(offset).limit(limit).all()
     
     for v in results:
         v.members = ensure_list(v.members)
-    return results
+        
+    return {"total_count": total_count, "videos": results}
 
 @app.get("/api/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
@@ -207,11 +278,11 @@ def get_home_summary(db: Session = Depends(get_db)):
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
 
-        # 2. Get latest videos (indexed query)
+        # 2. Get latest videos (indexed query) - limited to 24 for fast initial load
         videos = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        ).distinct().order_by(Video.created_at.desc()).all()
+        ).distinct().order_by(Video.created_at.desc()).limit(24).all()
 
         for v in videos:
             v.members = ensure_list(v.members)

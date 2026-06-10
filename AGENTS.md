@@ -21,3 +21,12 @@ Antigravity 시스템에 의해 작업 상황(파일 확장자, 에이전트 판
    - 백엔드 코드 수정 시 자동으로 동작하며, 가상환경 활성화(`source .venv/bin/activate`) 및 `uv` 관리 강제.
 4. **[crawler.md](file:///Users/mckim/projects/tmp/twice_concert_crawling/.agents/rules/crawler.md) (Model Decision)**
    - 유튜브 크롤러 중복 방지를 위한 스크립트 인벤토리 확인 및 마스터 타임라인 `sync_offset` 보정 방향 정형화.
+
+---
+
+## 🚨 Golden Rule: Infrastructure Stability
+
+1. **인프라 연결의 보수성 유지 (Infrastructure Conservatism)**
+   - `DATABASE_URL` 등 인프라 연결 문자열을 코드 내에서 문자열 조작으로 수정하거나, 사용하는 언어/드라이버(`psycopg2` 등)와 호환되지 않는 타 플랫폼용 파라미터(Prisma 전용 등)를 강제로 주입하지 않는다. 
+   - **[절대 금지]** 파이썬 `psycopg2`와 Supabase 풀러 간의 SSL 호환성 문제로 인해, 코드 내에서 **포트를 6543(Transaction Mode)으로 강제 전환하는 로직을 절대 시도하지 않는다.** 모든 포트 및 연결 설정은 환경 변수에 정의된 값을 100% 신뢰하고 그대로 사용한다.
+   - Vercel-Supabase 간의 IPv6 연결 문제와 같은 플랫폼 특성 이슈는 **코드 수정이 아닌 환경 변수(Environment Variables) 설정 최적화**를 통해 해결하는 것을 최우선 원칙으로 한다.
