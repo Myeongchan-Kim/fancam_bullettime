@@ -14,47 +14,11 @@ from .models.models import Base, Video, Song, Concert, ConcertSetlist, Contribut
 from .schemas.schemas import VideoDetail, VideoUpdate, SongBase, ConcertBase, ContributionBase, ContributionCreate, HomeSummary, VideoFullDetail, VideoPagination
 from .core.config import settings
 from .crawler.recheck_worker import run_recheck_job, recheck_status
+from .db import engine, SessionLocal, get_db
 
 # --- Logging Setup ---
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-load_dotenv()
-
-# --- Database Setup ---
-DATABASE_URL = os.getenv("DATABASE_URL") or settings.DATABASE_URL
-
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set.")
-
-# Use NullPool for Serverless environments (Vercel), but use a small pool for persistent servers to prevent connection limits
-from sqlalchemy.pool import NullPool, QueuePool
-
-# Detect if running on Vercel
-IS_VERCEL = os.getenv("VERCEL") == "1"
-
-engine_kwargs = {
-    "connect_args": {"sslmode": "require", "connect_timeout": 10} if "supabase" in DATABASE_URL or "supabase.co" in DATABASE_URL else {}
-}
-
-if IS_VERCEL:
-    engine_kwargs["poolclass"] = NullPool
-else:
-    engine_kwargs["poolclass"] = QueuePool
-    engine_kwargs["pool_size"] = 5
-    engine_kwargs["max_overflow"] = 0
-
-engine = create_engine(DATABASE_URL, **engine_kwargs)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def get_db():
-    """Simple database session dependency."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 # --- Utility Functions ---
 def ensure_list(data):
