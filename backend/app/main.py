@@ -247,11 +247,11 @@ def get_home_summary(db: Session = Depends(get_db)):
             selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
         ).order_by(Concert.date.desc()).all()
 
-        # 2. Get latest videos (indexed query) - limited to 24 for fast initial load
+        # 2. Get latest videos (indexed query) - limited to 200 to ensure enough map markers are present
         videos = db.query(Video).options(
             joinedload(Video.songs),
             joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
-        ).distinct().order_by(Video.created_at.desc()).limit(24).all()
+        ).distinct().order_by(Video.created_at.desc()).limit(200).all()
 
         for v in videos:
             v.members = ensure_list(v.members)
