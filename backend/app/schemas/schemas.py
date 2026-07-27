@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -9,8 +9,7 @@ class SongBase(BaseModel):
     is_solo: bool = False
     member_name: Optional[str] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ConcertSetlistBase(BaseModel):
     id: int
@@ -21,8 +20,7 @@ class ConcertSetlistBase(BaseModel):
     display_order: int
     song: Optional[SongBase] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ConcertBase(BaseModel):
     id: int
@@ -33,8 +31,7 @@ class ConcertBase(BaseModel):
     video_count: int = 0
     setlist: List[ConcertSetlistBase] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class VideoBase(BaseModel):
     id: int
@@ -53,8 +50,7 @@ class VideoBase(BaseModel):
     is_shorts: bool = False
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class VideoDetail(VideoBase):
     song: Optional[SongBase] = None # Deprecated
@@ -114,8 +110,7 @@ class ContributionBase(BaseModel):
     is_processed: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class HomeSummary(BaseModel):
     songs: List[SongBase]
@@ -123,8 +118,7 @@ class HomeSummary(BaseModel):
     videos: List[VideoDetail]
     total_videos: int
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class VideoFullDetail(BaseModel):
     video: VideoDetail
@@ -133,13 +127,11 @@ class VideoFullDetail(BaseModel):
     concerts: List[ConcertBase]
     contributions: List[ContributionBase]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class VideoPagination(BaseModel):
     total_count: int
     videos: List[VideoDetail]
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 

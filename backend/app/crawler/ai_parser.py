@@ -38,6 +38,8 @@ Rules:
 1. Extract 'date', 'city', 'songs', and 'member_focus'.
 2. Return 'is_valid_fancam': true if it belongs to this tour.
 3. If it's a full group fancam, 'members' should be all 9 members.
+4. **Song Identification Rule**: Be careful to distinguish between the tour title ("THIS IS FOR") and the song title ("THIS IS FOR"). Only include "THIS IS FOR" in the 'songs' list if the video actually contains the performance of that song. If the title only uses it as part of the tour name (e.g., "THIS IS FOR Tour"), do not include it in 'songs'.
+5. **Non-Song Events**: Also identify events like "Talk", "Ending", "Intro", "VCR", "Photo Time" if they are the main content of the video. Use these exact words for consistency.
 
 ### Task 2: Setlist & Timestamp Extraction
 When given a 'Video Description', extract the setlist and timestamps if available.

@@ -5,12 +5,14 @@ from datetime import date
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-# 프로젝트 루트 추가
+# 프로젝트 루트 및 scripts 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
+sys.path.append(os.path.join(os.getcwd(), "backend", "scripts"))
+sys.path.append(os.path.join(os.getcwd(), "scripts"))
 
 from app.models.models import Base, Video, Song, Concert, ConcertSetlist
-from ai_tag_videos import tag_video_with_songs
-from ai_fix_setlist_times import find_setlist_item
+from scripts.ai_tag_videos import tag_video_with_songs
+from scripts.ai_fix_setlist_times import find_setlist_item
 
 # 테스트용 인메모리 DB 설정
 @pytest.fixture

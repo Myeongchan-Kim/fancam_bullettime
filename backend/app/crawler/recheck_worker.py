@@ -97,8 +97,8 @@ def run_recheck_job():
             else:
                 logger.info(f"  판독 결과: 기존 콘서트 유지.")
 
-            # API Rate limit 방지를 위해 3초 대기
-            time.sleep(3)
+            # API Rate limit 방지를 위해 5초 대기
+            time.sleep(5)
 
         db.close()
         recheck_status["status"] = "Finished"

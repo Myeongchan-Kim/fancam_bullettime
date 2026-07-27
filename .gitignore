@@ -16,6 +16,7 @@ uv.lock
 
 # Environment/Data
 .env
+db_url*.txt
 user_data/
 user_data_2/
 *.log

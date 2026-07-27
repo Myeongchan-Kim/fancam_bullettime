@@ -6,15 +6,12 @@ import time
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 from app.core.config import settings
 from app.models.models import Video, Song, ConcertSetlist
 from app.crawler.ai_parser import parse_fancam_metadata # 기존 AI 파서 활용
+from app.db import SessionLocal
 
-DATABASE_URL = settings.DATABASE_URL
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
 db = SessionLocal()
 
 def tag_video_with_songs(video, suggested_songs, song_map=None):
@@ -62,7 +59,8 @@ def ai_tag_videos():
                 added = tag_video_with_songs(video, res['songs'], song_map)
                 if added > 0:
                     updated_count += 1
-            time.sleep(1)
+            # API Rate Limit 방지를 위해 5초 대기
+            time.sleep(5)
         except Exception as e:
             print(f"❌ Error parsing {video.id}: {e}")
 

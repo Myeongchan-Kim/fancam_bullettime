@@ -1,5 +1,5 @@
 import os
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -10,7 +10,6 @@ class Settings(BaseSettings):
     ADMIN_KEY: str = os.getenv("ADMIN_KEY", "twice360-admin-secret-key")
     API_BASE_URL: str = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 
-    class Config:
-        case_sensitive = True
+    model_config = SettingsConfigDict(case_sensitive=True, extra="ignore")
 
 settings = Settings()
