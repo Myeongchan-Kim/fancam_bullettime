@@ -1,6 +1,6 @@
 import logging
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, and_, String
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -103,8 +103,10 @@ def get_videos(
     return {"total_count": total_count, "videos": results}
 
 @router.get("/home/summary", response_model=HomeSummary)
-def get_home_summary(db: Session = Depends(get_db)):
-    """Optimized endpoint for initial page load without memory caching."""
+def get_home_summary(response: Response, db: Session = Depends(get_db)):
+    """Optimized endpoint for initial page load with Vercel Edge CDN caching."""
+    # ⚡ Vercel Edge CDN 캐싱 헤더 설정 (5분 캐시, 백그라운드 갱신 1시간)
+    response.headers["Cache-Control"] = "public, s-maxage=300, stale-while-revalidate=3600"
     try:
         songs = db.query(Song).order_by(Song.order).all()
         
@@ -118,14 +120,15 @@ def get_home_summary(db: Session = Depends(get_db)):
         for c in concerts:
             c.video_count = counts_dict.get(c.id, 0)
 
+        # 비디오 목록은 홈 화면 렌더링에 필요한 관계만 가볍게 로드
         latest_videos = db.query(Video).options(
             joinedload(Video.songs),
-            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+            joinedload(Video.concert)
         ).distinct().order_by(Video.created_at.desc()).limit(24).all()
 
         mapped_videos = db.query(Video).options(
             joinedload(Video.songs),
-            joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+            joinedload(Video.concert)
         ).filter(Video.coordinate_x.isnot(None)).all()
 
         video_map = {v.id: v for v in mapped_videos}

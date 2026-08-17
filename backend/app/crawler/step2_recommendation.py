@@ -23,52 +23,117 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 logger = logging.getLogger(__name__)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-# 병렬 실행을 위해 별도 프로필 폴더 사용
 USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "user_data_2")
 
-async def get_video_info_async(page, url):
-    """비동기 방식으로 영상 상세 정보(제목, 길이, 설명, 채널명)를 추출"""
+async def dismiss_consent_or_popups(page):
+    """유튜브 쿠키 동의 팝업 및 로그인 유도 다이얼로그 닫기"""
     try:
-        await page.goto(url, wait_until="networkidle", timeout=30000)
+        consent_selectors = [
+            'button[aria-label*="Accept"]',
+            'button[aria-label*="동의"]',
+            'button[aria-label*="Reject"]',
+            'tp-yt-paper-dialog #dismiss-button',
+            'ytd-button-renderer#dismiss-button'
+        ]
+        for sel in consent_selectors:
+            btn = page.locator(sel)
+            if await btn.count() > 0 and await btn.first.is_visible():
+                await btn.first.click()
+                await asyncio.sleep(0.5)
+                break
+    except Exception:
+        pass
+
+async def get_video_info_async(page, url):
+    """비동기 방식으로 영상 상세 정보(제목, 길이, 설명, 채널명)를 추출 및 알고리즘 훈련 시청 수행"""
+    try:
+        # networkidle 대신 빠른 domcontentloaded 사용
+        await page.goto(url, wait_until="domcontentloaded", timeout=20000)
+        await dismiss_consent_or_popups(page)
+
         # 타이틀 대기
-        await page.wait_for_selector("ytd-watch-metadata h1, #title h1", timeout=20000)
+        await page.wait_for_selector("ytd-watch-metadata h1, #title h1", timeout=15000)
         title_elem = page.locator("ytd-watch-metadata h1, #title h1").first
-        title = await title_elem.inner_text()
-        title = title.strip()
-        
-        # 길이 추출 (aria-label 등에서 추출하거나 영상 태그 확인)
-        duration_sec = 0
+        title = (await title_elem.inner_text()).strip()
+
+        # 유튜브 추천 알고리즘 훈련을 위해 5~8초간 실제 재생 유지
         try:
-            duration_str = await page.eval_on_selector("video", "el => el.duration")
-            duration_sec = float(duration_str)
-        except: pass
+            # 포커스를 비디오 플레이어로 두고 'k' (재생/일시정지)
+            await page.keyboard.press("k")
+            await asyncio.sleep(random.uniform(5.0, 7.0))
+        except Exception:
+            await asyncio.sleep(3.0)
+
+        # 길이 추출 (안전한 파싱)
+        duration_sec = 0.0
+        try:
+            duration_val = await page.eval_on_selector("video", "el => el.duration || 0")
+            if duration_val and not (isinstance(duration_val, str) and duration_val == "NaN"):
+                duration_sec = float(duration_val)
+        except Exception:
+            pass
 
         # 설명란 추출
         description = ""
         try:
-            expand_button = page.locator("#expand, tp-yt-paper-button#expand")
-            if await expand_button.count() > 0:
+            expand_button = page.locator("#expand, tp-yt-paper-button#expand, ytd-text-inline-expander #expand")
+            if await expand_button.count() > 0 and await expand_button.first.is_visible():
                 await expand_button.first.click()
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.3)
             
             desc_selectors = ["#description-inline-expander", "#description", "ytd-video-secondary-info-renderer #description"]
             for sel in desc_selectors:
                 elem = page.locator(sel)
                 if await elem.count() > 0:
                     description = await elem.first.inner_text()
-                    if description: break
-        except: pass
+                    if description.strip():
+                        break
+        except Exception:
+            pass
 
         channel = "Unknown"
         try:
-            channel_elem = page.locator("#owner-and-teaser #channel-name a, .ytd-channel-name a").first
-            channel = await channel_elem.inner_text()
-        except: pass
+            channel_elem = page.locator("#owner-and-teaser #channel-name a, .ytd-channel-name a, #upload-info #channel-name a").first
+            channel = (await channel_elem.inner_text()).strip()
+        except Exception:
+            pass
 
         return title, duration_sec, description, channel
     except Exception as e:
         logger.error(f"Error in get_video_info_async: {e}")
         return None, 0, "", ""
+
+async def get_recommendation_candidates(page):
+    """사이드바 지연 로딩을 트리거하고 유효한 다음 추천 영상 URL 목록을 추출"""
+    # 1. 사이드바 Lazy-loading 유도를 위한 마우스 스크롤
+    await page.mouse.wheel(0, 1000)
+    await asyncio.sleep(1.2)
+    await page.mouse.wheel(0, 500)
+    await asyncio.sleep(0.8)
+
+    # 2. 다중 셀렉터로 추천 영상 섬네일 링크 탐색
+    candidate_selectors = [
+        "ytd-compact-video-renderer a#thumbnail",
+        "#related ytd-compact-video-renderer a#thumbnail",
+        "ytd-item-section-renderer ytd-compact-video-renderer a#thumbnail",
+        "#related a#thumbnail"
+    ]
+
+    links = []
+    for sel in candidate_selectors:
+        elements = page.locator(sel)
+        cnt = await elements.count()
+        if cnt > 0:
+            for idx in range(min(cnt, 20)):
+                href = await elements.nth(idx).get_attribute("href")
+                if href and ("/watch?v=" in href or "/shorts/" in href):
+                    full_url = f"https://www.youtube.com{href}" if href.startswith("/") else href
+                    if full_url not in links:
+                        links.append(full_url)
+            if links:
+                break
+
+    return links
 
 async def run_recommendation_chain_async(depth=30):
     """(비동기) 무한 루프 방식으로 알고리즘 꼬리물기 탐색 수행"""
@@ -85,13 +150,23 @@ async def run_recommendation_chain_async(depth=30):
         new_video_count = 0
         processed_ids = set()
 
-        # 1. API를 통해 메타데이터 동기화 (노래, 콘서트, 기존 영상 일부)
+        # 1. API를 통해 메타데이터 동기화 (노래, 콘서트, 세트리스트 맵)
         try:
             songs_data = requests.get(f"{API_BASE_URL}/songs").json()
             song_map = {s['name'].lower(): s['id'] for s in songs_data}
             
             concerts_data = requests.get(f"{API_BASE_URL}/concerts").json()
-            # 최근 100개 영상만 가져와서 시작점으로 활용
+            
+            # (concert_id, song_id) -> start_time 맵 생성
+            setlist_offset_map = {}
+            for c in concerts_data:
+                for item in c.get("setlist", []):
+                    s_id = item.get("song_id")
+                    st = item.get("start_time")
+                    if s_id is not None and st is not None:
+                        setlist_offset_map[(c["id"], s_id)] = st
+
+            # 최근 등록된 영상 목록 가져와서 시작점으로 활용
             recent_videos = requests.get(f"{API_BASE_URL}/videos").json()[:100]
         except Exception as e:
             logger.error(f"❌ API 서버 통신 실패. 10초 후 재시도... : {e}")
@@ -99,12 +174,15 @@ async def run_recommendation_chain_async(depth=30):
             continue
 
         async with async_playwright() as p:
-            # 봇 감지 회피를 위해 브라우저 컨텍스트 설정 강화
+            # 봇 감지 회피 및 세션 유지를 위해 persistent context 사용
             context = await p.chromium.launch_persistent_context(
                 user_data_dir=USER_DATA_DIR,
                 headless=True,
                 channel="chrome",
-                args=["--disable-blink-features=AutomationControlled"]
+                args=[
+                    "--disable-blink-features=AutomationControlled",
+                    "--autoplay-policy=no-user-gesture-required"
+                ]
             )
             page = await context.new_page()
 
@@ -117,9 +195,10 @@ async def run_recommendation_chain_async(depth=30):
                 else:
                     logger.info("🎯 마스터급 콘서트 영상 검색으로 시작점을 잡습니다...")
                     search_query = "TWICE THIS IS FOR World Tour Full Concert"
-                    await page.goto(f"https://www.youtube.com/results?search_query={quote(search_query)}")
+                    await page.goto(f"https://www.youtube.com/results?search_query={quote(search_query)}", wait_until="domcontentloaded")
+                    await dismiss_consent_or_popups(page)
                     await page.wait_for_selector("a#video-title", timeout=15000)
-                    first_v = await page.locator("a#video-title").first
+                    first_v = page.locator("a#video-title").first
                     href = await first_v.get_attribute('href')
                     start_url = f"https://www.youtube.com{href}"
 
@@ -127,7 +206,8 @@ async def run_recommendation_chain_async(depth=30):
                 current_url = start_url
                 for i in range(depth):
                     v_id = get_video_id(current_url)
-                    if not v_id or v_id in processed_ids: break
+                    if not v_id or v_id in processed_ids:
+                        break
                     processed_ids.add(v_id)
 
                     logger.info(f"   [{i+1}/{depth}] 분석 중: {current_url}")
@@ -135,7 +215,7 @@ async def run_recommendation_chain_async(depth=30):
                     title, duration, desc, channel = await get_video_info_async(page, current_url)
                     
                     if title:
-                        # API를 통해 제보 제출 시도 (중복 시 400 반환)
+                        # Gemini AI를 통한 직캠 메타데이터 파싱
                         metadata = await parse_fancam_metadata_async(title, channel, desc)
                         if metadata and metadata.get("is_valid_fancam"):
                             # 콘서트 매칭
@@ -150,8 +230,19 @@ async def run_recommendation_chain_async(depth=30):
                             suggested_song_ids = []
                             for s_name in metadata.get("songs", []):
                                 s_id = song_map.get(s_name.lower())
-                                if s_id: suggested_song_ids.append(s_id)
-                            
+                                if s_id:
+                                    suggested_song_ids.append(s_id)
+
+                            # sync_offset 자동 계산
+                            suggested_offset = 0.0
+                            if concert_id and suggested_song_ids:
+                                first_s_id = suggested_song_ids[0]
+                                suggested_offset = setlist_offset_map.get((concert_id, first_s_id), 0.0)
+                                if suggested_offset > 0:
+                                    logger.info(f"    ⏲️  세트리스트 매칭 sync_offset 계산: {suggested_offset}s")
+
+                            is_shorts = "/shorts/" in current_url or (duration > 0 and duration < 65)
+
                             payload = {
                                 "suggested_url": current_url,
                                 "suggested_title": title,
@@ -159,31 +250,37 @@ async def run_recommendation_chain_async(depth=30):
                                 "suggested_song_ids": suggested_song_ids if suggested_song_ids else None,
                                 "suggested_members": metadata.get("members", []),
                                 "suggested_duration": duration,
-                                "suggested_angle": "Unknown"
+                                "suggested_is_shorts": is_shorts,
+                                "suggested_angle": "Unknown",
+                                "suggested_sync_offset": suggested_offset
                             }
                             
                             # 제보 API 호출
-                            resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
-                            
-                            if resp.status_code == 200:
-                                new_video_count += 1
-                                logger.info(f"      ✅ 신규 발굴 및 API 제보 성공: {title}")
-                            elif resp.status_code == 400 and "already exists" in resp.text:
-                                logger.info(f"      이미 등록됨: {title}")
-                            else:
-                                logger.warning(f"      ⚠️ 제보 실패 ({resp.status_code}): {resp.text}")
+                            try:
+                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
+                                if resp.status_code == 200:
+                                    new_video_count += 1
+                                    logger.info(f"      ✅ 신규 발굴 및 API 제보 성공 ({'Shorts' if is_shorts else 'Video'}): {title}")
+                                elif resp.status_code == 400 and "already exists" in resp.text:
+                                    logger.info(f"      ℹ️ 이미 등록됨: {title}")
+                                else:
+                                    logger.warning(f"      ⚠️ 제보 응답 ({resp.status_code}): {resp.text}")
+                            except Exception as api_err:
+                                logger.error(f"      ❌ API 전송 에러: {api_err}")
 
-                    # 4. 다음 추천 영상 선택 (사이드바)
-                    try:
-                        recommendations = page.locator("ytd-compact-video-renderer a#thumbnail")
-                        count = await recommendations.count()
-                        if count > 0:
-                            next_idx = random.randint(0, min(count - 1, 10))
-                            next_href = await recommendations.nth(next_idx).get_attribute("href")
-                            current_url = f"https://www.youtube.com{next_href}"
-                            await asyncio.sleep(random.uniform(5, 10))
-                        else: break
-                    except: break
+                    # 4. 다음 추천 영상 선택 (사이드바 탐색)
+                    candidates = await get_recommendation_candidates(page)
+                    unvisited_candidates = [u for u in candidates if get_video_id(u) not in processed_ids]
+
+                    if unvisited_candidates:
+                        # 상위 8개 추천 중 랜덤 선택 (알고리즘 흐름 타기)
+                        next_url = random.choice(unvisited_candidates[:min(len(unvisited_candidates), 8)])
+                        current_url = next_url
+                        logger.info(f"      ➡️ 다음 추천 영상으로 이동 ({len(unvisited_candidates)}개 후보 중 선택)")
+                        await asyncio.sleep(random.uniform(2.0, 4.0))
+                    else:
+                        logger.warning("      ⚠️ 추천 영상 목록을 찾지 못하여 사이클을 종료합니다.")
+                        break
 
             except Exception as e:
                 logger.error(f"❌ 사이클 에러: {e}")
@@ -191,9 +288,10 @@ async def run_recommendation_chain_async(depth=30):
             await context.close()
 
         cycle_count += 1
-        wait_time = random.randint(30, 90) # 30~90초 대기
-        logger.info(f"✨ 이번 사이클에서 {new_video_count}개 제보 완료. {wait_time}초 후 다시 시작합니다...")
+        wait_time = random.randint(20, 40)
+        logger.info(f"✨ 이번 사이클에서 {new_video_count}개 제보 완료. {wait_time}초 후 다음 사이클을 시작합니다...")
         await asyncio.sleep(wait_time)
 
 if __name__ == "__main__":
-    asyncio.run(run_recommendation_chain_async(depth=50))
+    depth_arg = int(sys.argv[1]) if len(sys.argv) > 1 else 30
+    asyncio.run(run_recommendation_chain_async(depth=depth_arg))

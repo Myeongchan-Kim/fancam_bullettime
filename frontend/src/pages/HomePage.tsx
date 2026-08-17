@@ -94,15 +94,36 @@ const HomePage = () => {
   };
 
   useEffect(() => {
-    // 🧹 Cleanup old unsustainable cache
-    localStorage.removeItem('home_summary_cache');
-    localStorage.removeItem('home_summary_version');
-    loadSummary();
+    // ⚡ Instant SWR (Stale-While-Revalidate) Hydration from Local Storage
+    const cached = localStorage.getItem('cached_home_summary_v2');
+    let hasValidCache = false;
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached);
+        if (parsed && parsed.songs && parsed.concerts) {
+          setSongs(parsed.songs || []);
+          setConcerts(parsed.concerts || []);
+          if (parsed.videos && Array.isArray(parsed.videos)) {
+            setVideos(parsed.videos);
+            const withCoords = parsed.videos.filter((v: Video) => v.coordinate_x !== null && v.coordinate_y !== null);
+            setMappedVideos(withCoords);
+          }
+          setTotalCount(parsed.total_videos ?? (parsed.videos ? parsed.videos.length : 0));
+          setIsLoading(false); // 🚀 0ms instant display!
+          hasValidCache = true;
+        }
+      } catch (e) {
+        console.warn("Failed to parse cached home summary", e);
+      }
+    }
+    loadSummary(hasValidCache);
   }, []);
 
-  const loadSummary = async () => {
+  const loadSummary = async (hasCache: boolean = false) => {
     try {
-      setIsLoading(true);
+      if (!hasCache) {
+        setIsLoading(true);
+      }
       const res = await axios.get(`${API_BASE_URL}/home/summary`);
       const data = res.data;
       
@@ -122,6 +143,13 @@ const HomePage = () => {
       
       setTotalCount(data.total_videos ?? (data.videos ? data.videos.length : 0));
       setOffset(0);
+
+      // Save fresh snapshot to cache for next instant load
+      try {
+        localStorage.setItem('cached_home_summary_v2', JSON.stringify(data));
+      } catch (e) {
+        // Ignore quota errors if storage full
+      }
     } catch (err) {
       console.error("Error fetching summary", err);
     } finally {
@@ -185,11 +213,20 @@ const HomePage = () => {
   };
 
   useEffect(() => {
-    // Only call fetchVideos if we are not in the initial mount phase where loadSummary is handling it
+    // If no specific filters applied, the loadSummary already populated the default list
+    const hasFilter = Boolean(
+      selectedConcert || 
+      shortsOnly || 
+      searchQuery.trim() || 
+      (startOrder > 1 || (effectiveMaxOrder > 0 && endOrder < effectiveMaxOrder))
+    );
+
     if (songs.length === 0) return; 
-    setOffset(0);
-    fetchVideos(0, false);
-  }, [selectedConcert, shortsOnly, searchQuery, startOrder, endOrder, songs.length]);
+    if (hasFilter) {
+      setOffset(0);
+      fetchVideos(0, false);
+    }
+  }, [selectedConcert, shortsOnly, searchQuery, startOrder, endOrder, songs.length, effectiveMaxOrder]);
 
   // Infinite Scroll Observer
   useEffect(() => {

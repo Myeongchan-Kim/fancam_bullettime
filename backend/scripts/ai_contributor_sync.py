@@ -30,10 +30,10 @@ SessionLocal = sessionmaker(bind=engine)
 API_BASE_URL = os.environ.get("API_BASE_URL", "http://localhost:8000/api")
 
 FALLBACK_MODELS = [
+    "gemini-3.7-flash",
     "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite",
     "gemini-2.5-flash",
-    "gemini-3-flash"
+    "gemini-2.5-flash-lite"
 ]
 
 def get_gemini_suggestion(video: Video, setlist: List[ConcertSetlist]) -> Optional[Dict[str, Any]]:

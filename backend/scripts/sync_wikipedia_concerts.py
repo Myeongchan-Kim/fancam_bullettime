@@ -50,6 +50,20 @@ def sync_with_wikipedia():
                 db.add(Concert(date=t_date, city=t_data["city"], country=t_data["country"], venue=t_data["venue"]))
                 print(f"Added: {t_data['city']} on {t_data['date']} at {t_data['venue']}")
 
+        # 4. Add Missing Seoul World Tour Finale Shows
+        seoul_shows = [
+            {"date": "2026-07-10", "city": "Seoul", "country": "South Korea", "venue": "KSPO Dome"},
+            {"date": "2026-07-11", "city": "Seoul", "country": "South Korea", "venue": "KSPO Dome"},
+            {"date": "2026-07-12", "city": "Seoul", "country": "South Korea", "venue": "KSPO Dome"},
+        ]
+        
+        for s_data in seoul_shows:
+            s_date = datetime.strptime(s_data["date"], "%Y-%m-%d")
+            existing = db.query(Concert).filter(Concert.city == "Seoul", Concert.date == s_date).first()
+            if not existing:
+                db.add(Concert(date=s_date, city=s_data["city"], country=s_data["country"], venue=s_data["venue"]))
+                print(f"Added: {s_data['city']} on {s_data['date']} at {s_data['venue']}")
+
         db.commit()
         print("Wikipedia Sync completed successfully!")
         

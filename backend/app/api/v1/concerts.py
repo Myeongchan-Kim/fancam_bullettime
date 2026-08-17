@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload, joinedload
 
@@ -11,7 +11,8 @@ from .utils import verify_admin
 router = APIRouter(prefix="/api", tags=["concerts"])
 
 @router.get("/concerts", response_model=List[ConcertBase])
-def get_concerts(db: Session = Depends(get_db)):
+def get_concerts(response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=86400"
     concert_counts = db.query(Video.concert_id, func.count(Video.id)).group_by(Video.concert_id).all()
     counts_dict = {c_id: count for c_id, count in concert_counts if c_id is not None}
     
@@ -19,6 +20,7 @@ def get_concerts(db: Session = Depends(get_db)):
     for c in concerts:
         c.video_count = counts_dict.get(c.id, 0)
     return concerts
+
 
 @router.patch("/admin/setlist/{item_id}")
 def update_setlist_item(item_id: int, start_time: float = Query(...), db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
