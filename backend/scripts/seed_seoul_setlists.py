@@ -4,7 +4,7 @@ import os
 # 프로젝트 루트를 sys.path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
-from app.main import SessionLocal
+from app.db import SessionLocal
 from app.models.models import Concert, ConcertSetlist
 
 def seed_seoul_setlists():
