@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-import { Maximize2, ExternalLink } from 'lucide-react';
+import { Maximize2, ExternalLink, Volume2, VolumeX } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 
@@ -23,6 +23,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isMuted, setIsMuted] = useState(true);
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -74,6 +75,13 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const handleReady = (e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
+      // Ensure all videos (master + slaves) start playback muted to satisfy mobile autoplay policies
+      try {
+        e.target.mute();
+        e.target.playVideo();
+      } catch (err) {
+        // Fallback if browser requires manual interaction
+      }
     }
   };
 
@@ -110,7 +118,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
     };
-  }, [players, isPlaying, masterId, masterVideo]); // Use .length to avoid frequent restarts
+  }, [players, isPlaying, masterId, masterVideo]);
 
   // Handle player cleanup only on unmount
   useEffect(() => {
@@ -142,20 +150,39 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   };
 
+  const toggleMute = () => {
+    const masterPlayer = players[masterId];
+    if (masterPlayer && typeof masterPlayer.unMute === 'function' && masterPlayer.getIframe()) {
+      if (isMuted) {
+        masterPlayer.unMute();
+        setIsMuted(false);
+      } else {
+        masterPlayer.mute();
+        setIsMuted(true);
+      }
+    } else {
+      setIsMuted(!isMuted);
+    }
+  };
+
   useEffect(() => {
-    // Enforce audio routing: Master is unmuted, Slaves are muted
+    // Enforce audio routing: Master is controlled by isMuted, Slaves are always muted
     Object.keys(players).forEach(idStr => {
       const id = parseInt(idStr);
       const player = players[id];
       if (player && typeof player.mute === 'function' && player.getIframe()) {
         if (id === masterId) {
-          player.unMute();
+          if (isMuted) {
+            player.mute();
+          } else {
+            player.unMute();
+          }
         } else {
           player.mute();
         }
       }
     });
-  }, [masterId, players]);
+  }, [masterId, players, isMuted]);
 
   const setAsMaster = (id: number) => {
     if (id === masterId) return;
@@ -183,7 +210,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     height: '100%',
     playerVars: {
       autoplay: 1 as const,
-      mute: 1 as const, // Must be muted to autoplay on mobile iOS/Android
+      mute: 1 as const, // Must be muted initially to guarantee mobile iOS/Android autoplay
       modestbranding: 1 as const,
       rel: 0 as const,
       start: initialTime,
@@ -246,6 +273,29 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 className="w-full h-full absolute inset-0"
               />
             )}
+
+            {/* Tap to Unmute / Mute Toggle Button on Master Player */}
+            <button
+              onClick={toggleMute}
+              className={`absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 shadow-xl transition-all duration-300 backdrop-blur-md border ${
+                isMuted 
+                  ? 'bg-twice-magenta/90 text-white border-white/20 hover:scale-105 animate-pulse' 
+                  : 'bg-slate-900/80 text-gray-300 border-slate-700 hover:text-white hover:bg-slate-800'
+              }`}
+              title={isMuted ? "소리 켜기" : "음소거"}
+            >
+              {isMuted ? (
+                <>
+                  <VolumeX className="w-4 h-4 text-white" />
+                  <span>소리 켜기 (Tap to Unmute)</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 className="w-4 h-4 text-twice-magenta" />
+                  <span>음소거</span>
+                </>
+              )}
+            </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
             <span className="text-twice-magenta">{masterVideo?.members?.join(", ") || 'No Members Tagged'}</span>
