@@ -7,14 +7,46 @@ from datetime import datetime
 # 프로젝트 루트를 sys.path에 추가
 sys.path.append(os.path.join(os.getcwd(), "backend"))
 
+from dotenv import load_dotenv
+load_dotenv(os.path.join(os.getcwd(), "backend", ".env"))
+
 from app.db import SessionLocal
 from app.models.models import Video, Concert, ConcertSetlist, Song, video_song_association
+from sqlalchemy.orm import joinedload
+
+# 특수 솔로 무대 및 앵콜 곡 기본 오프셋 매핑
+CANONICAL_DEFAULTS = {
+    'FIREWORK (Solo)': 3932.0,
+    'CONFETTI (Solo)': 3291.0,
+    'ABCD (Solo)': 3423.0,
+    'Killin\' Me Good (Solo)': 3832.0,
+    'RUN AWAY (Solo)': 3170.0,
+    'POP! (Solo)': 3423.0,
+    '7 Rings (Solo)': 3291.0,
+    'My Guitar (Solo)': 3680.0,
+    'Can\'t Stop The Feeling! (Solo)': 3547.0,
+    'Try (Solo)': 2820.0,
+    'Money (Solo)': 3832.0,
+    'CHILLAX (Encore)': 6150.0,
+    'Be as ONE (Encore)': 6250.0,
+    'Jelly Jelly (Encore)': 6300.0,
+    'I\'m gonna be a star (Encore)': 7709.0,
+    'Ending': 7709.0,
+}
 
 def auto_heal_all():
     db = SessionLocal()
     try:
         print("🚀 [Step 1] 전체 콘서트 셋리스트 수집 및 글로벌 마스터 타임라인 계산...")
         
+        # 0. 필수 솔로/앵콜 곡 DB 생성 보장
+        for sname, def_time in CANONICAL_DEFAULTS.items():
+            if sname != 'Ending':
+                existing = db.query(Song).filter(Song.name == sname).first()
+                if not existing:
+                    db.add(Song(name=sname))
+        db.commit()
+
         # 1. 모든 셋리스트 항목에서 곡별 시작 시간들을 모아 평균/중앙값 계산
         all_setlists = db.query(ConcertSetlist).filter(ConcertSetlist.start_time.isnot(None)).all()
         song_times_map = {} # song_id -> list of start_times
@@ -28,6 +60,12 @@ def auto_heal_all():
 
         canonical_song_times = {s_id: statistics.median(times) for s_id, times in song_times_map.items() if times}
         canonical_event_times = {ev: statistics.median(times) for ev, times in event_times_map.items() if times}
+
+        # 기본값 주입
+        all_db_songs = db.query(Song).all()
+        for s in all_db_songs:
+            if s.name in CANONICAL_DEFAULTS and s.id not in canonical_song_times:
+                canonical_song_times[s.id] = CANONICAL_DEFAULTS[s.name]
 
         print(f"📊 총 {len(canonical_song_times)}개 곡의 글로벌 마스터 기준 시작 시간을 도출했습니다.")
 
@@ -47,7 +85,6 @@ def auto_heal_all():
         for concert in all_concerts:
             c_items = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == concert.id).all()
             if len(c_items) == 0 and template_items:
-                # 셋리스트가 아예 없는 경우 템플릿 복제
                 for item in template_items:
                     default_time = canonical_song_times.get(item.song_id, item.start_time)
                     db.add(ConcertSetlist(
@@ -59,7 +96,6 @@ def auto_heal_all():
                     ))
                 concerts_healed += 1
             else:
-                # start_time이 None인 항목들 채우기
                 for item in c_items:
                     if item.start_time is None:
                         if item.song_id and item.song_id in canonical_song_times:
@@ -70,42 +106,82 @@ def auto_heal_all():
         db.commit()
         print(f"✅ {concerts_healed}개 콘서트에 셋리스트를 성공적으로 전파했습니다.")
 
-        # 4. 미태그 비디오 곡 및 콘서트 자동 식별
-        print("\n🚀 [Step 3] 곡 미태그 영상 텍스트 분석 및 곡 자동 연결...")
+        # 4. 영상 텍스트 정밀 분석 및 곡 자동 식별 (투어명 THIS IS FOR 분리 & 솔로/앵콜 특화)
+        print("\n🚀 [Step 3] 영상 텍스트 정밀 분석 및 곡 자동 연결...", flush=True)
         all_songs = db.query(Song).all()
         
-        # 곡 이름 매칭용 정규식 패턴 생성 (긴 이름 우선)
-        sorted_songs = sorted(all_songs, key=lambda s: len(s.name), reverse=True)
+        # 'THIS IS FOR' (투어명과 중복되는 곡)는 가장 마지막에 후순위로 평가
+        def song_priority(s):
+            if s.name == 'THIS IS FOR':
+                return 0
+            return len(s.name)
+
+        sorted_songs = sorted(all_songs, key=song_priority, reverse=True)
         
-        untagged_videos = db.query(Video).filter(~Video.songs.any()).all()
+        # 정규식 패턴 사전 컴파일 (초고속 실행)
+        compiled_song_patterns = []
+        for s in sorted_songs:
+            if s.name == 'THIS IS FOR':
+                continue
+            s_name_clean = s.name.lower().replace("(rock ver.)", "").replace("(solo)", "").replace("(encore)", "").strip()
+            if len(s_name_clean) < 2:
+                continue
+            pattern = re.compile(r'\b' + re.escape(s_name_clean) + r'\b', re.IGNORECASE)
+            compiled_song_patterns.append((s, pattern))
+
+        this_is_for_song = next((s for s in all_songs if s.name == 'THIS IS FOR'), None)
+        other_kw_pattern = re.compile(r'\b(fancy|strategy|firework|confetti|abcd|killin|run away|pop|yes or yes|feel special|cheer up|dance the night away|one spark|set me free|make me go|mars|options)\b', re.IGNORECASE)
+        this_is_for_pattern = re.compile(r'\bthis is for\b', re.IGNORECASE)
+
+        # 대상: 곡이 없거나, 오프셋이 0이거나, 단독 'THIS IS FOR'로만 태그된 풀콘서트 제외 영상들
+        candidate_videos = db.query(Video).options(joinedload(Video.songs)).filter(
+            Video.angle != 'Full-Concert',
+            ~Video.title.ilike('%full concert%'),
+            ~Video.title.ilike('%full ver%')
+        ).all()
+
+        target_videos = []
+        for v in candidate_videos:
+            curr_names = [s.name for s in v.songs]
+            # 이미 THIS IS FOR가 아닌 정상 곡이 매칭되어 있고 오프셋이 정상인 경우 제외
+            if len(curr_names) >= 1 and curr_names[0] != 'THIS IS FOR' and v.sync_offset > 0:
+                continue
+            target_videos.append(v)
+
+        print(f"🔍 정밀 분석 대상 영상: {len(target_videos)}개", flush=True)
+
         tagged_count = 0
 
-        for v in untagged_videos:
-            title_lower = (v.title or "").lower()
+        for v in target_videos:
+            title_text = v.title or ""
+            curr_ids = [s.id for s in v.songs]
+            
             matched_songs = []
-            
-            for s in sorted_songs:
-                s_name_clean = s.name.lower().replace("(rock ver.)", "").replace("(solo)", "").replace("(encore)", "").strip()
-                if len(s_name_clean) < 3:
-                    continue
-                
-                # 단어 경계 또는 특수문자 포함 매칭
-                if s_name_clean in title_lower:
+            for s, pattern in compiled_song_patterns:
+                if pattern.search(title_text):
                     matched_songs.append(s)
-                    break # 가장 먼저 매칭된 대표 곡 선택
-            
-            if matched_songs:
+                    break # 가장 구체적인 첫 번째 매칭 곡 선택
+
+            # 구체적 곡이 없고 순수하게 'THIS IS FOR'만 있는 경우
+            if not matched_songs and this_is_for_song and this_is_for_pattern.search(title_text):
+                if not other_kw_pattern.search(title_text):
+                    matched_songs.append(this_is_for_song)
+
+            new_ids = [s.id for s in matched_songs]
+            if matched_songs and (curr_ids != new_ids or v.sync_offset == 0):
                 v.songs = matched_songs
                 v.song_id = matched_songs[0].id
                 tagged_count += 1
+                if tagged_count % 50 == 0:
+                    db.commit()
+                    print(f"⏳ 태깅 진행: {tagged_count}개 반영 완료...", flush=True)
 
         db.commit()
-        print(f"✅ {tagged_count}개 영상에 곡 태그를 자동으로 식별하여 부여했습니다.")
+        print(f"✅ 총 {tagged_count}개 영상의 곡 태그를 정밀 분석하여 업데이트했습니다.", flush=True)
 
         # 5. sync_offset == 0 인 모든 직캠 영상 일괄 타임라인 매핑
         print("\n🚀 [Step 4] sync_offset = 0 영상 일괄 마스터 타임라인 자동 치유...", flush=True)
         
-        # 메모리 상에 (concert_id, song_id) -> start_time 맵 구성하여 N+1 쿼리 제거
         all_setlists_fresh = db.query(ConcertSetlist).filter(ConcertSetlist.start_time.isnot(None), ConcertSetlist.start_time > 0).all()
         setlist_lookup = {}
         for item in all_setlists_fresh:
@@ -114,11 +190,11 @@ def auto_heal_all():
                 if key not in setlist_lookup or item.start_time < setlist_lookup[key]:
                     setlist_lookup[key] = float(item.start_time)
 
-        from sqlalchemy.orm import joinedload
         zero_offset_videos = db.query(Video).options(joinedload(Video.songs)).filter(
             Video.sync_offset == 0,
             Video.angle != 'Full-Concert',
-            ~Video.title.like('%Full Concert%')
+            ~Video.title.ilike('%full concert%'),
+            ~Video.title.ilike('%full ver%')
         ).all()
 
         offset_updated_count = 0
@@ -136,7 +212,7 @@ def auto_heal_all():
                         if target_start_time is None or sl_time < target_start_time:
                             target_start_time = sl_time
             
-            # (2) 글로벌 마스터 타임라인에서 찾기 (Fallback)
+            # (2) 글로벌 마스터 타임라인 또는 캐노니컬 기본값에서 찾기 (Fallback)
             if target_start_time is None and video.songs:
                 for s in video.songs:
                     if s.id in canonical_song_times:
@@ -161,3 +237,4 @@ def auto_heal_all():
 
 if __name__ == "__main__":
     auto_heal_all()
+
