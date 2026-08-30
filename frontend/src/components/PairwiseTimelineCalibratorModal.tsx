@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import axios from 'axios';
 import { 
   X, Play, Pause, RotateCcw, Save, Check, 
-  Sliders, ShieldCheck, Layers
+  Sliders, ShieldCheck, Layers, Filter
 } from 'lucide-react';
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -42,6 +42,9 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   // Video B: Target video to calibrate against Anchor
   const [targetVideo, setTargetVideo] = useState<Video | null>(null);
 
+  // Filter Mode: 'FANCAMS' (3~5min single fancams) vs 'ALL' (including full concerts)
+  const [filterMode, setFilterMode] = useState<'FANCAMS' | 'ALL'>('FANCAMS');
+
   // Delta offset applied to Target Video (Target Offset = Anchor Offset + Delta or Base + Delta)
   const [targetOffset, setTargetOffset] = useState<number>(0);
   const [initialTargetOffset, setInitialTargetOffset] = useState<number>(0);
@@ -54,22 +57,52 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
-  // Auto-select initial target video (first overlapping video that isn't anchor)
+  // Anchor window
   const anchorStart = anchorVideo.sync_offset || 0;
   const anchorDur = (anchorVideo.duration && anchorVideo.duration > 0) ? anchorVideo.duration : 220;
   const anchorEnd = anchorStart + anchorDur;
 
-  // Find all overlapping videos (Interval Graph)
-  const overlappingVideos = useMemo(() => {
-    return allConcertVideos.filter(v => {
+  // Separate fancams vs full concerts/long streams
+  const { sameSongFancams, longBridgeVideos, allOverlapping } = useMemo(() => {
+    const overlapping = allConcertVideos.filter(v => {
       if (v.id === anchorVideo.id) return false;
       const vStart = v.sync_offset || 0;
       const vDur = (v.duration && v.duration > 0) ? v.duration : 220;
       const vEnd = vStart + vDur;
       // Overlap with 30s padding
       return !(anchorEnd < vStart - 30 || anchorStart > vEnd + 30);
-    }).sort((a, b) => (a.sync_offset || 0) - (b.sync_offset || 0));
-  }, [allConcertVideos, anchorVideo, anchorStart, anchorEnd]);
+    });
+
+    const fancams: Video[] = [];
+    const fullConcerts: Video[] = [];
+
+    overlapping.forEach(v => {
+      const dur = v.duration || 0;
+      const isLong = dur > 600 || (v.title && v.title.toLowerCase().includes('full concert')) || v.angle === 'Full-Concert';
+      if (isLong) {
+        fullConcerts.push(v);
+      } else {
+        fancams.push(v);
+      }
+    });
+
+    // Sort fancams by closest duration and start offset
+    fancams.sort((a, b) => {
+      const diffA = Math.abs((a.duration || 220) - anchorDur);
+      const diffB = Math.abs((b.duration || 220) - anchorDur);
+      return diffA - diffB;
+    });
+
+    fullConcerts.sort((a, b) => (b.duration || 0) - (a.duration || 0));
+
+    return {
+      sameSongFancams: fancams,
+      longBridgeVideos: fullConcerts,
+      allOverlapping: [...fancams, ...fullConcerts]
+    };
+  }, [allConcertVideos, anchorVideo, anchorStart, anchorDur, anchorEnd]);
+
+  const displayedVideos = filterMode === 'FANCAMS' ? (sameSongFancams.length > 0 ? sameSongFancams : allOverlapping) : allOverlapping;
 
   const selectTarget = (v: Video) => {
     setTargetVideo(v);
@@ -79,17 +112,21 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     setSaveSuccess(false);
   };
 
+  // Auto-select initial target video (Prioritize same song fancams over full concert)
   useEffect(() => {
-    if (!targetVideo && overlappingVideos.length > 0) {
-      selectTarget(overlappingVideos[0]);
+    if (!targetVideo) {
+      if (sameSongFancams.length > 0) {
+        selectTarget(sameSongFancams[0]);
+      } else if (allOverlapping.length > 0) {
+        selectTarget(allOverlapping[0]);
+      }
     }
-  }, [overlappingVideos, targetVideo]);
+  }, [sameSongFancams, allOverlapping, targetVideo]);
 
   // Nudge Target Offset
   const nudge = (deltaSec: number) => {
     setTargetOffset(prev => {
       const updated = Math.round((prev + deltaSec) * 100) / 100;
-      // Also seek player B to reflect offset change immediately
       if (playerA && playerB && isPlaying) {
         try {
           const timeA = playerA.getCurrentTime();
@@ -132,7 +169,6 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
       playerB.pauseVideo();
       setIsPlaying(false);
     } else {
-      // Seek both to synced relative points before playing
       const timeA = playerA.getCurrentTime();
       const concertTime = timeA + (anchorVideo.sync_offset || 0);
       const expectedTimeB = Math.max(0, concertTime - targetOffset);
@@ -174,6 +210,13 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     return secs < 0 ? `-${formatted}` : formatted;
   };
 
+  const formatDuration = (secs: number | null | undefined) => {
+    if (!secs) return '0s';
+    const m = Math.floor(secs / 60);
+    const s = Math.floor(secs % 60);
+    return m > 0 ? `${m}m ${s}s` : `${s}s`;
+  };
+
   // Delta calculation
   const delta = Math.round((targetOffset - initialTargetOffset) * 100) / 100;
 
@@ -189,7 +232,6 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
           headers: { 'X-Admin-Key': adminKey }
         });
       } else {
-        // Submit contribution
         await axios.post(`${API_BASE_URL}/contributions`, {
           video_id: targetVideo.id,
           suggested_sync_offset: targetOffset
@@ -205,9 +247,9 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     }
   };
 
-  // Timeline Bar View Range
-  const timelineMin = Math.max(0, anchorStart - 60);
-  const timelineMax = anchorEnd + 60;
+  // Timeline Bar View Range (Zoom tightly onto song window if looking at fancams)
+  const timelineMin = Math.max(0, anchorStart - 30);
+  const timelineMax = anchorEnd + 30;
   const timelineSpan = Math.max(1, timelineMax - timelineMin);
 
   return createPortal(
@@ -222,13 +264,13 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
             </div>
             <div>
               <h2 className="text-lg font-black uppercase tracking-tight text-white flex items-center gap-2">
-                Pairwise 1:1 Sync Calibrator
+                1:1 Fancam Sync Calibrator
                 <span className="text-[10px] bg-twice-magenta/20 text-twice-magenta px-2 py-0.5 rounded-full font-bold border border-twice-magenta/30">
-                  Micro-Delta Mode
+                  {anchorVideo.songs && anchorVideo.songs[0] ? anchorVideo.songs[0].name : 'Song Focus'}
                 </span>
               </h2>
               <p className="text-xs text-gray-400">
-                2개 영상을 나란히 재생하며 0.05초 단위로 미세 오차(Δ)를 맞춥니다.
+                원하는 직캠(Target B)을 선택해 0.05초 단위로 싱크를 맞춥니다.
               </p>
             </div>
           </div>
@@ -238,14 +280,59 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 custom-scrollbar">
+        <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-5 custom-scrollbar">
 
-          {/* 1. Timeline Bar Graph Visualizer */}
+          {/* 1. Category Filter Tabs & Target Selector */}
+          <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-gray-400 flex items-center gap-1.5 ml-1">
+                <Filter className="h-3.5 w-3.5 text-twice-apricot" /> 필터:
+              </span>
+              <button 
+                onClick={() => setFilterMode('FANCAMS')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${filterMode === 'FANCAMS' ? 'bg-twice-magenta text-white shadow-md shadow-twice-magenta/20' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
+              >
+                🎯 동일 곡 직캠만 보기 ({sameSongFancams.length})
+              </button>
+              {longBridgeVideos.length > 0 && (
+                <button 
+                  onClick={() => setFilterMode('ALL')}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${filterMode === 'ALL' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
+                >
+                  👑 풀 콘서트 포함 전체 ({allOverlapping.length})
+                </button>
+              )}
+            </div>
+
+            {/* Target Video Quick Switcher Dropdown */}
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-twice-magenta">🎯 보정 대상 선택:</span>
+              <select 
+                value={targetVideo?.id || 0} 
+                onChange={e => {
+                  const found = allOverlapping.find(v => v.id === parseInt(e.target.value));
+                  if (found) selectTarget(found);
+                }}
+                className="bg-slate-950 border border-slate-700 text-white text-xs font-bold rounded-xl px-3 py-2 outline-none focus:ring-2 focus:ring-twice-magenta cursor-pointer max-w-xs truncate"
+              >
+                {displayedVideos.map(v => {
+                  const m = (v.members && v.members.length > 0) ? v.members[0] : '무대';
+                  return (
+                    <option key={v.id} value={v.id}>
+                      [{m}] {v.title.slice(0, 35)}... ({formatDuration(v.duration)})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
+          </div>
+
+          {/* 2. Timeline Bar Graph Visualizer */}
           <div className="bg-slate-900/80 rounded-2xl p-4 border border-slate-800 space-y-3">
             <div className="flex justify-between items-center text-xs">
               <span className="font-black uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
                 <Layers className="h-3.5 w-3.5 text-twice-apricot" />
-                Overlapping Video Bars ({overlappingVideos.length + 1})
+                곡 구간 타임라인 바 ({displayedVideos.length + 1}개 앵글)
               </span>
               <span className="text-[11px] text-gray-500 font-mono">
                 {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
@@ -259,7 +346,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                 <div className="flex items-center justify-between text-[11px] text-gray-300">
                   <span className="font-bold flex items-center gap-1.5 text-twice-apricot">
                     <span className="w-2 h-2 rounded-full bg-twice-apricot animate-pulse"></span>
-                    👑 [Anchor A] {anchorVideo.title.slice(0, 40)}...
+                    👑 [기준 앵커] {anchorVideo.title.slice(0, 45)}... ({formatDuration(anchorDur)})
                   </span>
                   <span className="font-mono text-[10px] text-gray-400">Offset: {formatTime(anchorStart)}</span>
                 </div>
@@ -275,34 +362,34 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
               </div>
 
               {/* Overlapping Candidate Bars */}
-              {overlappingVideos.map((v) => {
+              {displayedVideos.map((v) => {
                 const vStart = v.sync_offset || 0;
                 const vDur = (v.duration && v.duration > 0) ? v.duration : 220;
                 const isSelected = targetVideo?.id === v.id;
-                const primaryMember = (v.members && v.members.length > 0) ? v.members[0] : 'Unknown';
+                const primaryMember = (v.members && v.members.length > 0) ? v.members[0] : '무대';
                 const memberTheme = MEMBER_COLORS[primaryMember] || { bg: 'bg-slate-700', text: 'text-gray-300', border: 'border-slate-600', bar: 'bg-twice-magenta' };
 
                 return (
                   <div 
                     key={v.id} 
                     onClick={() => selectTarget(v)}
-                    className={`group cursor-pointer p-2 rounded-xl transition-all border ${isSelected ? 'bg-slate-800/90 border-twice-magenta shadow-lg shadow-twice-magenta/10' : 'bg-slate-950/60 hover:bg-slate-800/50 border-slate-800/60'}`}
+                    className={`group cursor-pointer p-2.5 rounded-xl transition-all border ${isSelected ? 'bg-slate-800/90 border-twice-magenta shadow-lg shadow-twice-magenta/10 ring-1 ring-twice-magenta' : 'bg-slate-950/60 hover:bg-slate-800/50 border-slate-800/60'}`}
                   >
-                    <div className="flex items-center justify-between text-[11px] mb-1">
-                      <span className={`font-bold flex items-center gap-1.5 truncate ${isSelected ? 'text-twice-magenta' : 'text-gray-400 group-hover:text-white'}`}>
-                        <span className={`text-[9px] px-1.5 py-0.2 rounded font-black uppercase ${memberTheme.bg} ${memberTheme.text}`}>
+                    <div className="flex items-center justify-between text-[11px] mb-1.5">
+                      <span className={`font-bold flex items-center gap-2 truncate ${isSelected ? 'text-twice-magenta' : 'text-gray-300 group-hover:text-white'}`}>
+                        <span className={`text-[9px] px-2 py-0.5 rounded font-black uppercase ${memberTheme.bg} ${memberTheme.text}`}>
                           {primaryMember}
                         </span>
-                        {v.title.slice(0, 50)}
+                        {v.title.slice(0, 55)}
                       </span>
-                      <span className="font-mono text-[10px] text-gray-500">
-                        {formatTime(isSelected ? targetOffset : vStart)}
+                      <span className="font-mono text-[10px] text-gray-400 shrink-0 ml-2">
+                        {formatDuration(vDur)} | Offset: {formatTime(isSelected ? targetOffset : vStart)}
                       </span>
                     </div>
 
-                    <div className="h-3 bg-slate-900 rounded-md overflow-hidden relative">
+                    <div className="h-3.5 bg-slate-900 rounded-md overflow-hidden relative">
                       <div 
-                        className={`h-full rounded-md transition-all ${isSelected ? 'bg-twice-magenta' : 'bg-slate-700 opacity-70 group-hover:opacity-100'}`}
+                        className={`h-full rounded-md transition-all ${isSelected ? 'bg-gradient-to-r from-pink-500 to-twice-magenta' : 'bg-slate-700 opacity-70 group-hover:opacity-100'}`}
                         style={{
                           marginLeft: `${Math.max(0, (((isSelected ? targetOffset : vStart) - timelineMin) / timelineSpan) * 100)}%`,
                           width: `${Math.min(100, (vDur / timelineSpan) * 100)}%`
@@ -315,7 +402,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
             </div>
           </div>
 
-          {/* 2. Side-by-Side Dual Synchronized Player */}
+          {/* 3. Side-by-Side Dual Synchronized Player */}
           {targetVideo && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               
@@ -326,7 +413,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                     👑 기준 앵커 (Reference A)
                   </span>
                   <span className="text-[11px] font-mono text-gray-400 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
-                    Offset: {anchorStart.toFixed(2)}s
+                    Offset: {anchorStart.toFixed(2)}s ({formatDuration(anchorDur)})
                   </span>
                 </div>
                 <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
@@ -356,7 +443,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                     🎯 보정 대상 (Target B)
                   </span>
                   <span className="text-[11px] font-mono font-bold text-twice-magenta bg-twice-magenta/10 px-2 py-0.5 rounded-lg border border-twice-magenta/30">
-                    Offset: {targetOffset.toFixed(2)}s
+                    Offset: {targetOffset.toFixed(2)}s ({formatDuration(targetVideo.duration)})
                   </span>
                 </div>
                 <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
@@ -382,7 +469,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
             </div>
           )}
 
-          {/* 3. Micro-Delta Controls & Alignment Toolbar */}
+          {/* 4. Micro-Delta Controls & Alignment Toolbar */}
           {targetVideo && (
             <div className="bg-slate-900/90 rounded-2xl p-5 border border-slate-800 space-y-4">
               
