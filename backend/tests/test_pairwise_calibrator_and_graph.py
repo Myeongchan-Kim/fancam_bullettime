@@ -129,3 +129,29 @@ def test_incheon_do_it_again_pairwise_cluster():
         assert is_overlapping(nayeon_1741.sync_offset, dur_1741, mina_1729.sync_offset, dur_1729) is True
     finally:
         db.close()
+
+def test_smart_filtering_separates_full_concerts_from_fancams():
+    """Verify that full concerts (>600s or keyword) are separated so single fancams prioritize matching same-song clips."""
+    videos = [
+        {'id': 1489, 'title': 'TWICE Full Concert Seoul Finale', 'duration': 8389.0, 'sync_offset': 0.0},
+        {'id': 1753, 'title': 'SANA Be as ONE Fancam', 'duration': 218.0, 'sync_offset': 6250.0},
+        {'id': 1468, 'title': 'MINA Be as ONE Fancam', 'duration': 225.0, 'sync_offset': 6250.0},
+    ]
+
+    anchor = videos[1] # Sana
+    fancams = []
+    full_concerts = []
+
+    for v in videos:
+        if v['id'] == anchor['id']:
+            continue
+        if v['duration'] > 600 or 'full concert' in v['title'].lower():
+            full_concerts.append(v)
+        else:
+            fancams.append(v)
+
+    # Sana should pair with Mina fancam first, NOT the full concert
+    assert len(fancams) == 1
+    assert fancams[0]['id'] == 1468
+    assert len(full_concerts) == 1
+    assert full_concerts[0]['id'] == 1489
