@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import axios from 'axios';
 import { 
   X, Play, Pause, RotateCcw, Save, Check, 
-  Sliders, ShieldCheck, Layers, Filter
+  Sliders, ShieldCheck, Layers, Filter, Crosshair
 } from 'lucide-react';
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -42,10 +42,10 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   // Video B: Target video to calibrate against Anchor
   const [targetVideo, setTargetVideo] = useState<Video | null>(null);
 
-  // Filter Mode: 'FANCAMS' (3~5min single fancams) vs 'ALL' (including full concerts)
-  const [filterMode, setFilterMode] = useState<'FANCAMS' | 'ALL'>('FANCAMS');
+  // Filter Mode: 'SAME_SONG' vs 'ALL'
+  const [filterMode, setFilterMode] = useState<'SAME_SONG' | 'ALL'>('SAME_SONG');
 
-  // Delta offset applied to Target Video (Target Offset = Anchor Offset + Delta or Base + Delta)
+  // Delta offset applied to Target Video
   const [targetOffset, setTargetOffset] = useState<number>(0);
   const [initialTargetOffset, setInitialTargetOffset] = useState<number>(0);
 
@@ -56,53 +56,55 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const [audioMode, setAudioMode] = useState<'A' | 'B' | 'BOTH' | 'MUTE'>('A');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
+  const [saveMessage, setSaveMessage] = useState<string>('');
 
   // Anchor window
   const anchorStart = anchorVideo.sync_offset || 0;
   const anchorDur = (anchorVideo.duration && anchorVideo.duration > 0) ? anchorVideo.duration : 220;
   const anchorEnd = anchorStart + anchorDur;
+  const anchorSongIds = useMemo(() => anchorVideo.songs?.map(s => s.id) || [], [anchorVideo]);
 
-  // Separate fancams vs full concerts/long streams
-  const { sameSongFancams, longBridgeVideos, allOverlapping } = useMemo(() => {
-    const overlapping = allConcertVideos.filter(v => {
-      if (v.id === anchorVideo.id) return false;
+  // Separate same song fancams vs full concerts/other clips
+  const { sameSongFancams, allOverlapping } = useMemo(() => {
+    const sameSongList: Video[] = [];
+    const otherOverlappingList: Video[] = [];
+
+    allConcertVideos.forEach(v => {
+      if (v.id === anchorVideo.id) return;
       const vStart = v.sync_offset || 0;
       const vDur = (v.duration && v.duration > 0) ? v.duration : 220;
       const vEnd = vStart + vDur;
-      // Overlap with 30s padding
-      return !(anchorEnd < vStart - 30 || anchorStart > vEnd + 30);
-    });
 
-    const fancams: Video[] = [];
-    const fullConcerts: Video[] = [];
-
-    overlapping.forEach(v => {
+      // Check if shares any song ID
+      const sharesSong = v.songs?.some(s => anchorSongIds.includes(s.id));
       const dur = v.duration || 0;
-      const isLong = dur > 600 || (v.title && v.title.toLowerCase().includes('full concert')) || v.angle === 'Full-Concert';
-      if (isLong) {
-        fullConcerts.push(v);
+      const isLongConcert = dur > 600 || (v.title && v.title.toLowerCase().includes('full concert'));
+
+      if (sharesSong && !isLongConcert) {
+        sameSongList.push(v);
       } else {
-        fancams.push(v);
+        // Only include in overlapping if it ACTUALLY overlaps (intersection > 0)
+        const hasTrueOverlap = (vStart < anchorEnd && vEnd > anchorStart);
+        if (hasTrueOverlap) {
+          otherOverlappingList.push(v);
+        }
       }
     });
 
-    // Sort fancams by closest duration and start offset
-    fancams.sort((a, b) => {
+    // Sort same song by closest duration
+    sameSongList.sort((a, b) => {
       const diffA = Math.abs((a.duration || 220) - anchorDur);
       const diffB = Math.abs((b.duration || 220) - anchorDur);
       return diffA - diffB;
     });
 
-    fullConcerts.sort((a, b) => (b.duration || 0) - (a.duration || 0));
-
     return {
-      sameSongFancams: fancams,
-      longBridgeVideos: fullConcerts,
-      allOverlapping: [...fancams, ...fullConcerts]
+      sameSongFancams: sameSongList,
+      allOverlapping: [...sameSongList, ...otherOverlappingList]
     };
-  }, [allConcertVideos, anchorVideo, anchorStart, anchorDur, anchorEnd]);
+  }, [allConcertVideos, anchorVideo, anchorStart, anchorDur, anchorEnd, anchorSongIds]);
 
-  const displayedVideos = filterMode === 'FANCAMS' ? (sameSongFancams.length > 0 ? sameSongFancams : allOverlapping) : allOverlapping;
+  const displayedVideos = filterMode === 'SAME_SONG' ? (sameSongFancams.length > 0 ? sameSongFancams : allOverlapping) : allOverlapping;
 
   const selectTarget = (v: Video) => {
     setTargetVideo(v);
@@ -110,9 +112,10 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     setTargetOffset(off);
     setInitialTargetOffset(off);
     setSaveSuccess(false);
+    setSaveMessage('');
   };
 
-  // Auto-select initial target video (Prioritize same song fancams over full concert)
+  // Auto-select initial target video (Prioritize same song fancams)
   useEffect(() => {
     if (!targetVideo) {
       if (sameSongFancams.length > 0) {
@@ -132,24 +135,43 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
           const timeA = playerA.getCurrentTime();
           const concertTime = timeA + (anchorVideo.sync_offset || 0);
           const timeB = concertTime - updated;
-          if (timeB >= 0) playerB.seekTo(timeB, true);
+          const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
+          if (timeB >= 0 && timeB <= targetDur) {
+            playerB.seekTo(timeB, true);
+          }
         } catch (e) {}
       }
       return updated;
     });
   };
 
-  // Sync Interval Loop
+  // Align offsets using the current paused positions in both players!
+  const alignCurrentFrames = async () => {
+    if (!playerA || !playerB || !targetVideo) return;
+    try {
+      const timeA = await playerA.getCurrentTime();
+      const timeB = await playerB.getCurrentTime();
+      // Since timeA + anchorOffset = concertTime = timeB + newTargetOffset
+      // => newTargetOffset = timeA + anchorOffset - timeB
+      const calculatedOffset = Math.round((timeA + (anchorVideo.sync_offset || 0) - timeB) * 100) / 100;
+      setTargetOffset(calculatedOffset);
+    } catch (e) {
+      console.error("Error aligning frames", e);
+    }
+  };
+
+  // Sync Interval Loop (With Strict Bounds Protection)
   useEffect(() => {
-    if (!isPlaying || !playerA || !playerB) return;
+    if (!isPlaying || !playerA || !playerB || !targetVideo) return;
 
     const interval = setInterval(() => {
       try {
         const timeA = playerA.getCurrentTime();
         const concertTime = timeA + (anchorVideo.sync_offset || 0);
         const expectedTimeB = concertTime - targetOffset;
+        const targetDur = (targetVideo.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
 
-        if (expectedTimeB >= 0) {
+        if (expectedTimeB >= 0 && expectedTimeB <= targetDur) {
           const actualTimeB = playerB.getCurrentTime();
           if (Math.abs(actualTimeB - expectedTimeB) > 0.3) {
             playerB.seekTo(expectedTimeB, true);
@@ -159,7 +181,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     }, 500);
 
     return () => clearInterval(interval);
-  }, [isPlaying, playerA, playerB, targetOffset, anchorVideo]);
+  }, [isPlaying, playerA, playerB, targetOffset, anchorVideo, targetVideo]);
 
   // Handle Play / Pause
   const togglePlay = () => {
@@ -172,7 +194,11 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
       const timeA = playerA.getCurrentTime();
       const concertTime = timeA + (anchorVideo.sync_offset || 0);
       const expectedTimeB = Math.max(0, concertTime - targetOffset);
-      playerB.seekTo(expectedTimeB, true);
+      const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
+      
+      if (expectedTimeB <= targetDur) {
+        playerB.seekTo(expectedTimeB, true);
+      }
       
       playerA.playVideo();
       playerB.playVideo();
@@ -224,30 +250,45 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const handleSave = async () => {
     if (!targetVideo) return;
     setIsSaving(true);
+    setSaveMessage('');
     try {
       if (adminKey) {
+        // Admin direct update
         await axios.patch(`${API_BASE_URL}/videos/${targetVideo.id}`, {
           sync_offset: targetOffset
         }, {
           headers: { 'X-Admin-Key': adminKey }
         });
+        setSaveMessage('관리자 권한으로 싱크가 즉시 저장되었습니다!');
       } else {
-        await axios.post(`${API_BASE_URL}/contributions`, {
-          video_id: targetVideo.id,
+        // User contribution submission (auto-approved if verified)
+        await axios.post(`${API_BASE_URL}/videos/${targetVideo.id}/contributions`, {
           suggested_sync_offset: targetOffset
         });
+        setSaveMessage('싱크 기여가 성공적으로 제출되었습니다!');
       }
       setSaveSuccess(true);
       onSaved(targetVideo.id, targetOffset);
-      setTimeout(() => setSaveSuccess(false), 2500);
-    } catch (err) {
-      alert("Error saving sync calibration");
+      setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (err: any) {
+      console.error("Save sync error:", err);
+      // If admin patch fails due to invalid key, try contribution fallback
+      try {
+        await axios.post(`${API_BASE_URL}/videos/${targetVideo.id}/contributions`, {
+          suggested_sync_offset: targetOffset
+        });
+        setSaveMessage('싱크 기여로 정상 접수되었습니다!');
+        setSaveSuccess(true);
+        onSaved(targetVideo.id, targetOffset);
+      } catch (fallbackErr) {
+        alert("싱크 저장 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.");
+      }
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Timeline Bar View Range (Zoom tightly onto song window if looking at fancams)
+  // Timeline Bar View Range
   const timelineMin = Math.max(0, anchorStart - 30);
   const timelineMax = anchorEnd + 30;
   const timelineSpan = Math.max(1, timelineMax - timelineMin);
@@ -286,20 +327,20 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
           <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-gray-400 flex items-center gap-1.5 ml-1">
-                <Filter className="h-3.5 w-3.5 text-twice-apricot" /> 필터:
+                <Filter className="h-3.5 w-3.5 text-twice-apricot" /> 곡 필터:
               </span>
               <button 
-                onClick={() => setFilterMode('FANCAMS')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${filterMode === 'FANCAMS' ? 'bg-twice-magenta text-white shadow-md shadow-twice-magenta/20' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
+                onClick={() => setFilterMode('SAME_SONG')}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${filterMode === 'SAME_SONG' ? 'bg-twice-magenta text-white shadow-md shadow-twice-magenta/20' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
               >
-                🎯 동일 곡 직캠만 보기 ({sameSongFancams.length})
+                🎯 동일 곡 직캠 ({sameSongFancams.length})
               </button>
-              {longBridgeVideos.length > 0 && (
+              {allOverlapping.length > sameSongFancams.length && (
                 <button 
                   onClick={() => setFilterMode('ALL')}
                   className={`px-3.5 py-1.5 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${filterMode === 'ALL' ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20' : 'bg-slate-800 text-gray-400 hover:text-white'}`}
                 >
-                  👑 풀 콘서트 포함 전체 ({allOverlapping.length})
+                  🌐 겹치는 전체 영상 ({allOverlapping.length})
                 </button>
               )}
             </div>
@@ -475,7 +516,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
               
               {/* Playback & Audio Toolbar */}
               <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button 
                     onClick={togglePlay}
                     className={`px-5 py-2.5 rounded-xl font-black text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-lg ${isPlaying ? 'bg-amber-500 hover:bg-amber-600 text-black shadow-amber-500/20' : 'bg-twice-magenta hover:bg-pink-600 text-white shadow-twice-magenta/30 active:scale-95'}`}
@@ -496,6 +537,15 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                     title="처음으로 되감기"
                   >
                     <RotateCcw className="h-4 w-4" />
+                  </button>
+
+                  <button 
+                    onClick={alignCurrentFrames}
+                    className="px-3.5 py-2.5 bg-indigo-600/30 hover:bg-indigo-600/50 text-indigo-200 border border-indigo-500/40 rounded-xl font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95"
+                    title="양쪽 영상을 같은 순간에 정지해두고 이 버튼을 누르면 오프셋이 즉시 일치됩니다."
+                  >
+                    <Crosshair className="h-3.5 w-3.5 text-indigo-400" />
+                    📍 현재 멈춘 장면으로 싱크 맞추기
                   </button>
                 </div>
 
@@ -571,15 +621,20 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
         </div>
 
         {/* Footer Actions */}
-        <div className="p-4 md:px-6 bg-slate-900/90 border-t border-slate-800 flex justify-between items-center">
+        <div className="p-4 md:px-6 bg-slate-900/90 border-t border-slate-800 flex flex-wrap justify-between items-center gap-3">
           <div className="flex items-center gap-2">
             {adminKey ? (
               <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20 flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5" /> Admin Mode (Direct Save)
+                <ShieldCheck className="h-3.5 w-3.5" /> Admin Direct Save
               </span>
             ) : (
               <span className="text-[11px] font-bold text-twice-apricot bg-twice-apricot/10 px-3 py-1 rounded-full border border-twice-apricot/20">
-                Community Mode (Submit Contribution)
+                Community Contribution Mode
+              </span>
+            )}
+            {saveMessage && (
+              <span className="text-xs font-bold text-emerald-400 animate-in fade-in duration-200">
+                {saveMessage}
               </span>
             )}
           </div>
