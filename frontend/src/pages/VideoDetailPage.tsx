@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
 import MultiAnglePlayer, { MultiAnglePlayerRef } from '../components/MultiAnglePlayer';
 import ConcertTimelineModal from '../components/ConcertTimelineModal';
+import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
@@ -25,6 +26,7 @@ const VideoDetailPage = () => {
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [previewContrib, setPreviewContrib] = useState<Contribution | null>(null);
   const [showTimelineInfo, setShowTimelineInfo] = useState(false);
+  const [showPairwiseCalibrator, setShowPairwiseCalibrator] = useState(false);
 
   // Edit/Suggestion Shared State
   const [editData, setEditData] = useState({
@@ -216,13 +218,23 @@ const VideoDetailPage = () => {
           <div className="p-8 bg-slate-800/30 rounded-3xl border border-slate-800 space-y-6 relative shadow-xl">
             {!isEditing ? (
               <>
-                <div className="flex justify-between items-start">
+                <div className="flex justify-between items-start gap-4">
                   <h1 className="text-3xl font-black leading-tight tracking-tighter uppercase italic">{video.title}</h1>
-                  {isAdminMode && (
-                    <button onClick={() => setIsEditing(true)} className="p-3 bg-slate-700 hover:bg-twice-magenta rounded-xl transition-all text-white shadow-lg">
-                      <Edit3 className="h-5 w-5" />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button 
+                      onClick={() => setShowPairwiseCalibrator(true)} 
+                      className="flex items-center gap-2 bg-gradient-to-r from-twice-magenta/20 to-twice-apricot/20 hover:from-twice-magenta/30 hover:to-twice-apricot/30 text-white border border-twice-magenta/40 px-4 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
+                      title="다른 겹치는 직캠과 1:1로 비교하며 0.05초 단위 미세 싱크 맞추기"
+                    >
+                      <Sliders className="h-4 w-4 text-twice-apricot" />
+                      1:1 Sync 캘리브레이터
                     </button>
-                  )}
+                    {isAdminMode && (
+                      <button onClick={() => setIsEditing(true)} className="p-3 bg-slate-700 hover:bg-twice-magenta rounded-xl transition-all text-white shadow-lg">
+                        <Edit3 className="h-5 w-5" />
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-3 text-sm">
                   {video.members?.map(m => (
@@ -230,6 +242,7 @@ const VideoDetailPage = () => {
                   ))}
                   <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><Music className="h-3.5 w-3.5 text-twice-apricot"/> {video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
                   <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><MapPin className="h-3.5 w-3.5 text-twice-apricot"/> {video.concert?.city || 'Unknown City'}</span>
+                  <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><Clock className="h-3.5 w-3.5 text-twice-apricot"/> Offset: {video.sync_offset.toFixed(2)}s</span>
                 </div>
               </>
             ) : (
@@ -540,6 +553,23 @@ const VideoDetailPage = () => {
                 : prev.song_ids
             }));
           }}
+        />
+      )}
+
+      {showPairwiseCalibrator && video && (
+        <PairwiseTimelineCalibratorModal 
+          currentVideo={video}
+          allConcertVideos={[video, ...relatedVideos]}
+          onClose={() => setShowPairwiseCalibrator(false)}
+          onSaved={(updatedId, newOffset) => {
+            if (video.id === updatedId) {
+              setVideo({ ...video, sync_offset: newOffset });
+              setEditData(prev => ({ ...prev, sync_offset: newOffset }));
+            } else {
+              setRelatedVideos(prev => prev.map(v => v.id === updatedId ? { ...v, sync_offset: newOffset } : v));
+            }
+          }}
+          adminKey={adminKey}
         />
       )}
     </div>
