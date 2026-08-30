@@ -27,9 +27,24 @@ CANONICAL_DEFAULTS = {
     'Can\'t Stop The Feeling! (Solo)': 3547.0,
     'Try (Solo)': 2820.0,
     'Money (Solo)': 3832.0,
+    'DIVE IN (Solo)': 3170.0,
+    'STONE COLD (Solo)': 3291.0,
+    'MEEEEEE (Solo)': 3423.0,
+    'FIX A DRINK (Solo)': 3547.0,
+    'SHOOT (Firecracker)': 3680.0,
+    'ATM (Solo)': 3832.0,
+    'DECAFFEINATED (Solo)': 3932.0,
+    'MOVE LIKE THAT (Solo)': 4060.0,
+    'Cheer Up (Encore)': 6100.0,
     'CHILLAX (Encore)': 6150.0,
+    'TT (Encore)': 6200.0,
     'Be as ONE (Encore)': 6250.0,
+    'LIKEY (Encore)': 6250.0,
     'Jelly Jelly (Encore)': 6300.0,
+    'Knock Knock (Encore)': 6300.0,
+    'Signal (Encore)': 6350.0,
+    'Heart Shaker (Encore)': 6400.0,
+    'GOT THE THRILLS (Encore)': 6450.0,
     'I\'m gonna be a star (Encore)': 7709.0,
     'Ending': 7709.0,
 }
@@ -130,8 +145,20 @@ def auto_heal_all():
             compiled_song_patterns.append((s, pattern))
 
         this_is_for_song = next((s for s in all_songs if s.name == 'THIS IS FOR'), None)
-        other_kw_pattern = re.compile(r'\b(fancy|strategy|firework|confetti|abcd|killin|run away|pop|yes or yes|feel special|cheer up|dance the night away|one spark|set me free|make me go|mars|options)\b', re.IGNORECASE)
+        other_kw_pattern = re.compile(r'\b(fancy|strategy|firework|confetti|abcd|killin|run away|pop|yes or yes|feel special|cheer up|dance the night away|one spark|set me free|make me go|mars|options|likey|tt|knock knock|heart shaker|signal|got the thrill)\b', re.IGNORECASE)
         this_is_for_pattern = re.compile(r'\bthis is for\b', re.IGNORECASE)
+
+        # 멤버별 솔로 무대 키워드 맵 (제목에 곡명 없이 멤버 솔로만 적힌 경우 대응)
+        member_solo_map = {
+            'mina solo': next((s for s in all_songs if s.name == 'STONE COLD (Solo)' or s.name == 'CONFETTI (Solo)'), None),
+            'sana solo': next((s for s in all_songs if s.name == 'DECAFFEINATED (Solo)' or s.name == 'FIREWORK (Solo)'), None),
+            'momo solo': next((s for s in all_songs if s.name == 'MOVE LIKE THAT (Solo)'), None),
+            'jihyo solo': next((s for s in all_songs if s.name == 'ATM (Solo)' or s.name == "Killin' Me Good (Solo)"), None),
+            'nayeon solo': next((s for s in all_songs if s.name == 'MEEEEEE (Solo)' or s.name == 'ABCD (Solo)'), None),
+            'tzuyu solo': next((s for s in all_songs if s.name == 'DIVE IN (Solo)' or s.name == 'RUN AWAY (Solo)'), None),
+            'chaeyoung solo': next((s for s in all_songs if s.name == 'SHOOT (Firecracker)'), None),
+            'jeongyeon solo': next((s for s in all_songs if s.name == 'FIX A DRINK (Solo)'), None),
+        }
 
         # 대상: 곡이 없거나, 오프셋이 0이거나, 단독 'THIS IS FOR'로만 태그된 풀콘서트 제외 영상들
         candidate_videos = db.query(Video).options(joinedload(Video.songs)).filter(
@@ -153,18 +180,29 @@ def auto_heal_all():
         tagged_count = 0
 
         for v in target_videos:
-            title_text = v.title or ""
+            title_raw = v.title or ""
+            # 문자열 정규화: 특수 따옴표 및 변형어 처리
+            title_norm = title_raw.replace("’", "'").replace("‘", "'").replace("“", '"').replace("”", '"')
+            title_norm = re.sub(r'\bkilling\b', "killin'", title_norm, flags=re.IGNORECASE)
+            
             curr_ids = [s.id for s in v.songs]
             
             matched_songs = []
             for s, pattern in compiled_song_patterns:
-                if pattern.search(title_text):
+                if pattern.search(title_norm):
                     matched_songs.append(s)
-                    break # 가장 구체적인 첫 번째 매칭 곡 선택
+                    break
+
+            # 멤버 솔로 키워드 매칭
+            if not matched_songs:
+                for kw, solo_song in member_solo_map.items():
+                    if solo_song and kw in title_norm.lower():
+                        matched_songs.append(solo_song)
+                        break
 
             # 구체적 곡이 없고 순수하게 'THIS IS FOR'만 있는 경우
-            if not matched_songs and this_is_for_song and this_is_for_pattern.search(title_text):
-                if not other_kw_pattern.search(title_text):
+            if not matched_songs and this_is_for_song and this_is_for_pattern.search(title_norm):
+                if not other_kw_pattern.search(title_norm):
                     matched_songs.append(this_is_for_song)
 
             new_ids = [s.id for s in matched_songs]
