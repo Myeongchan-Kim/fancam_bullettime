@@ -63,10 +63,10 @@ class Video(Base):
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), index=True)
     
     # Relationships
-    song = relationship("Song", back_populates="videos", overlaps="songs,videos_list") # Deprecated
-    songs = relationship("Song", secondary=video_song_association, back_populates="videos_list")
-    concert = relationship("Concert", back_populates="videos")
-    contributions = relationship("Contribution", back_populates="video")
+    song = relationship("Song", foreign_keys=[song_id], back_populates="videos", overlaps="songs,videos_list") # Deprecated
+    songs = relationship("Song", secondary=video_song_association, back_populates="videos_list", lazy="selectin")
+    concert = relationship("Concert", back_populates="videos", lazy="joined")
+    contributions = relationship("Contribution", back_populates="video", lazy="select")
 
 class Song(Base):
     __tablename__ = "songs"
@@ -77,7 +77,7 @@ class Song(Base):
     member_name = Column(String, nullable=True) # if solo
     
     videos = relationship("Video", back_populates="song", overlaps="songs,videos_list") # Deprecated
-    videos_list = relationship("Video", secondary=video_song_association, back_populates="songs")
+    videos_list = relationship("Video", secondary=video_song_association, back_populates="songs", lazy="select")
 
 class Concert(Base):
     __tablename__ = "concerts"
@@ -87,8 +87,8 @@ class Concert(Base):
     country = Column(String)
     venue = Column(String)
     
-    videos = relationship("Video", back_populates="concert")
-    setlist = relationship("ConcertSetlist", back_populates="concert", order_by=lambda: ConcertSetlist.display_order)
+    videos = relationship("Video", back_populates="concert", lazy="select")
+    setlist = relationship("ConcertSetlist", back_populates="concert", order_by=lambda: ConcertSetlist.display_order, lazy="selectin")
 
 class ConcertSetlist(Base):
     __tablename__ = "concert_setlists"
@@ -108,7 +108,7 @@ class ConcertSetlist(Base):
     display_order = Column(Integer, index=True)
 
     concert = relationship("Concert", back_populates="setlist")
-    song = relationship("Song")
+    song = relationship("Song", lazy="joined")
 
 class Contribution(Base):
     __tablename__ = "contributions"
@@ -140,4 +140,4 @@ class Contribution(Base):
     is_processed = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     
-    video = relationship("Video", back_populates="contributions")
+    video = relationship("Video", back_populates="contributions", lazy="joined")

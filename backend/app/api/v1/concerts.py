@@ -21,6 +21,19 @@ def get_concerts(response: Response, db: Session = Depends(get_db)):
         c.video_count = counts_dict.get(c.id, 0)
     return concerts
 
+@router.get("/concerts/{concert_id}", response_model=ConcertBase)
+def get_concert(concert_id: int, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "public, s-maxage=600, stale-while-revalidate=86400"
+    concert = db.query(Concert).options(
+        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).filter(Concert.id == concert_id).first()
+    if not concert:
+        raise HTTPException(status_code=404, detail="Concert not found")
+    
+    count = db.query(func.count(Video.id)).filter(Video.concert_id == concert_id).scalar() or 0
+    concert.video_count = count
+    return concert
+
 
 @router.patch("/admin/setlist/{item_id}")
 def update_setlist_item(item_id: int, start_time: float = Query(...), db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):

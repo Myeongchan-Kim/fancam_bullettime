@@ -28,8 +28,8 @@ def get_videos(
     db: Session = Depends(get_db)
 ):
     query = db.query(Video).options(
-        joinedload(Video.songs),
-        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        selectinload(Video.songs),
+        joinedload(Video.concert)
     )
 
     if shorts_only: query = query.filter(Video.is_shorts == True)
@@ -122,12 +122,12 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
 
         # 비디오 목록은 홈 화면 렌더링에 필요한 관계만 가볍게 로드
         latest_videos = db.query(Video).options(
-            joinedload(Video.songs),
+            selectinload(Video.songs),
             joinedload(Video.concert)
         ).distinct().order_by(Video.created_at.desc()).limit(24).all()
 
         mapped_videos = db.query(Video).options(
-            joinedload(Video.songs),
+            selectinload(Video.songs),
             joinedload(Video.concert)
         ).filter(Video.coordinate_x.isnot(None)).all()
 
@@ -154,7 +154,7 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
 
 @router.get("/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
-    video = db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    video = db.query(Video).options(selectinload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
     if not video: raise HTTPException(status_code=404, detail="Video not found")
     video.members = ensure_list(video.members)
     return video
@@ -174,13 +174,13 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
     
     db.commit()
     db.refresh(db_video)
-    return db.query(Video).options(joinedload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    return db.query(Video).options(selectinload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
 
 @router.get("/videos/{video_id}/full", response_model=VideoFullDetail)
 def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
     """Combined endpoint to fetch everything needed for the detail page in ONE request."""
     video = db.query(Video).options(
-        joinedload(Video.songs), 
+        selectinload(Video.songs), 
         joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
     ).filter(Video.id == video_id).first()
     
@@ -192,7 +192,7 @@ def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
     related_videos = []
     if video.concert_id:
         related_videos = db.query(Video).options(
-            joinedload(Video.songs)
+            selectinload(Video.songs)
         ).filter(Video.concert_id == video.concert_id, Video.id != video_id).all()
         for v in related_videos:
             v.members = ensure_list(v.members)
