@@ -265,13 +265,32 @@ def run_deep_dive(target_city, limit_videos_per_query=20):
                             
                             try:
                                 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
-                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
+                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload, timeout=5)
                                 if resp.status_code == 200:
                                     logger.info(f"    ✅ 제안 완료 ({'Shorts' if is_shorts else 'Video'}): {title}")
                                 else:
-                                    logger.error(f"    ❌ 제안 실패 ({resp.status_code}): {resp.text}")
+                                    raise Exception(f"API status {resp.status_code}: {resp.text}")
                             except Exception as e:
-                                logger.error(f"    ❌ API 통신 에러: {e}")
+                                logger.info(f"    💾 DB 직접 삽입으로 저장: {title}")
+                                new_contrib = Contribution(
+                                    suggested_url=url,
+                                    suggested_title=title,
+                                    suggested_song_ids=[s.id for s in song_objs],
+                                    suggested_concert_id=concert_obj.id if concert_obj else None,
+                                    suggested_members=metadata.get("members", []),
+                                    suggested_duration=duration_sec,
+                                    suggested_is_shorts=is_shorts,
+                                    suggested_angle="Unknown",
+                                    suggested_sync_offset=suggested_offset
+                                )
+                                db.add(new_contrib)
+                                db.commit()
+                                db.refresh(new_contrib)
+                                try:
+                                    from app.api.v1.utils import _maybe_auto_approve
+                                    _maybe_auto_approve(db, new_contrib.id)
+                                except Exception as auto_err:
+                                    logger.warning(f"Auto approve warning: {auto_err}")
 
                             # Training and Cooldown per video
                             v_page = context.new_page()
