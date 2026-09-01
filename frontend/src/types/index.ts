@@ -4,6 +4,10 @@ export interface Song {
   order?: number | null;
   is_solo: boolean;
   member_name?: string;
+  act?: string | null;
+  stage_outfit?: string | null;
+  visual_notes?: string | null;
+  description?: string | null;
 }
 
 export interface ConcertSetlist {
