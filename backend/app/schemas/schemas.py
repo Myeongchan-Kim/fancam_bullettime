@@ -8,6 +8,10 @@ class SongBase(BaseModel):
     order: Optional[int] = None
     is_solo: bool = False
     member_name: Optional[str] = None
+    act: Optional[str] = None
+    stage_outfit: Optional[str] = None
+    visual_notes: Optional[str] = None
+    description: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 

@@ -76,6 +76,12 @@ class Song(Base):
     is_solo = Column(Boolean, nullable=False, default=False)
     member_name = Column(String, nullable=True) # if solo
     
+    # Visual Sync & Stage Costume Metadata
+    act = Column(String, nullable=True, index=True)           # e.g. "Act 1 (Opening)", "Act 2 (Solo)", "Act 3 (Hits)", "Act 4 (Encore)"
+    stage_outfit = Column(String, nullable=True)              # e.g. "블랙 레더 & 메탈릭 전사 룩 / 롱부츠"
+    visual_notes = Column(String, nullable=True)              # e.g. "불꽃 특수효과, 다크 배경, 붉은 레이저"
+    description = Column(String, nullable=True)               # e.g. "오프닝 타이틀 트랙"
+    
     videos = relationship("Video", back_populates="song", overlaps="songs,videos_list") # Deprecated
     videos_list = relationship("Video", secondary=video_song_association, back_populates="songs", lazy="select")
 

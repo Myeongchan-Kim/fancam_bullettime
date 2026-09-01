@@ -54,40 +54,52 @@ def download_thumbnail(youtube_id: str) -> Optional[bytes]:
             continue
     return None
 
-def build_visual_prompt(title: str, description: str) -> str:
-    group_songs_str = ", ".join(TOUR_DATA.get("setlist", {}).get("group_acts", []))
-    solo_stages_str = ", ".join([f"{s['member']}({s['song']})" for s in TOUR_DATA.get("setlist", {}).get("solo_stages", [])])
+def get_db_visual_guide() -> str:
+    """DB의 Song 테이블에서 액트별 의상 및 무대 가이드를 동적으로 로드"""
+    try:
+        from app.db import SessionLocal
+        from app.models.models import Song
+        db = SessionLocal()
+        try:
+            songs_with_meta = db.query(Song).filter(
+                (Song.act.isnot(None)) | (Song.stage_outfit.isnot(None))
+            ).order_by(Song.act.asc(), Song.order.asc()).all()
 
+            if not songs_with_meta:
+                return ""
+
+            act_dict = {}
+            for s in songs_with_meta:
+                act = s.act or "General"
+                if act not in act_dict:
+                    act_dict[act] = []
+                outfit = f" - 착장: {s.stage_outfit}" if s.stage_outfit else ""
+                notes = f" (특징: {s.visual_notes})" if s.visual_notes else ""
+                solo_member = f"[{s.member_name} Solo] " if s.is_solo and s.member_name else ""
+                act_dict[act].append(f"  • {solo_member}{s.name}{outfit}{notes}")
+
+            guide_lines = []
+            for act, items in act_dict.items():
+                guide_lines.append(f"### {act}:")
+                guide_lines.extend(items)
+                guide_lines.append("")
+
+            return "\n".join(guide_lines)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.warning(f"Failed to fetch visual guide from DB: {e}")
+        return ""
+
+def build_visual_prompt(title: str, description: str) -> str:
+    db_guide = get_db_visual_guide()
+    
     return f"""
 You are a world-class K-pop and TWICE Concert visual stage analyst.
 Analyze the provided YouTube video frame/thumbnail image, along with the title and description, to accurately identify which song and concert act is being performed.
 
-### TWICE Concert Stage & Costume Visual Guide (Ground Truth):
-1. **Act 1 (Opening / Heavy EDM & Fierce)**:
-   - **Costumes**: Black leather, metallic silver/gold warrior armor, high boots, dramatic harness styling.
-   - **Stage/Vibe**: Dark backdrop, fiery explosions, red/blue laser lighting, laser beams.
-   - **Songs**: SET ME FREE, I CAN'T STOP ME, GO HARD, MORE & MORE, MOONLIGHT SUNRISE, BRAVE.
-
-2. **Act 2 (Solo Stages - Unique Individual Outfits)**:
-   - **Dahyun**: Piano performance / Elegant white gown / "Try"
-   - **Tzuyu**: Black velvet sleeveless dress / Sensual chair dance / "Done for Me"
-   - **Sana**: Metallic silver slip dress / Sleek high ponytail / "New Rules"
-   - **Momo**: Red and black dance gear / High-energy pole dance / "MOVE"
-   - **Mina**: Black sensual lace / Fedora / "7 rings"
-   - **Chaeyoung**: Acoustic guitar / Casual chic / "My Guitar"
-   - **Jihyo**: Rock star red leather / Electric guitar / "Nightmare" / "Killin' Me Good"
-   - **Jeongyeon**: Colorful quirky retro suit / Recorder flute / "Juice"
-   - **Nayeon**: Denim / Pop idol streetwear / "POP!" / "ABCD"
-
-3. **Act 3 (Hit Songs & Formal Elegance)**:
-   - **Costumes**: Pastel silk gowns, white/pink cocktail dresses, glamorous formal red dresses.
-   - **Stage/Vibe**: Bright LED screens, flowers, grand palace backdrop, emotional lighting.
-   - **Songs**: FEEL SPECIAL, CRY FOR ME, FANCY, THE FEELS, I GOT YOU, WHAT IS LOVE?, CHEER UP, LIKEY, KNOCK KNOCK, SCIENTIST, HEART SHAKER.
-
-4. **Act 4 (Encore / Casual & Talk)**:
-   - **Costumes**: Tour merchandise T-shirts (Black or White "THIS IS FOR" / "READY TO BE"), hoodies, hats, hair accessories, holding Candybong lightsticks.
-   - **Stage/Vibe**: House lights on, interacting freely with fans, confetti everywhere, moving carts.
-   - **Songs/Events**: TALK, ENCORE ROULETTE, TT (Encore), SIGNAL (Encore), DANCE THE NIGHT AWAY, CRAZY STUPID LOVE.
+### TWICE Concert Stage & Costume Visual Guide (From Central DB Ground Truth):
+{db_guide}
 
 ### Input Video Context:
 - **Title**: {title}
