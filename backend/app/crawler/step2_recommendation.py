@@ -17,6 +17,7 @@ from app.db import SessionLocal
 from app.models.models import Song, Concert, ConcertSetlist, Video, Contribution
 from app.api.v1.utils import _maybe_auto_approve
 from app.crawler.ai_parser import parse_fancam_metadata_async
+from app.crawler.visual_classifier import classify_fancam_visually
 from app.crawler.step1_search import get_video_id, timestamp_to_seconds
 
 load_dotenv()
@@ -256,6 +257,16 @@ async def run_recommendation_chain_async(depth=30):
                                 s_id = song_map.get(s_name.lower())
                                 if s_id:
                                     suggested_song_ids.append(s_id)
+
+                            # 💡 텍스트에서 곡을 특정하지 못한 경우 썸네일 멀티모달 시각 판별 실행
+                            if not suggested_song_ids and v_id:
+                                vis_res = classify_fancam_visually(youtube_id=v_id, title=title, description=desc)
+                                vis_song = vis_res.get("identified_song")
+                                if vis_song:
+                                    s_id = song_map.get(vis_song.lower())
+                                    if s_id:
+                                        suggested_song_ids.append(s_id)
+                                        logger.info(f"    📸 [시각 판별 성공] 의상/무대 분석으로 곡 특정: '{vis_song}' (Act: {vis_res.get('detected_act')})")
 
                             # sync_offset 자동 계산
                             suggested_offset = 0.0

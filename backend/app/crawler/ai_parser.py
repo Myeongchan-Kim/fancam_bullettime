@@ -77,9 +77,9 @@ def clean_json_response(text: str) -> str:
     if text.startswith("```"):
         # ```json ... ``` 또는 ``` ... ``` 블록 제거
         lines = text.splitlines()
-        if lines[0].startswith("```"):
+        if lines[0].strip().startswith("```"):
             lines = lines[1:]
-        if lines and lines[-1].startswith("```"):
+        if lines and lines[-1].strip().startswith("```"):
             lines = lines[:-1]
         text = "\n".join(lines).strip()
     return text

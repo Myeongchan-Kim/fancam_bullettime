@@ -17,6 +17,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 from app.core.config import settings
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.ai_parser import parse_fancam_metadata
+from app.crawler.visual_classifier import classify_fancam_visually
 
 DATABASE_URL = settings.DATABASE_URL
 USER_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "user_data")
@@ -217,6 +218,16 @@ def run_deep_dive(target_city, limit_videos_per_query=20):
                                 song_obj = db.query(Song).filter(Song.name == s_name).first()
                                 if song_obj:
                                     song_objs.append(song_obj)
+
+                            # 💡 텍스트 메타데이터에서 곡을 특정하지 못한 경우 시각적(Visual) 판별 실행
+                            if not song_objs and v_id:
+                                vis_res = classify_fancam_visually(youtube_id=v_id, title=title, description="")
+                                vis_song_name = vis_res.get("identified_song")
+                                if vis_song_name:
+                                    vis_song_obj = db.query(Song).filter(Song.name.ilike(f"%{vis_song_name}%")).first()
+                                    if vis_song_obj:
+                                        song_objs.append(vis_song_obj)
+                                        logger.info(f"    📸 [시각 판별 성공] 썸네일 무대의상 분석으로 곡 매칭: '{vis_song_obj.name}' (Act: {vis_res.get('detected_act')})")
                                     
                             # Improved Concert Selection Logic: Use both city and date
                             c_date_str = metadata.get("date")
