@@ -70,7 +70,7 @@ def create_contribution(video_id: int, contribution: ContributionCreate, request
 
 @router.get("/videos/{video_id}/contributions", response_model=List[ContributionBase])
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
-    results = db.query(Contribution).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
+    results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
     output = []
     for r in results:
         output.append({
