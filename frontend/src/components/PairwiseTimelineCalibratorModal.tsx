@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import axios from 'axios';
 import { 
   X, Play, Pause, RotateCcw, Save, Check, 
-  Sliders, ShieldCheck, Layers, Filter, Crosshair
+  Sliders, ShieldCheck, Layers, Filter, Crosshair,
+  GripVertical, MoveHorizontal, Sparkles
 } from 'lucide-react';
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -63,6 +64,16 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const anchorDur = (anchorVideo.duration && anchorVideo.duration > 0) ? anchorVideo.duration : 220;
   const anchorEnd = anchorStart + anchorDur;
   const anchorSongIds = useMemo(() => anchorVideo.songs?.map(s => s.id) || [], [anchorVideo]);
+
+  // Timeline Bar View Range
+  const timelineMin = Math.max(0, anchorStart - 30);
+  const timelineMax = anchorEnd + 30;
+  const timelineSpan = Math.max(1, timelineMax - timelineMin);
+
+  // Dragging State & Refs for Interactive Timeline Bar
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const trackContainerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ startX: number; startOffset: number; trackWidth: number } | null>(null);
 
   // Separate same song fancams vs full concerts/other clips
   const { sameSongFancams, allOverlapping } = useMemo(() => {
@@ -159,6 +170,71 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
       console.error("Error aligning frames", e);
     }
   };
+
+  // Interactive Pointer Drag Handlers for Timeline Bar
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!targetVideo || !trackContainerRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = trackContainerRef.current.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startOffset: targetOffset,
+      trackWidth: Math.max(rect.width, 1)
+    };
+    setIsDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging || !dragRef.current || !targetVideo) return;
+    const deltaX = e.clientX - dragRef.current.startX;
+    const deltaTime = (deltaX / dragRef.current.trackWidth) * timelineSpan;
+    const newOffset = Math.round((dragRef.current.startOffset + deltaTime) * 100) / 100;
+
+    setTargetOffset(newOffset);
+
+    // Live preview in Player B if available
+    if (playerA && playerB) {
+      try {
+        const timeA = playerA.getCurrentTime();
+        const concertTime = timeA + (anchorVideo.sync_offset || 0);
+        const expectedB = Math.max(0, concertTime - newOffset);
+        const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
+        if (expectedB <= targetDur) {
+          playerB.seekTo(expectedB, true);
+        }
+      } catch (err) {}
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false);
+      dragRef.current = null;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+  };
+
+  // Keyboard Shortcuts (Arrow keys to nudge, Space to play/pause)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        nudge(e.shiftKey ? -0.5 : -0.05);
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        nudge(e.shiftKey ? 0.5 : 0.05);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [playerA, playerB, isPlaying, targetOffset, targetVideo]);
 
   // Sync Interval Loop (With Strict Bounds Protection)
   useEffect(() => {
@@ -288,11 +364,6 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     }
   };
 
-  // Timeline Bar View Range
-  const timelineMin = Math.max(0, anchorStart - 30);
-  const timelineMax = anchorEnd + 30;
-  const timelineSpan = Math.max(1, timelineMax - timelineMin);
-
   return createPortal(
     <div className="fixed inset-0 z-[250] flex items-center justify-center bg-black/85 backdrop-blur-xl p-3 md:p-6 animate-in fade-in duration-200">
       <div className="bg-slate-950 border border-slate-800/80 rounded-[2rem] w-full max-w-6xl max-h-[94vh] shadow-2xl flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -409,12 +480,15 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                 const isSelected = targetVideo?.id === v.id;
                 const primaryMember = (v.members && v.members.length > 0) ? v.members[0] : '무대';
                 const memberTheme = MEMBER_COLORS[primaryMember] || { bg: 'bg-slate-700', text: 'text-gray-300', border: 'border-slate-600', bar: 'bg-twice-magenta' };
+                const currentOffsetForBar = isSelected ? targetOffset : vStart;
 
                 return (
                   <div 
                     key={v.id} 
-                    onClick={() => selectTarget(v)}
-                    className={`group cursor-pointer p-2.5 rounded-xl transition-all border ${isSelected ? 'bg-slate-800/90 border-twice-magenta shadow-lg shadow-twice-magenta/10 ring-1 ring-twice-magenta' : 'bg-slate-950/60 hover:bg-slate-800/50 border-slate-800/60'}`}
+                    onClick={() => {
+                      if (!isSelected) selectTarget(v);
+                    }}
+                    className={`group p-2.5 rounded-xl transition-all border ${isSelected ? 'bg-slate-800/95 border-twice-magenta shadow-xl shadow-twice-magenta/15 ring-2 ring-twice-magenta/50' : 'cursor-pointer bg-slate-950/60 hover:bg-slate-800/50 border-slate-800/60'}`}
                   >
                     <div className="flex items-center justify-between text-[11px] mb-1.5">
                       <span className={`font-bold flex items-center gap-2 truncate ${isSelected ? 'text-twice-magenta' : 'text-gray-300 group-hover:text-white'}`}>
@@ -422,20 +496,51 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                           {primaryMember}
                         </span>
                         {v.title.slice(0, 55)}
+                        {isSelected && (
+                          <span className="text-[10px] bg-twice-magenta/20 text-pink-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
+                            <Sparkles className="h-2.5 w-2.5 text-twice-magenta animate-spin" style={{ animationDuration: '4s' }} />
+                            드래그 가능
+                          </span>
+                        )}
                       </span>
                       <span className="font-mono text-[10px] text-gray-400 shrink-0 ml-2">
-                        {formatDuration(vDur)} | Offset: {formatTime(isSelected ? targetOffset : vStart)}
+                        {formatDuration(vDur)} | Offset: <strong className={isSelected ? 'text-white' : 'text-gray-400'}>{formatTime(currentOffsetForBar)}</strong>
                       </span>
                     </div>
 
-                    <div className="h-3.5 bg-slate-900 rounded-md overflow-hidden relative">
+                    {/* Track Container */}
+                    <div 
+                      ref={isSelected ? trackContainerRef : undefined}
+                      className={`h-5 bg-slate-900 rounded-lg overflow-hidden relative border ${isSelected ? 'border-twice-magenta/40 bg-slate-950/80 shadow-inner' : 'border-white/5'}`}
+                    >
+                      {/* Interactive Bar */}
                       <div 
-                        className={`h-full rounded-md transition-all ${isSelected ? 'bg-gradient-to-r from-pink-500 to-twice-magenta' : 'bg-slate-700 opacity-70 group-hover:opacity-100'}`}
+                        onPointerDown={isSelected ? handlePointerDown : undefined}
+                        onPointerMove={isSelected ? handlePointerMove : undefined}
+                        onPointerUp={isSelected ? handlePointerUp : undefined}
+                        onPointerCancel={isSelected ? handlePointerUp : undefined}
+                        className={`h-full rounded-md transition-shadow relative flex items-center justify-between px-1.5 select-none ${
+                          isSelected 
+                            ? 'bg-gradient-to-r from-pink-500 via-twice-magenta to-purple-600 cursor-grab active:cursor-grabbing shadow-md shadow-pink-500/30 ring-1 ring-white/30' 
+                            : 'bg-slate-700 opacity-70 group-hover:opacity-100 cursor-pointer'
+                        } ${isDragging && isSelected ? 'scale-[1.02] ring-2 ring-white z-20 brightness-110' : ''}`}
                         style={{
-                          marginLeft: `${Math.max(0, (((isSelected ? targetOffset : vStart) - timelineMin) / timelineSpan) * 100)}%`,
-                          width: `${Math.min(100, (vDur / timelineSpan) * 100)}%`
+                          marginLeft: `${Math.max(0, ((currentOffsetForBar - timelineMin) / timelineSpan) * 100)}%`,
+                          width: `${Math.min(100, (vDur / timelineSpan) * 100)}%`,
+                          touchAction: 'none'
                         }}
-                      />
+                        title={isSelected ? "바를 마우스로 잡고 좌우로 드래그하여 싱크를 조절하세요" : "클릭하여 이 영상을 보정 대상으로 선택"}
+                      >
+                        {isSelected && (
+                          <>
+                            <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow" />
+                            <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                              {isDragging ? `Offset: ${currentOffsetForBar.toFixed(2)}s` : 'Drag to Sync'}
+                            </span>
+                            <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow" />
+                          </>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
@@ -574,44 +679,108 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
 
               {/* Offset Fine-Tuning Pad */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <span className="text-xs font-black uppercase tracking-widest text-gray-400">Target Offset Nudge</span>
-                    <p className="text-[11px] text-gray-500">타겟 영상이 더 늦게 시작하면 [+], 더 일찍 시작하면 [-]</p>
+                    <span className="text-xs font-black uppercase tracking-widest text-gray-400 flex items-center gap-1.5">
+                      <Sliders className="h-3.5 w-3.5 text-twice-magenta" />
+                      Target Offset Calibrator
+                    </span>
+                    <p className="text-[11px] text-gray-500">
+                      상단 타임라인 바를 직접 드래그하거나 슬라이더/버튼으로 0.05초 단위 싱크를 맞추세요.
+                    </p>
                   </div>
 
-                  {/* Offset & Delta Value Badge */}
-                  <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-white/5">
-                    <span className="text-xs text-gray-400 font-mono">
-                      Delta: <strong className={delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-gray-400'}>{delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}s</strong>
-                    </span>
-                    <div className="h-3 w-px bg-white/10"></div>
-                    <span className="text-sm font-mono font-black text-white">
-                      {targetOffset.toFixed(2)}s
-                    </span>
+                  {/* Offset & Delta Value Badge & Reset */}
+                  <div className="flex items-center gap-2">
+                    {delta !== 0 && (
+                      <button 
+                        onClick={() => {
+                          setTargetOffset(initialTargetOffset);
+                          if (playerA && playerB) {
+                            try {
+                              const timeA = playerA.getCurrentTime();
+                              const concertTime = timeA + (anchorVideo.sync_offset || 0);
+                              const expectedB = Math.max(0, concertTime - initialTargetOffset);
+                              playerB.seekTo(expectedB, true);
+                            } catch (e) {}
+                          }
+                        }}
+                        className="text-[11px] font-bold text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2.5 py-1.5 rounded-lg border border-white/5 transition-all flex items-center gap-1"
+                        title="원래 저장된 오프셋으로 되돌리기"
+                      >
+                        <RotateCcw className="h-3 w-3" /> 초기화
+                      </button>
+                    )}
+                    <div className="flex items-center gap-3 bg-slate-950 px-4 py-2 rounded-xl border border-white/5 shadow-inner">
+                      <span className="text-xs text-gray-400 font-mono">
+                        Delta: <strong className={delta > 0 ? 'text-emerald-400' : delta < 0 ? 'text-red-400' : 'text-gray-400'}>{delta > 0 ? `+${delta.toFixed(2)}` : delta.toFixed(2)}s</strong>
+                      </span>
+                      <div className="h-3 w-px bg-white/10"></div>
+                      <span className="text-sm font-mono font-black text-white">
+                        {targetOffset.toFixed(2)}s
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Step Buttons */}
+                {/* Interactive Smooth Scrubber Slider */}
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-white/5 space-y-1.5">
+                  <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono">
+                    <span>{formatTime(timelineMin)} (일찍 시작)</span>
+                    <span className="text-twice-magenta font-bold flex items-center gap-1">
+                      <MoveHorizontal className="h-3 w-3 animate-pulse" /> 슬라이더로 빠른 오프셋 이동
+                    </span>
+                    <span>{formatTime(timelineMax)} (늦게 시작)</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={timelineMin}
+                    max={timelineMax}
+                    step={0.05}
+                    value={targetOffset}
+                    onChange={(e) => {
+                      const newOff = parseFloat(e.target.value);
+                      setTargetOffset(newOff);
+                      if (playerA && playerB) {
+                        try {
+                          const timeA = playerA.getCurrentTime();
+                          const concertTime = timeA + (anchorVideo.sync_offset || 0);
+                          const expectedB = Math.max(0, concertTime - newOff);
+                          const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
+                          if (expectedB <= targetDur) {
+                            playerB.seekTo(expectedB, true);
+                          }
+                        } catch (err) {}
+                      }
+                    }}
+                    className="w-full accent-twice-magenta bg-slate-800 rounded-lg h-2 cursor-pointer transition-all hover:bg-slate-700"
+                  />
+                </div>
+
+                {/* Micro Step Nudge Buttons */}
                 <div className="grid grid-cols-6 gap-2">
-                  <button onClick={() => nudge(-1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(-1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     -1.0s
                   </button>
-                  <button onClick={() => nudge(-0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(-0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     -0.10s
                   </button>
-                  <button onClick={() => nudge(-0.05)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-twice-magenta font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(-0.05)} className="py-2.5 bg-slate-800/80 hover:bg-slate-700 text-twice-magenta border border-twice-magenta/30 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     -0.05s
                   </button>
-                  <button onClick={() => nudge(+0.05)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-twice-magenta font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(+0.05)} className="py-2.5 bg-slate-800/80 hover:bg-slate-700 text-twice-magenta border border-twice-magenta/30 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     +0.05s
                   </button>
-                  <button onClick={() => nudge(+0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(+0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     +0.10s
                   </button>
-                  <button onClick={() => nudge(+1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95">
+                  <button onClick={() => nudge(+1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     +1.0s
                   </button>
+                </div>
+
+                <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 px-1">
+                  <span>💡 단축키: <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">→</kbd> 방향키로 0.05초 미세조정 (<kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> 누르면 0.5초)</span>
                 </div>
               </div>
 

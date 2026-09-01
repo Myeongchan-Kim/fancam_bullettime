@@ -13,6 +13,9 @@ from dotenv import load_dotenv
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
+from app.db import SessionLocal
+from app.models.models import Song, Concert, ConcertSetlist, Video, Contribution
+from app.api.v1.utils import _maybe_auto_approve
 from app.crawler.ai_parser import parse_fancam_metadata_async
 from app.crawler.step1_search import get_video_id, timestamp_to_seconds
 
@@ -150,28 +153,49 @@ async def run_recommendation_chain_async(depth=30):
         new_video_count = 0
         processed_ids = set()
 
-        # 1. API를 통해 메타데이터 동기화 (노래, 콘서트, 세트리스트 맵)
-        try:
-            songs_data = requests.get(f"{API_BASE_URL}/songs").json()
-            song_map = {s['name'].lower(): s['id'] for s in songs_data}
-            
-            concerts_data = requests.get(f"{API_BASE_URL}/concerts").json()
-            
-            # (concert_id, song_id) -> start_time 맵 생성
-            setlist_offset_map = {}
-            for c in concerts_data:
-                for item in c.get("setlist", []):
-                    s_id = item.get("song_id")
-                    st = item.get("start_time")
-                    if s_id is not None and st is not None:
-                        setlist_offset_map[(c["id"], s_id)] = st
+        # 1. 메타데이터 동기화 (노래, 콘서트, 세트리스트 맵)
+        songs_data = []
+        concerts_data = []
+        song_map = {}
+        setlist_offset_map = {}
+        recent_videos = []
 
-            # 최근 등록된 영상 목록 가져와서 시작점으로 활용
-            recent_videos = requests.get(f"{API_BASE_URL}/videos").json()[:100]
+        try:
+            db = SessionLocal()
+            try:
+                db_songs = db.query(Song).all()
+                songs_data = [{"id": s.id, "name": s.name} for s in db_songs]
+                song_map = {s.name.lower(): s.id for s in db_songs}
+
+                db_concerts = db.query(Concert).all()
+                concerts_data = [{"id": c.id, "city": c.city, "date": str(c.date)} for c in db_concerts]
+
+                db_setlists = db.query(ConcertSetlist).all()
+                for item in db_setlists:
+                    if item.song_id is not None and item.start_time is not None:
+                        setlist_offset_map[(item.concert_id, item.song_id)] = item.start_time
+
+                db_recent = db.query(Video).order_by(Video.created_at.desc()).limit(100).all()
+                recent_videos = [{"id": v.id, "title": v.title, "youtube_id": v.youtube_id} for v in db_recent]
+            finally:
+                db.close()
         except Exception as e:
-            logger.error(f"❌ API 서버 통신 실패. 10초 후 재시도... : {e}")
-            await asyncio.sleep(10)
-            continue
+            logger.warning(f"⚠️ DB 직접 조회 실패, API 폴백 시도: {e}")
+            try:
+                songs_data = requests.get(f"{API_BASE_URL}/songs", timeout=5).json()
+                song_map = {s['name'].lower(): s['id'] for s in songs_data}
+                concerts_data = requests.get(f"{API_BASE_URL}/concerts", timeout=5).json()
+                for c in concerts_data:
+                    for item in c.get("setlist", []):
+                        s_id = item.get("song_id")
+                        st = item.get("start_time")
+                        if s_id is not None and st is not None:
+                            setlist_offset_map[(c["id"], s_id)] = st
+                recent_videos = requests.get(f"{API_BASE_URL}/videos", timeout=5).json()[:100]
+            except Exception as api_err:
+                logger.error(f"❌ 메타데이터 조회 실패: {api_err}")
+                await asyncio.sleep(10)
+                continue
 
         async with async_playwright() as p:
             # 봇 감지 회피 및 세션 유지를 위해 persistent context 사용
@@ -255,18 +279,51 @@ async def run_recommendation_chain_async(depth=30):
                                 "suggested_sync_offset": suggested_offset
                             }
                             
-                            # 제보 API 호출
+                            # 제보 API 호출 및 DB 저장
                             try:
-                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload)
+                                resp = requests.post(f"{API_BASE_URL}/contributions", json=payload, timeout=5)
                                 if resp.status_code == 200:
                                     new_video_count += 1
                                     logger.info(f"      ✅ 신규 발굴 및 API 제보 성공 ({'Shorts' if is_shorts else 'Video'}): {title}")
                                 elif resp.status_code == 400 and "already exists" in resp.text:
                                     logger.info(f"      ℹ️ 이미 등록됨: {title}")
                                 else:
-                                    logger.warning(f"      ⚠️ 제보 응답 ({resp.status_code}): {resp.text}")
+                                    raise Exception(f"API status {resp.status_code}: {resp.text}")
                             except Exception as api_err:
-                                logger.error(f"      ❌ API 전송 에러: {api_err}")
+                                # Direct DB fallback
+                                try:
+                                    db = SessionLocal()
+                                    try:
+                                        # Check duplicate
+                                        existing_v = db.query(Video).filter(Video.youtube_id == v_id).first()
+                                        existing_c = db.query(Contribution).filter(Contribution.suggested_url.contains(v_id)).first()
+                                        if existing_v or existing_c:
+                                            logger.info(f"      ℹ️ 이미 DB에 등록됨: {title}")
+                                        else:
+                                            new_contrib = Contribution(
+                                                suggested_url=current_url,
+                                                suggested_title=title,
+                                                suggested_concert_id=concert_id,
+                                                suggested_song_ids=suggested_song_ids if suggested_song_ids else None,
+                                                suggested_members=metadata.get("members", []),
+                                                suggested_duration=duration,
+                                                suggested_is_shorts=is_shorts,
+                                                suggested_angle="Unknown",
+                                                suggested_sync_offset=suggested_offset
+                                            )
+                                            db.add(new_contrib)
+                                            db.commit()
+                                            db.refresh(new_contrib)
+                                            new_video_count += 1
+                                            logger.info(f"      💾 DB 직접 저장 성공 ({'Shorts' if is_shorts else 'Video'}): {title}")
+                                            try:
+                                                _maybe_auto_approve(db, new_contrib.id)
+                                            except Exception as auto_err:
+                                                logger.warning(f"Auto approve warning: {auto_err}")
+                                    finally:
+                                        db.close()
+                                except Exception as db_err:
+                                    logger.error(f"      ❌ DB 저장 에러: {db_err}")
 
                     # 4. 다음 추천 영상 선택 (사이드바 탐색)
                     candidates = await get_recommendation_candidates(page)
