@@ -125,6 +125,17 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     setInitialTargetOffset(off);
     setSaveSuccess(false);
     setSaveMessage('');
+
+    if (playerA && playerB) {
+      const anchorStart = anchorVideo.sync_offset || 0;
+      const overlapStart = Math.max(anchorStart, off);
+      const startA = Math.max(0, overlapStart - anchorStart);
+      const startB = Math.max(0, overlapStart - off);
+      try {
+        playerA.seekTo(startA, true);
+        playerB.seekTo(startB, true);
+      } catch (e) {}
+    }
   };
 
   // ⇄ Swap Anchor Video A and Target Video B
@@ -140,13 +151,28 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     } catch (err) {}
     setIsPlaying(false);
 
-    setAnchorVideo(prevTarget);
-    setTargetVideo(prevAnchor);
-    const newTargetOffset = prevAnchor.sync_offset || 0;
-    setTargetOffset(newTargetOffset);
-    setInitialTargetOffset(newTargetOffset);
+    const newAnchor = prevTarget;
+    const newTarget = prevAnchor;
+    const newAnchorStart = newAnchor.sync_offset || 0;
+    const newTargetOff = newTarget.sync_offset || 0;
+
+    setAnchorVideo(newAnchor);
+    setTargetVideo(newTarget);
+    setTargetOffset(newTargetOff);
+    setInitialTargetOffset(newTargetOff);
     setSaveSuccess(false);
     setSaveMessage('');
+
+    // Seek both players to overlap start
+    const overlapStart = Math.max(newAnchorStart, newTargetOff);
+    const startA = Math.max(0, overlapStart - newAnchorStart);
+    const startB = Math.max(0, overlapStart - newTargetOff);
+    setTimeout(() => {
+      try {
+        playerA?.seekTo(startA, true);
+        playerB?.seekTo(startB, true);
+      } catch (e) {}
+    }, 150);
   };
 
   // Auto-select initial target video (Prioritize same song fancams)
@@ -164,15 +190,21 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const nudge = (deltaSec: number) => {
     setTargetOffset(prev => {
       const updated = Math.round((prev + deltaSec) * 100) / 100;
-      if (playerA && playerB && isPlaying) {
+      if (playerA && playerB) {
         try {
-          const timeA = playerA.getCurrentTime();
-          const concertTime = timeA + (anchorVideo.sync_offset || 0);
-          const timeB = concertTime - updated;
+          const anchorStart = anchorVideo.sync_offset || 0;
+          let timeA = playerA.getCurrentTime();
+          let concertTime = timeA + anchorStart;
+          let timeB = concertTime - updated;
           const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
-          if (timeB >= 0 && timeB <= targetDur) {
-            playerB.seekTo(timeB, true);
+
+          if (timeB < 0 || timeB > targetDur) {
+            const overlapStart = Math.max(anchorStart, updated);
+            timeA = Math.max(0, overlapStart - anchorStart);
+            timeB = Math.max(0, overlapStart - updated);
+            playerA.seekTo(timeA, true);
           }
+          playerB.seekTo(timeB, true);
         } catch (e) {}
       }
       return updated;
@@ -221,13 +253,19 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     // Live preview in Player B if available
     if (playerA && playerB) {
       try {
-        const timeA = playerA.getCurrentTime();
-        const concertTime = timeA + (anchorVideo.sync_offset || 0);
-        const expectedB = Math.max(0, concertTime - newOffset);
+        const anchorStart = anchorVideo.sync_offset || 0;
+        let timeA = playerA.getCurrentTime();
+        let concertTime = timeA + anchorStart;
+        let expectedB = concertTime - newOffset;
         const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
-        if (expectedB <= targetDur) {
-          playerB.seekTo(expectedB, true);
+
+        if (expectedB < 0 || expectedB > targetDur) {
+          const overlapStart = Math.max(anchorStart, newOffset);
+          timeA = Math.max(0, overlapStart - anchorStart);
+          expectedB = Math.max(0, overlapStart - newOffset);
+          playerA.seekTo(timeA, true);
         }
+        playerB.seekTo(expectedB, true);
       } catch (err) {}
     }
   };
@@ -295,18 +333,26 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
 
   // Handle Play / Pause
   const togglePlay = () => {
-    if (!playerA || !playerB) return;
+    if (!playerA || !playerB || !targetVideo) return;
     if (isPlaying) {
       playerA.pauseVideo();
       playerB.pauseVideo();
       setIsPlaying(false);
     } else {
-      const timeA = playerA.getCurrentTime();
-      const concertTime = timeA + (anchorVideo.sync_offset || 0);
-      const expectedTimeB = Math.max(0, concertTime - targetOffset);
-      const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
+      const anchorStart = anchorVideo.sync_offset || 0;
+      let timeA = playerA.getCurrentTime();
+      let concertTime = timeA + anchorStart;
+      let expectedTimeB = concertTime - targetOffset;
+      const targetDur = (targetVideo.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
       
-      if (expectedTimeB <= targetDur) {
+      // If out of bounds of Target B, snap both to the overlap start!
+      if (expectedTimeB < 0 || expectedTimeB > targetDur) {
+        const overlapStart = Math.max(anchorStart, targetOffset);
+        timeA = Math.max(0, overlapStart - anchorStart);
+        expectedTimeB = Math.max(0, overlapStart - targetOffset);
+        playerA.seekTo(timeA, true);
+        playerB.seekTo(expectedTimeB, true);
+      } else {
         playerB.seekTo(expectedTimeB, true);
       }
       
@@ -635,6 +681,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   </div>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
                     <YouTube
+                      key={`player-a-${anchorVideo.id}`}
                       videoId={anchorVideo.youtube_id}
                       className="w-full h-full"
                       opts={{
@@ -645,6 +692,10 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                       onReady={(e) => {
                         setPlayerA(e.target);
                         e.target.mute();
+                        const anchorStart = anchorVideo.sync_offset || 0;
+                        const overlapStart = Math.max(anchorStart, targetOffset);
+                        const startA = Math.max(0, overlapStart - anchorStart);
+                        e.target.seekTo(startA, true);
                       }}
                     />
                   </div>
@@ -677,6 +728,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   </div>
                   <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
                     <YouTube
+                      key={`player-b-${targetVideo.id}`}
                       videoId={targetVideo.youtube_id}
                       className="w-full h-full"
                       opts={{
@@ -687,6 +739,10 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                       onReady={(e) => {
                         setPlayerB(e.target);
                         e.target.mute();
+                        const anchorStart = anchorVideo.sync_offset || 0;
+                        const overlapStart = Math.max(anchorStart, targetOffset);
+                        const startB = Math.max(0, overlapStart - targetOffset);
+                        e.target.seekTo(startB, true);
                       }}
                     />
                   </div>
@@ -717,13 +773,16 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   <button 
                     onClick={() => {
                       if (playerA && playerB) {
-                        playerA.seekTo(0, true);
-                        const expectedB = Math.max(0, (anchorVideo.sync_offset || 0) - targetOffset);
-                        playerB.seekTo(expectedB, true);
+                        const anchorStart = anchorVideo.sync_offset || 0;
+                        const overlapStart = Math.max(anchorStart, targetOffset);
+                        const startA = Math.max(0, overlapStart - anchorStart);
+                        const startB = Math.max(0, overlapStart - targetOffset);
+                        playerA.seekTo(startA, true);
+                        playerB.seekTo(startB, true);
                       }
                     }}
                     className="p-2.5 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-xl transition-all"
-                    title="처음으로 되감기"
+                    title="두 영상이 겹치는 시작 위치로 되감기"
                   >
                     <RotateCcw className="h-4 w-4" />
                   </button>
@@ -782,10 +841,12 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                           setTargetOffset(initialTargetOffset);
                           if (playerA && playerB) {
                             try {
-                              const timeA = playerA.getCurrentTime();
-                              const concertTime = timeA + (anchorVideo.sync_offset || 0);
-                              const expectedB = Math.max(0, concertTime - initialTargetOffset);
-                              playerB.seekTo(expectedB, true);
+                              const anchorStart = anchorVideo.sync_offset || 0;
+                              const overlapStart = Math.max(anchorStart, initialTargetOffset);
+                              const startA = Math.max(0, overlapStart - anchorStart);
+                              const startB = Math.max(0, overlapStart - initialTargetOffset);
+                              playerA.seekTo(startA, true);
+                              playerB.seekTo(startB, true);
                             } catch (e) {}
                           }
                         }}
@@ -827,13 +888,19 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                       setTargetOffset(newOff);
                       if (playerA && playerB) {
                         try {
-                          const timeA = playerA.getCurrentTime();
-                          const concertTime = timeA + (anchorVideo.sync_offset || 0);
-                          const expectedB = Math.max(0, concertTime - newOff);
+                          const anchorStart = anchorVideo.sync_offset || 0;
+                          let timeA = playerA.getCurrentTime();
+                          let concertTime = timeA + anchorStart;
+                          let expectedB = concertTime - newOff;
                           const targetDur = (targetVideo?.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
-                          if (expectedB <= targetDur) {
-                            playerB.seekTo(expectedB, true);
+
+                          if (expectedB < 0 || expectedB > targetDur) {
+                            const overlapStart = Math.max(anchorStart, newOff);
+                            timeA = Math.max(0, overlapStart - anchorStart);
+                            expectedB = Math.max(0, overlapStart - newOff);
+                            playerA.seekTo(timeA, true);
                           }
+                          playerB.seekTo(expectedB, true);
                         } catch (err) {}
                       }
                     }}
