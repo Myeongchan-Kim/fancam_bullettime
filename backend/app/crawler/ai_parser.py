@@ -95,7 +95,8 @@ def should_retry(exception):
 
 # Fallback 모델 리스트 (최신 모델 및 무료 할당량을 최대한 활용하기 위함)
 FALLBACK_MODELS = [
-    "gemini-3.7-flash",      # 최신 고성능 모델
+    "gemini-3.8-flash",      # 최신 고성능 플래시 모델
+    "gemini-3.7-flash",      # 고성능 모델
     "gemini-3.1-flash-lite", # RPD 500, RPM 15 (가장 넉넉함)
     "gemini-2.5-flash",      # RPD 20, RPM 5
     "gemini-2.5-flash-lite"  # RPD 20, RPM 10
