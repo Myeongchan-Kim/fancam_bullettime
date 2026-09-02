@@ -3,6 +3,7 @@ import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, ExternalLink, Volume2, VolumeX } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
+import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime } from '../utils/timelineSync';
 
 export interface MultiAnglePlayerRef {
   getCurrentConcertTime: () => number;
@@ -46,19 +47,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const slaveVideos = useMemo(() => {
     const filtered = videos.filter(v => {
       if (v.id === masterId) return false;
-
-      // Strict Time-based filtering for all videos
-      const PADDING = 30; // 30s as requested by the user
-      const effectiveDuration = (v.duration && v.duration > 0) ? v.duration : 9999; 
-
-      const hasStarted = currentConcertTime >= (v.sync_offset - PADDING);
-      const hasEnded = currentConcertTime > (v.sync_offset + effectiveDuration + PADDING);
-
-      return hasStarted && !hasEnded;
+      return isVideoActiveAtConcertTime(v, currentConcertTime, 30);
     });
 
     // Sort to prioritize shorter, specific fancams over massive full concerts if they overlap
-    // Assuming full concerts have duration > 3600 (1 hour) or very large effectiveDuration
     return filtered.sort((a, b) => {
       const durA = (a.duration && a.duration > 0) ? a.duration : 9999;
       const durB = (b.duration && b.duration > 0) ? b.duration : 9999;
@@ -91,9 +83,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       const masterPlayer = players[masterId];
       if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
-      const masterTime = masterPlayer.getCurrentTime();
-      const masterOffset = masterVideo?.sync_offset || 0;
-      const newConcertTime = masterTime + masterOffset;
+      const masterLocalTime = masterPlayer.getCurrentTime();
+      const newConcertTime = masterVideo ? getMasterConcertTime(masterVideo, masterLocalTime) : masterLocalTime;
       
       currentConcertTimeRef.current = newConcertTime;
       setCurrentConcertTime(newConcertTime);
@@ -104,12 +95,12 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       slaveVideosRef.current.forEach(slave => {
         const slavePlayer = players[slave.id];
         if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
-          const slaveTime = slavePlayer.getCurrentTime();
-          const slaveOffset = slave.sync_offset || 0;
-          const targetSlaveTime = masterTime + masterOffset - slaveOffset;
-          
-          if (targetSlaveTime >= 0 && Math.abs(slaveTime - targetSlaveTime) > SYNC_THRESHOLD) {
-            slavePlayer.seekTo(targetSlaveTime, true);
+          const targetSlaveTime = getLocalVideoTime(slave, newConcertTime, 0);
+          if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+            const slaveTime = slavePlayer.getCurrentTime();
+            if (Math.abs(slaveTime - targetSlaveTime) > SYNC_THRESHOLD) {
+              slavePlayer.seekTo(targetSlaveTime, true);
+            }
           }
         }
       });
@@ -195,7 +186,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
     // Calculate the target time for the new master video based on current concert time
     const newMaster = videos.find(v => v.id === id);
-    const targetTime = newMaster ? Math.max(0, currentConcertTimeRef.current - (newMaster.sync_offset || 0)) : 0;
+    const targetTime = newMaster ? (getLocalVideoTime(newMaster, currentConcertTimeRef.current, 0) ?? 0) : 0;
 
     // Crucial: Update URL first. Pushing to history allows the back button to work.
     // The ?t= param ensures the new video starts at the exact synchronized time.
@@ -220,8 +211,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const getSlaveOpts = (slaveVideo: Video) => {
     // We'll use a one-time calculation for the initial start time 
     // to avoid the player restarting when currentConcertTime updates.
-    const initialConcertTime = initialTime + (masterVideo?.sync_offset || 0);
-    const targetTime = Math.max(0, initialConcertTime - (slaveVideo.sync_offset || 0));
+    const initialConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
+    const targetTime = getLocalVideoTime(slaveVideo, initialConcertTime, 0) ?? 0;
 
     return {
       width: '100%',
@@ -242,9 +233,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   // Only show slave videos that are actually active at the CURRENT concert time
   const activeSlaveVideos = useMemo(() => {
     return slaveVideos.filter(v => {
-      const targetTime = currentConcertTime - (v.sync_offset || 0);
-      const duration = (v.duration && v.duration > 0) ? v.duration : 9999;
-      return targetTime >= 0 && targetTime <= duration;
+      return getLocalVideoTime(v, currentConcertTime, 0) !== null;
     });
   }, [slaveVideos, currentConcertTime]);
 

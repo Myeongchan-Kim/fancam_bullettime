@@ -56,10 +56,37 @@ class VideoBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class VideoSyncSegmentBase(BaseModel):
+    id: int
+    video_id: int
+    setlist_id: Optional[int] = None
+    video_start_time: float
+    video_end_time: float
+    master_start_time: float
+    master_end_time: float
+    sync_offset: float
+    label: Optional[str] = None
+    is_verified: bool = False
+    created_at: datetime
+    setlist: Optional[ConcertSetlistBase] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class VideoSyncSegmentCreate(BaseModel):
+    setlist_id: Optional[int] = None
+    video_start_time: float
+    video_end_time: float
+    master_start_time: float
+    master_end_time: float
+    sync_offset: Optional[float] = None # If None, auto-calculated as master_start_time - video_start_time
+    label: Optional[str] = None
+    is_verified: Optional[bool] = False
+
 class VideoDetail(VideoBase):
     song: Optional[SongBase] = None # Deprecated
     songs: List[SongBase] = []
     concert: Optional[ConcertBase] = None
+    sync_segments: List[VideoSyncSegmentBase] = []
 
 class VideoUpdate(BaseModel):
     title: Optional[str] = None

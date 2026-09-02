@@ -67,6 +67,7 @@ class Video(Base):
     songs = relationship("Song", secondary=video_song_association, back_populates="videos_list", lazy="selectin")
     concert = relationship("Concert", back_populates="videos", lazy="joined")
     contributions = relationship("Contribution", back_populates="video", lazy="select")
+    sync_segments = relationship("VideoSyncSegment", back_populates="video", cascade="all, delete-orphan", order_by=lambda: VideoSyncSegment.video_start_time, lazy="selectin")
 
 class Song(Base):
     __tablename__ = "songs"
@@ -147,3 +148,31 @@ class Contribution(Base):
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
     
     video = relationship("Video", back_populates="contributions", lazy="joined")
+
+class VideoSyncSegment(Base):
+    __tablename__ = "video_sync_segments"
+    id = Column(Integer, primary_key=True, index=True)
+    video_id = Column(Integer, ForeignKey("videos.id", ondelete="CASCADE"), index=True, nullable=False)
+    
+    # Linked to ConcertSetlist if applicable
+    setlist_id = Column(Integer, ForeignKey("concert_setlists.id", ondelete="SET NULL"), nullable=True, index=True)
+    
+    # Video timestamp range (in seconds)
+    video_start_time = Column(Float, nullable=False)
+    video_end_time = Column(Float, nullable=False)
+    
+    # Master Concert timeline timestamp range (in seconds)
+    master_start_time = Column(Float, nullable=False)
+    master_end_time = Column(Float, nullable=False)
+    
+    # Offset for this segment: master_start_time - video_start_time
+    sync_offset = Column(Float, nullable=False)
+    
+    # Metadata / label (e.g., song title, act name, or note)
+    label = Column(String, nullable=True)
+    is_verified = Column(Boolean, default=False)
+    
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+    
+    video = relationship("Video", back_populates="sync_segments")
+    setlist = relationship("ConcertSetlist", lazy="joined")

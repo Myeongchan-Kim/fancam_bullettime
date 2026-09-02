@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, and_, String
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ...models.models import Video, Song, Concert, ConcertSetlist, Contribution
-from ...schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination
+from ...models.models import Video, Song, Concert, ConcertSetlist, Contribution, VideoSyncSegment
+from ...schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination, VideoSyncSegmentBase, VideoSyncSegmentCreate
 from ...db import get_db
 from .utils import ensure_list, verify_admin
 
@@ -154,7 +154,11 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
 
 @router.get("/videos/{video_id}", response_model=VideoDetail)
 def get_video(video_id: int, db: Session = Depends(get_db)):
-    video = db.query(Video).options(selectinload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    video = db.query(Video).options(
+        selectinload(Video.songs),
+        joinedload(Video.concert),
+        selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
+    ).filter(Video.id == video_id).first()
     if not video: raise HTTPException(status_code=404, detail="Video not found")
     video.members = ensure_list(video.members)
     return video
@@ -174,14 +178,19 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
     
     db.commit()
     db.refresh(db_video)
-    return db.query(Video).options(selectinload(Video.songs), joinedload(Video.concert)).filter(Video.id == video_id).first()
+    return db.query(Video).options(
+        selectinload(Video.songs),
+        joinedload(Video.concert),
+        selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
+    ).filter(Video.id == video_id).first()
 
 @router.get("/videos/{video_id}/full", response_model=VideoFullDetail)
 def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
     """Combined endpoint to fetch everything needed for the detail page in ONE request."""
     video = db.query(Video).options(
         selectinload(Video.songs), 
-        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+        joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song),
+        selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
     ).filter(Video.id == video_id).first()
     
     if not video:
@@ -192,7 +201,8 @@ def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
     related_videos = []
     if video.concert_id:
         related_videos = db.query(Video).options(
-            selectinload(Video.songs)
+            selectinload(Video.songs),
+            selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
         ).filter(Video.concert_id == video.concert_id, Video.id != video_id).all()
         for v in related_videos:
             v.members = ensure_list(v.members)
@@ -224,3 +234,95 @@ def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
         "concerts": concerts,
         "contributions": formatted_contribs
     }
+
+# =========================================================================
+# Video Sync Segment Endpoints (Piecewise Timeline Sync)
+# =========================================================================
+
+@router.get("/videos/{video_id}/segments", response_model=List[VideoSyncSegmentBase])
+def get_video_segments(video_id: int, db: Session = Depends(get_db)):
+    """특정 영상의 구간별 타임라인 동기화(Segment) 목록 조회"""
+    segments = db.query(VideoSyncSegment).options(
+        joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
+    ).filter(VideoSyncSegment.video_id == video_id).order_by(VideoSyncSegment.video_start_time.asc()).all()
+    return segments
+
+@router.post("/videos/{video_id}/segments", response_model=VideoSyncSegmentBase)
+def create_video_segment(
+    video_id: int,
+    seg_in: VideoSyncSegmentCreate,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """특정 영상에 새로운 구간 오프셋 생성"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    offset = seg_in.sync_offset
+    if offset is None:
+        offset = seg_in.master_start_time - seg_in.video_start_time
+
+    new_seg = VideoSyncSegment(
+        video_id=video_id,
+        setlist_id=seg_in.setlist_id,
+        video_start_time=seg_in.video_start_time,
+        video_end_time=seg_in.video_end_time,
+        master_start_time=seg_in.master_start_time,
+        master_end_time=seg_in.master_end_time,
+        sync_offset=offset,
+        label=seg_in.label,
+        is_verified=seg_in.is_verified or False
+    )
+    db.add(new_seg)
+    db.commit()
+    db.refresh(new_seg)
+    return new_seg
+
+@router.post("/videos/{video_id}/segments/bulk", response_model=List[VideoSyncSegmentBase])
+def set_video_segments_bulk(
+    video_id: int,
+    segments_in: List[VideoSyncSegmentCreate],
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """특정 영상의 전체 구간 오프셋 일괄 교체/저장"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    # 기존 세그먼트 삭제 후 일괄 생성
+    db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == video_id).delete()
+
+    created = []
+    for s in segments_in:
+        offset = s.sync_offset if s.sync_offset is not None else (s.master_start_time - s.video_start_time)
+        new_seg = VideoSyncSegment(
+            video_id=video_id,
+            setlist_id=s.setlist_id,
+            video_start_time=s.video_start_time,
+            video_end_time=s.video_end_time,
+            master_start_time=s.master_start_time,
+            master_end_time=s.master_end_time,
+            sync_offset=offset,
+            label=s.label,
+            is_verified=s.is_verified or False
+        )
+        db.add(new_seg)
+        created.append(new_seg)
+
+    db.commit()
+    for s in created:
+        db.refresh(s)
+    return created
+
+@router.delete("/videos/segments/{segment_id}")
+def delete_video_segment(segment_id: int, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
+    """특정 세그먼트 삭제"""
+    seg = db.query(VideoSyncSegment).filter(VideoSyncSegment.id == segment_id).first()
+    if not seg:
+        raise HTTPException(status_code=404, detail="Segment not found")
+    db.delete(seg)
+    db.commit()
+    return {"status": "success", "message": f"Segment {segment_id} deleted"}
+

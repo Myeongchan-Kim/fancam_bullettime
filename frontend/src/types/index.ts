@@ -30,10 +30,26 @@ export interface Concert {
   setlist?: ConcertSetlist[];
 }
 
+export interface VideoSyncSegment {
+  id: number;
+  video_id: number;
+  setlist_id?: number | null;
+  video_start_time: number;
+  video_end_time: number;
+  master_start_time: number;
+  master_end_time: number;
+  sync_offset: number;
+  label?: string | null;
+  is_verified?: boolean;
+  created_at?: string;
+  setlist?: ConcertSetlist;
+}
+
 export interface Video {
   id: number;
   youtube_id: string;
   title: string;
+  description?: string | null;
   thumbnail_url: string;
   url: string;
   members: string[];
@@ -46,6 +62,7 @@ export interface Video {
   created_at: string;
   songs?: Song[];
   concert?: Concert;
+  sync_segments?: VideoSyncSegment[];
 }
 
 export interface Contribution {
