@@ -308,7 +308,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [playerA, playerB, isPlaying, targetOffset, targetVideo]);
 
-  // Sync Interval Loop (With Strict Bounds Protection)
+  // Sync Interval Loop (With Strict Bounds Protection & Standby Holding)
   useEffect(() => {
     if (!isPlaying || !playerA || !playerB || !targetVideo) return;
 
@@ -319,14 +319,35 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
         const expectedTimeB = concertTime - targetOffset;
         const targetDur = (targetVideo.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
 
-        if (expectedTimeB >= 0 && expectedTimeB <= targetDur) {
+        if (expectedTimeB < 0) {
+          // [대기 상태] Reference A가 아직 Target B 시작 시점에 도달하지 않음 -> Target B는 0초에서 일시정지 대기
           const actualTimeB = playerB.getCurrentTime();
-          if (Math.abs(actualTimeB - expectedTimeB) > 0.3) {
-            playerB.seekTo(expectedTimeB, true);
+          if (actualTimeB > 0.1) {
+            playerB.seekTo(0, true);
           }
+          // 혹시 재생 중이면 일시정지 상태로 대기
+          const playerStateB = playerB.getPlayerState?.();
+          if (playerStateB === 1) { // 1 = playing
+            playerB.pauseVideo();
+          }
+        } else if (expectedTimeB >= 0 && expectedTimeB <= targetDur) {
+          // [동기화 재생 상태] 시작 시점에 도달했거나 진행 중 -> Target B 재생 및 위치 동기화
+          const playerStateB = playerB.getPlayerState?.();
+          if (playerStateB === 2 || playerStateB === 5 || playerStateB === -1) { // paused or cued or unstarted
+            playerB.seekTo(expectedTimeB, true);
+            playerB.playVideo();
+          } else {
+            const actualTimeB = playerB.getCurrentTime();
+            if (Math.abs(actualTimeB - expectedTimeB) > 0.3) {
+              playerB.seekTo(expectedTimeB, true);
+            }
+          }
+        } else {
+          // [종료 상태] Target B 영상 길이를 초과함 -> 마지막 프레임 정지
+          playerB.pauseVideo();
         }
       } catch (err) {}
-    }, 500);
+    }, 250);
 
     return () => clearInterval(interval);
   }, [isPlaying, playerA, playerB, targetOffset, anchorVideo, targetVideo]);
@@ -340,24 +361,26 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
       setIsPlaying(false);
     } else {
       const anchorStart = anchorVideo.sync_offset || 0;
-      let timeA = playerA.getCurrentTime();
-      let concertTime = timeA + anchorStart;
-      let expectedTimeB = concertTime - targetOffset;
+      const timeA = playerA.getCurrentTime();
+      const concertTime = timeA + anchorStart;
+      const expectedTimeB = concertTime - targetOffset;
       const targetDur = (targetVideo.duration && targetVideo.duration > 0) ? targetVideo.duration : 300;
       
-      // If out of bounds of Target B, snap both to the overlap start!
-      if (expectedTimeB < 0 || expectedTimeB > targetDur) {
-        const overlapStart = Math.max(anchorStart, targetOffset);
-        timeA = Math.max(0, overlapStart - anchorStart);
-        expectedTimeB = Math.max(0, overlapStart - targetOffset);
-        playerA.seekTo(timeA, true);
+      if (expectedTimeB < 0) {
+        // Target B가 시작되기 전이므로 A만 먼저 재생하고 B는 0초에서 대기
+        playerB.seekTo(0, true);
+        playerB.pauseVideo();
+        playerA.playVideo();
+      } else if (expectedTimeB <= targetDur) {
+        // 이미 겹치는 구간이면 둘 다 동시 재생
         playerB.seekTo(expectedTimeB, true);
+        playerA.playVideo();
+        playerB.playVideo();
       } else {
-        playerB.seekTo(expectedTimeB, true);
+        // 이미 대상 영상 끝을 지난 경우 A만 재생
+        playerB.pauseVideo();
+        playerA.playVideo();
       }
-      
-      playerA.playVideo();
-      playerB.playVideo();
       setIsPlaying(true);
     }
   };
