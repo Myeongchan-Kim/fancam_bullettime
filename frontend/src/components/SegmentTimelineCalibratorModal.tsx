@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle
+  X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2
 } from 'lucide-react';
 import { Video, VideoSyncSegment } from '../types';
 
@@ -22,6 +22,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
   const [segments, setSegments] = useState<VideoSyncSegment[]>(video.sync_segments || []);
   const setlist = video.concert?.setlist || [];
   const [isSaving, setIsSaving] = useState(false);
+  const [isAutoAligning, setIsAutoAligning] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   const adminKey = localStorage.getItem('admin_key') || '';
@@ -186,6 +187,33 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
     setStatusMessage({ type: 'info', text: `설명란에서 ${newSegs.length}개 구간을 추출했습니다. [전체 구간 저장]을 눌러 적용하세요.` });
   };
 
+  // Handle AI Boundary Probe Auto Align
+  const handleAutoAlign = async () => {
+    setIsAutoAligning(true);
+    setStatusMessage({ type: 'info', text: '🎧 AI 오디오 핑거프린트 및 양끝 프로브(Boundary Probe)로 콘서트 타임라인 자동 정렬 중...' });
+    try {
+      const res = await axios.post(`${API_BASE_URL}/videos/${video.id}/auto-align-segments`);
+      if (res.data && res.data.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `🎯 [AI 자동 정렬 완료] ${res.data.is_uncut ? '무편집 통짜 영상 (오프셋: ' + res.data.delta_start.toFixed(2) + 's)' : '구간 편집본'} 판정 - ${res.data.segments_count}개 세그먼트 매핑 완료!`
+        });
+        await fetchSegments();
+        if (onSaveSuccess) onSaveSuccess();
+      } else {
+        setStatusMessage({ type: 'error', text: res.data?.error || 'AI 정렬에 실패했습니다.' });
+      }
+    } catch (err: any) {
+      console.error('Auto-align failed:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err.response?.data?.detail || 'AI 자동 정렬 중 오류가 발생했습니다.'
+      });
+    } finally {
+      setIsAutoAligning(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
@@ -208,12 +236,22 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleAutoAlign}
+              disabled={isAutoAligning}
+              className="px-3.5 py-2 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 hover:from-indigo-600/50 hover:to-purple-600/50 text-indigo-300 text-xs font-bold rounded-xl border border-indigo-500/40 transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              title="양끝 프로브(Boundary Probe) 및 오디오 교차 상관으로 1초 만에 전체 콘서트 구간 자동 정렬"
+            >
+              {isAutoAligning ? <Loader2 className="h-4 w-4 animate-spin text-indigo-400" /> : <Zap className="h-4 w-4 text-indigo-400" />}
+              {isAutoAligning ? 'AI 정렬 중...' : 'AI 양끝 프로브 자동 정렬'}
+            </button>
+
+            <button
               onClick={handleAutoGenerateFromDescription}
               className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-twice-apricot text-xs font-bold rounded-xl border border-twice-apricot/30 transition-all flex items-center gap-1.5 shadow-sm"
               title="유튜브 설명란의 00:00:00 타임스탬프를 읽어와 자동으로 구간 생성"
             >
               <Sparkles className="h-4 w-4" />
-              설명란 자동 파싱
+              설명란 파싱
             </button>
 
             <button

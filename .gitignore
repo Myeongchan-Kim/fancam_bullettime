@@ -30,3 +30,5 @@ Thumbs.db
 .overkill/
 .vercel
 .env*
+scratch/
+backend/scratch/

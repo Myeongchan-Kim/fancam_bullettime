@@ -326,3 +326,20 @@ def delete_video_segment(segment_id: int, db: Session = Depends(get_db), admin: 
     db.commit()
     return {"status": "success", "message": f"Segment {segment_id} deleted"}
 
+@router.post("/videos/{video_id}/auto-align-segments")
+def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
+    """
+    양끝 프로브(Boundary Probe) 및 오디오 교차 상관을 이용한 자동 타임라인 세그먼트 정렬
+    """
+    from app.crawler.timeline_aligner import probe_video_boundaries_and_align
+    try:
+        res = probe_video_boundaries_and_align(video_id, db)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Failed to align segments"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
