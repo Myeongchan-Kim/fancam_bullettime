@@ -52,6 +52,7 @@ class VideoBase(BaseModel):
     sync_offset: float
     duration: float
     is_shorts: bool = False
+    is_unavailable: bool = False
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
