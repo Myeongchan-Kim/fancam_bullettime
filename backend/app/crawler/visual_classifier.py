@@ -27,6 +27,7 @@ except Exception as e:
 client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY", ""))
 
 FALLBACK_MODELS = [
+    "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.1-flash-lite",
     "gemini-2.5-flash"
