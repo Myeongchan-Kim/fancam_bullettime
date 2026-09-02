@@ -59,6 +59,7 @@ class Video(Base):
     sync_offset = Column(Float, default=0.0)
     duration = Column(Float, default=9999.0, index=True) # in seconds
     is_shorts = Column(Boolean, default=False)
+    is_unavailable = Column(Boolean, default=False, index=True)
     
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), index=True)
     

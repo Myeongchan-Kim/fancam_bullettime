@@ -20,6 +20,7 @@ def get_videos(
     member: Optional[str] = None,
     angle: Optional[str] = None,
     shorts_only: bool = Query(False),
+    include_unavailable: bool = Query(False),
     q: Optional[str] = None,
     start_order: Optional[int] = None,
     end_order: Optional[int] = None,
@@ -31,6 +32,9 @@ def get_videos(
         selectinload(Video.songs),
         joinedload(Video.concert)
     )
+
+    if not include_unavailable:
+        query = query.filter(Video.is_unavailable == False)
 
     if shorts_only: query = query.filter(Video.is_shorts == True)
     if concert_id: query = query.filter(Video.concert_id == concert_id)
@@ -110,7 +114,7 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
     try:
         songs = db.query(Song).order_by(Song.order).all()
         
-        concert_counts = db.query(Video.concert_id, func.count(Video.id)).group_by(Video.concert_id).all()
+        concert_counts = db.query(Video.concert_id, func.count(Video.id)).filter(Video.is_unavailable == False).group_by(Video.concert_id).all()
         counts_dict = {c_id: count for c_id, count in concert_counts if c_id is not None}
         
         concerts = db.query(Concert).options(
@@ -124,12 +128,12 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
         latest_videos = db.query(Video).options(
             selectinload(Video.songs),
             joinedload(Video.concert)
-        ).distinct().order_by(Video.created_at.desc()).limit(24).all()
+        ).filter(Video.is_unavailable == False).distinct().order_by(Video.created_at.desc()).limit(24).all()
 
         mapped_videos = db.query(Video).options(
             selectinload(Video.songs),
             joinedload(Video.concert)
-        ).filter(Video.coordinate_x.isnot(None)).all()
+        ).filter(Video.coordinate_x.isnot(None), Video.is_unavailable == False).all()
 
         video_map = {v.id: v for v in mapped_videos}
         for v in latest_videos:
@@ -146,7 +150,7 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
             "songs": songs,
             "concerts": concerts,
             "videos": videos,
-            "total_videos": db.query(Video).count()
+            "total_videos": db.query(Video).filter(Video.is_unavailable == False).count()
         }
     except Exception as e:
         logger.error(f"❌ Error in get_home_summary: {str(e)}")
@@ -162,6 +166,16 @@ def get_video(video_id: int, db: Session = Depends(get_db)):
     if not video: raise HTTPException(status_code=404, detail="Video not found")
     video.members = ensure_list(video.members)
     return video
+
+@router.post("/videos/{video_id}/mark-unavailable")
+def mark_video_unavailable(video_id: int, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
+    """특정 영상을 비공개/삭제(Unavailable)로 마킹하여 UI에서 제외"""
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+    video.is_unavailable = True
+    db.commit()
+    return {"status": "success", "message": f"Video {video_id} marked as unavailable."}
 
 @router.patch("/videos/{video_id}", response_model=VideoDetail)
 def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
@@ -203,7 +217,11 @@ def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
         related_videos = db.query(Video).options(
             selectinload(Video.songs),
             selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
-        ).filter(Video.concert_id == video.concert_id, Video.id != video_id).all()
+        ).filter(
+            Video.concert_id == video.concert_id, 
+            Video.id != video_id,
+            Video.is_unavailable == False
+        ).all()
         for v in related_videos:
             v.members = ensure_list(v.members)
 
