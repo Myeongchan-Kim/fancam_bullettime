@@ -5,7 +5,8 @@ import axios from 'axios';
 import { 
   X, Play, Pause, RotateCcw, Save, Check, 
   Sliders, ShieldCheck, Layers, Filter, Crosshair,
-  GripVertical, MoveHorizontal, Sparkles
+  GripVertical, MoveHorizontal,
+  ArrowLeftRight, ExternalLink
 } from 'lucide-react';
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
@@ -37,8 +38,8 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   onSaved,
   adminKey = localStorage.getItem('admin_key') || ''
 }) => {
-  // Video A: Anchor (Fixed Reference)
-  const [anchorVideo] = useState<Video>(currentVideo);
+  // Video A: Anchor (Fixed Reference) - can be swapped dynamically
+  const [anchorVideo, setAnchorVideo] = useState<Video>(currentVideo);
   
   // Video B: Target video to calibrate against Anchor
   const [targetVideo, setTargetVideo] = useState<Video | null>(null);
@@ -122,6 +123,28 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     const off = v.sync_offset || 0;
     setTargetOffset(off);
     setInitialTargetOffset(off);
+    setSaveSuccess(false);
+    setSaveMessage('');
+  };
+
+  // ⇄ Swap Anchor Video A and Target Video B
+  const handleSwapVideos = () => {
+    if (!targetVideo) return;
+    const prevAnchor = anchorVideo;
+    const prevTarget = targetVideo;
+
+    // Pause playback before swapping to prevent audio glitches
+    try {
+      playerA?.pauseVideo();
+      playerB?.pauseVideo();
+    } catch (err) {}
+    setIsPlaying(false);
+
+    setAnchorVideo(prevTarget);
+    setTargetVideo(prevAnchor);
+    const newTargetOffset = prevAnchor.sync_offset || 0;
+    setTargetOffset(newTargetOffset);
+    setInitialTargetOffset(newTargetOffset);
     setSaveSuccess(false);
     setSaveMessage('');
   };
@@ -416,9 +439,9 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
               )}
             </div>
 
-            {/* Target Video Quick Switcher Dropdown */}
+            {/* Target Video Quick Switcher Dropdown & Swap Button */}
             <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-twice-magenta">🎯 보정 대상 선택:</span>
+              <span className="text-xs font-bold text-twice-magenta">🎯 보정 대상:</span>
               <select 
                 value={targetVideo?.id || 0} 
                 onChange={e => {
@@ -436,6 +459,17 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   );
                 })}
               </select>
+
+              {targetVideo && (
+                <button
+                  onClick={handleSwapVideos}
+                  className="px-3 py-2 bg-gradient-to-r from-twice-apricot to-twice-magenta hover:opacity-90 text-white text-xs font-black rounded-xl transition-all flex items-center gap-1.5 shadow-md shadow-twice-magenta/20 active:scale-95 shrink-0"
+                  title="기준 앵커(A)와 보정 대상(B) 영상을 서로 맞바꿉니다."
+                >
+                  <ArrowLeftRight className="h-3.5 w-3.5" />
+                  ⇄ 기준/대상 맞바꾸기
+                </button>
+              )}
             </div>
           </div>
 
@@ -498,38 +532,30 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                         {v.title.slice(0, 55)}
                         {isSelected && (
                           <span className="text-[10px] bg-twice-magenta/20 text-pink-300 px-2 py-0.5 rounded-full font-bold flex items-center gap-1">
-                            <Sparkles className="h-2.5 w-2.5 text-twice-magenta animate-spin" style={{ animationDuration: '4s' }} />
-                            드래그 가능
+                            <Crosshair className="h-3 w-3 animate-spin" /> 타겟 보정 중
                           </span>
                         )}
                       </span>
-                      <span className="font-mono text-[10px] text-gray-400 shrink-0 ml-2">
-                        {formatDuration(vDur)} | Offset: <strong className={isSelected ? 'text-white' : 'text-gray-400'}>{formatTime(currentOffsetForBar)}</strong>
+                      <span className="font-mono text-[10px] text-gray-400">
+                        Offset: {formatTime(currentOffsetForBar)} ({formatDuration(vDur)})
                       </span>
                     </div>
 
-                    {/* Track Container */}
+                    {/* Interactive Draggable Bar for Selected Target */}
                     <div 
-                      ref={isSelected ? trackContainerRef : undefined}
-                      className={`h-5 bg-slate-900 rounded-lg overflow-hidden relative border ${isSelected ? 'border-twice-magenta/40 bg-slate-950/80 shadow-inner' : 'border-white/5'}`}
+                      ref={isSelected ? trackContainerRef : null}
+                      onPointerDown={isSelected ? handlePointerDown : undefined}
+                      onPointerMove={isSelected ? handlePointerMove : undefined}
+                      onPointerUp={isSelected ? handlePointerUp : undefined}
+                      onPointerCancel={isSelected ? handlePointerUp : undefined}
+                      className={`h-6 bg-slate-950 rounded-lg overflow-hidden relative select-none ${isSelected ? 'cursor-grab active:cursor-grabbing border border-twice-magenta/40' : 'border border-white/5'}`}
                     >
-                      {/* Interactive Bar */}
                       <div 
-                        onPointerDown={isSelected ? handlePointerDown : undefined}
-                        onPointerMove={isSelected ? handlePointerMove : undefined}
-                        onPointerUp={isSelected ? handlePointerUp : undefined}
-                        onPointerCancel={isSelected ? handlePointerUp : undefined}
-                        className={`h-full rounded-md transition-shadow relative flex items-center justify-between px-1.5 select-none ${
-                          isSelected 
-                            ? 'bg-gradient-to-r from-pink-500 via-twice-magenta to-purple-600 cursor-grab active:cursor-grabbing shadow-md shadow-pink-500/30 ring-1 ring-white/30' 
-                            : 'bg-slate-700 opacity-70 group-hover:opacity-100 cursor-pointer'
-                        } ${isDragging && isSelected ? 'scale-[1.02] ring-2 ring-white z-20 brightness-110' : ''}`}
+                        className={`h-full rounded-md transition-all flex items-center justify-between px-2 ${isSelected ? 'bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30' : memberTheme.bar + ' opacity-40 group-hover:opacity-60'}`}
                         style={{
                           marginLeft: `${Math.max(0, ((currentOffsetForBar - timelineMin) / timelineSpan) * 100)}%`,
-                          width: `${Math.min(100, (vDur / timelineSpan) * 100)}%`,
-                          touchAction: 'none'
+                          width: `${Math.min(100, (vDur / timelineSpan) * 100)}%`
                         }}
-                        title={isSelected ? "바를 마우스로 잡고 좌우로 드래그하여 싱크를 조절하세요" : "클릭하여 이 영상을 보정 대상으로 선택"}
                       >
                         {isSelected && (
                           <>
@@ -550,68 +576,115 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
 
           {/* 3. Side-by-Side Dual Synchronized Player */}
           {targetVideo && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              
-              {/* Left Player: Anchor Video A */}
-              <div className="bg-slate-900 rounded-2xl p-3 border border-twice-apricot/30 flex flex-col space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-black uppercase tracking-tight text-twice-apricot flex items-center gap-1.5">
-                    👑 기준 앵커 (Reference A)
+            <div className="space-y-3">
+              {/* Dual Player Swap Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/90 px-4 py-2.5 rounded-2xl border border-slate-800 shadow-lg">
+                <div className="flex items-center gap-2 text-xs text-gray-400 truncate">
+                  <span className="font-bold text-twice-apricot flex items-center gap-1">
+                    👑 A (기준): {anchorVideo.title.slice(0, 30)}...
                   </span>
-                  <span className="text-[11px] font-mono text-gray-400 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
-                    Offset: {anchorStart.toFixed(2)}s ({formatDuration(anchorDur)})
+                  <ArrowLeftRight className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                  <span className="font-bold text-twice-magenta flex items-center gap-1">
+                    🎯 B (대상): {targetVideo.title.slice(0, 30)}...
                   </span>
                 </div>
-                <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
-                  <YouTube
-                    videoId={anchorVideo.youtube_id}
-                    className="w-full h-full"
-                    opts={{
-                      width: '100%',
-                      height: '100%',
-                      playerVars: { autoplay: 0, controls: 1, mute: 1, playsinline: 1 }
-                    }}
-                    onReady={(e) => {
-                      setPlayerA(e.target);
-                      e.target.mute();
-                    }}
-                  />
-                </div>
-                <div className="truncate text-[11px] font-bold text-gray-300 px-1">
-                  {anchorVideo.title}
-                </div>
+                <button
+                  onClick={handleSwapVideos}
+                  className="px-4 py-2 bg-gradient-to-r from-twice-apricot to-twice-magenta text-white font-black text-xs rounded-xl shadow-md shadow-twice-magenta/20 hover:scale-105 active:scale-95 transition-all flex items-center gap-2 border border-white/20 shrink-0"
+                  title="기준 앵커(A)와 보정 대상(B) 영상을 서로 맞바꿉니다."
+                >
+                  <ArrowLeftRight className="h-4 w-4" />
+                  ⇄ 기준 ↔ 대상 영상 맞바꾸기 (Swap)
+                </button>
               </div>
 
-              {/* Right Player: Target Video B */}
-              <div className="bg-slate-900 rounded-2xl p-3 border border-twice-magenta/40 flex flex-col space-y-2">
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs font-black uppercase tracking-tight text-twice-magenta flex items-center gap-1.5">
-                    🎯 보정 대상 (Target B)
-                  </span>
-                  <span className="text-[11px] font-mono font-bold text-twice-magenta bg-twice-magenta/10 px-2 py-0.5 rounded-lg border border-twice-magenta/30">
-                    Offset: {targetOffset.toFixed(2)}s ({formatDuration(targetVideo.duration)})
-                  </span>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                
+                {/* Left Player: Anchor Video A */}
+                <div className="bg-slate-900 rounded-2xl p-3 border border-twice-apricot/30 flex flex-col space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-black uppercase tracking-tight text-twice-apricot flex items-center gap-1.5">
+                      👑 기준 앵커 (Reference A)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono text-gray-400 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5">
+                        Offset: {anchorStart.toFixed(2)}s ({formatDuration(anchorDur)})
+                      </span>
+                      <a
+                        href={`/video/${anchorVideo.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-gray-400 hover:text-white flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5 hover:border-twice-apricot/40 transition-all"
+                        title="이 영상의 상세 페이지 새 탭으로 열기"
+                      >
+                        <span>페이지</span>
+                        <ExternalLink className="h-3 w-3 text-twice-apricot" />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
+                    <YouTube
+                      videoId={anchorVideo.youtube_id}
+                      className="w-full h-full"
+                      opts={{
+                        width: '100%',
+                        height: '100%',
+                        playerVars: { autoplay: 0, controls: 1, mute: 1, playsinline: 1 }
+                      }}
+                      onReady={(e) => {
+                        setPlayerA(e.target);
+                        e.target.mute();
+                      }}
+                    />
+                  </div>
+                  <div className="truncate text-[11px] font-bold text-gray-300 px-1">
+                    {anchorVideo.title}
+                  </div>
                 </div>
-                <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
-                  <YouTube
-                    videoId={targetVideo.youtube_id}
-                    className="w-full h-full"
-                    opts={{
-                      width: '100%',
-                      height: '100%',
-                      playerVars: { autoplay: 0, controls: 1, mute: 1, playsinline: 1 }
-                    }}
-                    onReady={(e) => {
-                      setPlayerB(e.target);
-                      e.target.mute();
-                    }}
-                  />
-                </div>
-                <div className="truncate text-[11px] font-bold text-gray-300 px-1">
-                  {targetVideo.title}
-                </div>
-              </div>
 
+                {/* Right Player: Target Video B */}
+                <div className="bg-slate-900 rounded-2xl p-3 border border-twice-magenta/40 flex flex-col space-y-2">
+                  <div className="flex items-center justify-between px-1">
+                    <span className="text-xs font-black uppercase tracking-tight text-twice-magenta flex items-center gap-1.5">
+                      🎯 보정 대상 (Target B)
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-mono font-bold text-twice-magenta bg-twice-magenta/10 px-2 py-0.5 rounded-lg border border-twice-magenta/30">
+                        Offset: {targetOffset.toFixed(2)}s ({formatDuration(targetVideo.duration)})
+                      </span>
+                      <a
+                        href={`/video/${targetVideo.id}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-[10px] font-bold text-gray-400 hover:text-white flex items-center gap-1 bg-slate-950 px-2 py-0.5 rounded-lg border border-white/5 hover:border-twice-magenta/40 transition-all"
+                        title="이 영상의 상세 페이지 새 탭으로 열기"
+                      >
+                        <span>페이지</span>
+                        <ExternalLink className="h-3 w-3 text-twice-magenta" />
+                      </a>
+                    </div>
+                  </div>
+                  <div className="aspect-video bg-black rounded-xl overflow-hidden relative shadow-inner">
+                    <YouTube
+                      videoId={targetVideo.youtube_id}
+                      className="w-full h-full"
+                      opts={{
+                        width: '100%',
+                        height: '100%',
+                        playerVars: { autoplay: 0, controls: 1, mute: 1, playsinline: 1 }
+                      }}
+                      onReady={(e) => {
+                        setPlayerB(e.target);
+                        e.target.mute();
+                      }}
+                    />
+                  </div>
+                  <div className="truncate text-[11px] font-bold text-gray-300 px-1">
+                    {targetVideo.title}
+                  </div>
+                </div>
+
+              </div>
             </div>
           )}
 
