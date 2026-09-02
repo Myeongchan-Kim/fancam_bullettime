@@ -246,12 +246,23 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+      
+      const isShift = e.shiftKey;
+      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
+
+      let step = 0.5; // 기본: 0.5초
+      if (isShift && isCtrlOrCmd) {
+        step = 0.05; // Ctrl + Shift: 0.05초 (초미세)
+      } else if (isShift) {
+        step = 0.1; // Shift: 0.1초 (미세)
+      }
+
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        nudge(e.shiftKey ? -0.5 : -0.05);
+        nudge(-step);
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        nudge(e.shiftKey ? 0.5 : 0.05);
+        nudge(step);
       }
     };
 
@@ -830,10 +841,13 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   />
                 </div>
 
-                {/* Micro Step Nudge Buttons */}
-                <div className="grid grid-cols-6 gap-2">
+                {/* Step Nudge Buttons (0.05s, 0.1s, 0.5s, 1.0s) */}
+                <div className="grid grid-cols-4 sm:grid-cols-8 gap-1.5">
                   <button onClick={() => nudge(-1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     -1.0s
+                  </button>
+                  <button onClick={() => nudge(-0.5)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
+                    -0.50s
                   </button>
                   <button onClick={() => nudge(-0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     -0.10s
@@ -847,13 +861,19 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   <button onClick={() => nudge(+0.1)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     +0.10s
                   </button>
+                  <button onClick={() => nudge(+0.5)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
+                    +0.50s
+                  </button>
                   <button onClick={() => nudge(+1.0)} className="py-2.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-mono text-xs font-black rounded-xl transition-all active:scale-95 shadow-sm">
                     +1.0s
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] text-gray-500 pt-1 px-1">
-                  <span>💡 단축키: <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">→</kbd> 방향키로 0.05초 미세조정 (<kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> 누르면 0.5초)</span>
+                <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500 pt-1 px-1">
+                  <span>
+                    💡 단축키: <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">←</kbd> <kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 font-mono text-[10px]">→</kbd> (0.5초) │ <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> + 방향키 (0.1초) │ <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Ctrl</kbd> + <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> + 방향키 (0.05초)
+                  </span>
+                  <span><kbd className="px-1.5 py-0.5 bg-slate-800 text-gray-300 rounded border border-white/10 text-[9px]">Space</kbd> 재생/정지</span>
                 </div>
               </div>
 
