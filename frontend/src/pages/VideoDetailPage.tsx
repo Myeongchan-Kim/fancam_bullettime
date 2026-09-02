@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
 import MultiAnglePlayer, { MultiAnglePlayerRef } from '../components/MultiAnglePlayer';
 import ConcertTimelineModal from '../components/ConcertTimelineModal';
 import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
+import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
@@ -27,6 +28,7 @@ const VideoDetailPage = () => {
   const [previewContrib, setPreviewContrib] = useState<Contribution | null>(null);
   const [showTimelineInfo, setShowTimelineInfo] = useState(false);
   const [showPairwiseCalibrator, setShowPairwiseCalibrator] = useState(false);
+  const [showSegmentCalibrator, setShowSegmentCalibrator] = useState(false);
 
   // Edit/Suggestion Shared State
   const [editData, setEditData] = useState({
@@ -222,6 +224,14 @@ const VideoDetailPage = () => {
                   <h1 className="text-3xl font-black leading-tight tracking-tighter uppercase italic">{video.title}</h1>
                   <div className="flex items-center gap-2 shrink-0">
                     <button 
+                      onClick={() => setShowSegmentCalibrator(true)} 
+                      className="flex items-center gap-2 bg-gradient-to-r from-indigo-500/20 to-purple-500/20 hover:from-indigo-500/30 hover:to-purple-500/30 text-white border border-indigo-500/40 px-3.5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
+                      title="풀콘서트 또는 여러 곡 영상의 곡별 타임라인 구간 및 오프셋 관리"
+                    >
+                      <Layers className="h-4 w-4 text-indigo-400" />
+                      구간 Sync {video.sync_segments && video.sync_segments.length > 0 ? `(${video.sync_segments.length})` : ''}
+                    </button>
+                    <button 
                       onClick={() => setShowPairwiseCalibrator(true)} 
                       className="flex items-center gap-2 bg-gradient-to-r from-twice-magenta/20 to-twice-apricot/20 hover:from-twice-magenta/30 hover:to-twice-apricot/30 text-white border border-twice-magenta/40 px-4 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
                       title="다른 겹치는 직캠과 1:1로 비교하며 0.05초 단위 미세 싱크 맞추기"
@@ -243,6 +253,11 @@ const VideoDetailPage = () => {
                   <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><Music className="h-3.5 w-3.5 text-twice-apricot"/> {video.songs && video.songs.length > 0 ? video.songs.map(s => s.name).join(', ') : 'Unknown Song'}</span>
                   <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><MapPin className="h-3.5 w-3.5 text-twice-apricot"/> {video.concert?.city || 'Unknown City'}</span>
                   <span className="bg-slate-700/50 px-4 py-1.5 rounded-full flex items-center gap-2 font-bold text-gray-300 border border-white/5"><Clock className="h-3.5 w-3.5 text-twice-apricot"/> Offset: {video.sync_offset.toFixed(2)}s</span>
+                  {video.sync_segments && video.sync_segments.length > 0 && (
+                    <span className="bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-4 py-1.5 rounded-full flex items-center gap-2 font-black text-[10px] uppercase tracking-widest">
+                      <Layers className="h-3.5 w-3.5 text-indigo-400"/> {video.sync_segments.length}개 구간 매핑
+                    </span>
+                  )}
                 </div>
               </>
             ) : (
@@ -570,6 +585,22 @@ const VideoDetailPage = () => {
             }
           }}
           adminKey={adminKey}
+        />
+      )}
+
+      {showSegmentCalibrator && video && (
+        <SegmentTimelineCalibratorModal
+          video={video}
+          allConcertVideos={[video, ...relatedVideos]}
+          onClose={() => setShowSegmentCalibrator(false)}
+          onSaveSuccess={() => {
+            // Re-fetch video details to refresh segments
+            axios.get(`${API_BASE_URL}/videos/${video.id}/full`).then(res => {
+              if (res.data && res.data.video) {
+                setVideo(res.data.video);
+              }
+            }).catch(console.error);
+          }}
         />
       )}
     </div>
