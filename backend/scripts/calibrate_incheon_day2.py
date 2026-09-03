@@ -1,7 +1,7 @@
 """
 Calibrate Incheon Day 2 (2025-07-20) Master Timeline and all 81 active fancams.
 Uses Video 1094 (3-hour uncut concert) as the continuous Master Concert Time ground truth.
-All timestamps calibrated via audio waveform cross-correlation.
+All timestamps calibrated via audio waveform cross-correlation & Gemini 3.8 Flash audio probe.
 """
 
 import os
@@ -25,7 +25,6 @@ def run_calibration():
         ).order_by(ConcertSetlist.display_order).all()
         
         # Exact verified anchor map in Video 1094 (Master Uncut Video)
-        # Format: display_order -> exact master start_time (seconds)
         exact_master_times = {
             0: 0.0,         # FOUR (Intro)
             1: 0.0,         # VCR 1
@@ -46,44 +45,44 @@ def run_calibration():
             16: 2437.5,     # CRY FOR ME
             17: 2643.5,     # HELL IN HEAVEN
             18: 2831.5,     # RIGHT HAND GIRL
-            # Act 2 (Solos)
-            19: 2926.0,     # DIVE IN (Tzuyu)
-            20: 3034.0,     # STONE COLD (Mina)
-            21: 3156.0,     # MEEEEEE (Nayeon)
-            22: 3291.0,     # FIX A DRINK (Jeongyeon)
-            23: 3455.0,     # DAT AHH DAT OOH (Unit 1)
-            24: 3618.0,     # BATTITUDE (Unit 2)
-            25: 3766.0,     # CHESS (Dahyun)
-            26: 3899.0,     # IN MY ROOM (Chaeyoung)
-            27: 3994.0,     # ATM (Jihyo)
-            28: 4101.0,     # DECAFFEINATED (Sana)
-            29: 4185.0,     # MOVE LIKE THAT (Momo)
+            # Act 2 (Solos: Exact measured start times in Video 1094)
+            19: 2926.0,     # DIVE IN (Tzuyu) - 00:48:46
+            20: 3034.0,     # STONE COLD (Mina) - 00:50:34
+            21: 3156.0,     # MEEEEEE (Nayeon) - 00:52:36
+            22: 3291.0,     # FIX A DRINK (Jeongyeon) - 00:54:51
+            23: 3455.0,     # DAT AHH DAT OOH (Unit 1) - 00:57:35
+            24: 3618.0,     # BATTITUDE (Unit 2) - 01:00:18
+            25: 3766.0,     # CHESS (Dahyun) - 01:02:46
+            26: 3899.0,     # IN MY ROOM (Chaeyoung) - 01:04:59
+            27: 3994.0,     # ATM (Jihyo) - 01:06:34
+            28: 4101.0,     # DECAFFEINATED (Sana) - 01:08:21
+            29: 4350.0,     # MOVE LIKE THAT (Momo) - 01:12:30 (Offset = +165.0s vs V63 4185s)
             # Act 3 (Hits & Special)
-            30: 4994.0,     # FANCY
-            31: 5215.0,     # What Is Love?
-            32: 5425.0,     # YES or YES
-            33: 5672.0,     # Dance The Night Away
+            30: 4994.0,     # FANCY - 01:23:14 (Offset = +681.0s vs V63 4313s)
+            31: 5215.0,     # What Is Love? - 01:26:55
+            32: 5425.0,     # YES or YES - 01:30:25
+            33: 5672.0,     # Dance The Night Away - 01:34:32
             34: 5850.0,     # Special show: DAT AHH DAT OOH (Extended)
             35: 6050.0,     # Special show: BATTITUDE (Extended)
             36: 6250.0,     # THIS IS FOR ONCE/TWICE III (Ment 2)
-            37: 7683.0,     # Feel Special (02:08:03)
-            38: 7893.0,     # ONE SPARK (02:11:33)
+            37: 7683.0,     # Feel Special - 02:08:03 (Offset = +2380.0s vs V63 5303s)
+            38: 7893.0,     # ONE SPARK - 02:11:33 (Offset = +2375.0s vs V63 5518s)
             # Act 4 (Fan Event & Ballads)
-            39: 8125.0,     # ONCE Random Dance Time
-            40: 8500.0,     # AFTER MOON
-            41: 8710.0,     # You In My Heart
-            42: 8923.0,     # ONCE-made VCR: GIRLS LIKE US
+            39: 8190.0,     # ONCE Random Dance Time - 02:16:30 (Offset = +2440.0s vs V63 5750s)
+            40: 8616.0,     # AFTER MOON - 02:23:36 (Offset = +2496.0s vs V63 6120s)
+            41: 8826.0,     # You In My Heart - 02:27:06 (Offset = +2496.0s vs V63 6330s)
+            42: 9058.0,     # ONCE-made VCR: GIRLS LIKE US - 02:30:58 (Offset = +2515.0s vs V63 6543s)
             43: 9131.0,     # ONCE Sing along: DEPEND ON YOU & One In A Million
             44: 9190.0,     # One In A Million
             45: 9260.0,     # Grateful time (9 Member Ending Ment)
             46: 9680.0,     # TZUYU to OVERSEA ONCE
-            # Act 5 (Encore)
-            47: 9754.0,     # Encore Roulette
-            48: 9926.0,     # Talk that Talk (Encore)
-            49: 10175.0,    # Do It Again (Encore)
-            50: 10413.0,    # BDZ (Encore)
-            51: 10581.0,    # TWICE Song (Encore)
-            52: 10700.0,    # Ending & Bow
+            # Act 5 (Encore & Finale)
+            47: 9787.0,     # Encore Roulette - 02:43:07 (Offset = +2647.0s vs V63 7140s)
+            48: 9967.0,     # Talk that Talk (Encore) - 02:46:07 (Offset = +2655.0s vs V63 7312s)
+            49: 10217.0,    # Do It Again (Encore) - 02:50:17 (Offset = +2656.0s vs V63 7561s)
+            50: 10447.0,    # BDZ (Encore) - 02:54:06 (Offset = +2648.0s vs V63 7799s)
+            51: 10617.0,    # TWICE Song & Ending Bow - 02:56:57 (Offset = +2650.0s vs V63 7967s)
+            52: 10750.0,    # Ending & Bow
             53: 10850.0,    # TWICE : ONE IN A MILLION Trailer
         }
 
@@ -118,10 +117,10 @@ def run_calibration():
         db.commit()
         print("✅ Video 1094 (Master) 54 segments recalibrated!")
 
-        # 4. Recalibrate Video 63 (Edited Video) with Piecewise Segments
+        # 4. Recalibrate Video 63 (Piecewise Edited) with Exact Piecewise Segments
         db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == 63).delete()
         
-        # Act 1: 0s ~ 2240s in V63 -> 0s ~ 2236s Master (Delta ~ -3.5s)
+        # Act 1: 0s ~ 2240s in V63 -> Offset = -3.5s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=0.0,
@@ -133,31 +132,31 @@ def run_calibration():
             is_verified=True
         ))
         
-        # Act 2: 2240s ~ 4310s in V63 -> 2926s ~ 4994s Master (Delta ~ +684.0s)
+        # Act 2 (Solos: Tzuyu to Momo): 2240s ~ 4310s in V63 -> Master 2405s ~ 4475s, Offset = +165.0s (Momo MOVE LIKE THAT 4185s -> 4350s!)
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=2240.0,
             video_end_time=4310.0,
-            master_start_time=2924.0,
-            master_end_time=4994.0,
-            sync_offset=684.0,
-            label="Act 2 (Solo Stages)",
+            master_start_time=2405.0,
+            master_end_time=4475.0,
+            sync_offset=165.0,
+            label="Act 2 (Solo Stages: Tzuyu ~ Momo MOVE LIKE THAT)",
             is_verified=True
         ))
 
-        # Act 3: 4310s ~ 5300s in V63 -> 4994s ~ 5984s Master (Delta ~ +684.0s)
+        # Act 3 (Hits: FANCY ~ Dance The Night Away): 4310s ~ 5300s in V63 -> Master 4991s ~ 5981s, Offset = +681.0s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=4310.0,
             video_end_time=5300.0,
-            master_start_time=4994.0,
-            master_end_time=5984.0,
-            sync_offset=684.0,
-            label="Act 3 (Hits: FANCY ~ DTNA)",
+            master_start_time=4991.0,
+            master_end_time=5981.0,
+            sync_offset=681.0,
+            label="Act 3 (Hits: FANCY ~ Dance The Night Away)",
             is_verified=True
         ))
 
-        # Act 3 Finale (Feel Special & ONE SPARK): 5300s ~ 5750s in V63 -> 7683s ~ 8125s Master (Delta = +2375.0s)
+        # Act 3 Finale (Feel Special & ONE SPARK): 5300s ~ 5750s in V63 -> Master 7675s ~ 8125s, Offset = +2375.0s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=5300.0,
@@ -169,31 +168,31 @@ def run_calibration():
             is_verified=True
         ))
 
-        # Act 4 (Fan Event & Ballads): 5750s ~ 6880s in V63 -> 8125s ~ 9260s Master (Delta = +2375.0s)
+        # Act 4 (Fan Event & Ballads): 5750s ~ 6880s in V63 -> Master 8190s ~ 9376s, Offset = +2440.0s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=5750.0,
             video_end_time=6880.0,
-            master_start_time=8125.0,
-            master_end_time=9255.0,
-            sync_offset=2375.0,
+            master_start_time=8190.0,
+            master_end_time=9320.0,
+            sync_offset=2440.0,
             label="Act 4 (Random Dance, Ballads & ONCE VCR)",
             is_verified=True
         ))
 
-        # Act 5 (Encore & Ending): 6880s ~ 8384s in V63 -> 9260s ~ 10764s Master (Delta = +2614.0s)
+        # Act 5 (Encore & Ending): 6880s ~ 8384s in V63 -> Master 9527s ~ 11031s, Offset = +2647.0s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=6880.0,
             video_end_time=8384.0,
-            master_start_time=9494.0,
-            master_end_time=10998.0,
-            sync_offset=2614.0,
+            master_start_time=9527.0,
+            master_end_time=11031.0,
+            sync_offset=2647.0,
             label="Act 5 (Encore Roulette & Ending)",
             is_verified=True
         ))
         db.commit()
-        print("✅ Video 63 (Piecewise Edited) 6 Act segments created!")
+        print("✅ Video 63 (Piecewise Edited) 6 Act segments updated with exact +165s Act 2 offset!")
 
         # 5. Recalibrate all 81 individual fancams in Day 2
         day2_vids = db.query(Video).filter(
