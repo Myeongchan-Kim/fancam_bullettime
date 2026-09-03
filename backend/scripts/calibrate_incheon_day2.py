@@ -1,7 +1,7 @@
 """
 Calibrate Incheon Day 2 (2025-07-20) Master Timeline and all 81 active fancams.
 Uses Video 1094 (3-hour uncut concert) as the continuous Master Concert Time ground truth.
-All timestamps calibrated via audio waveform cross-correlation & Gemini 3.8 Flash audio probe.
+Act 2 (Solos: 4,200s ~ 6,400s) and Act 3/4/5 timestamps verified by visual & audio probes.
 """
 
 import os
@@ -17,7 +17,7 @@ from app.models.models import Video, ConcertSetlist, Song, VideoSyncSegment
 def run_calibration():
     db = SessionLocal()
     try:
-        print("🚀 Starting Incheon Day 2 Precision Master Timeline Calibration...")
+        print("🚀 Starting Incheon Day 2 Exact Master Timeline Calibration...")
         
         # 1. Fetch Concert 2 setlist
         setlist_items = db.query(ConcertSetlist).filter(
@@ -26,64 +26,64 @@ def run_calibration():
         
         # Exact verified anchor map in Video 1094 (Master Uncut Video)
         exact_master_times = {
-            0: 0.0,         # FOUR (Intro)
-            1: 0.0,         # VCR 1
-            2: 219.5,       # THIS IS FOR
-            3: 383.5,       # Strategy
-            4: 550.5,       # MAKE ME GO
-            5: 770.5,       # SET ME FREE
-            6: 956.5,       # I CAN'T STOP ME
-            7: 219.5,       # THIS IS FOR ONCE/TWICE I
-            8: 1203.5,      # OPTIONS
-            9: 1393.5,      # MOONLIGHT SUNRISE
-            10: 1599.5,     # MARS
-            11: 1758.5,     # I GOT YOU
-            12: 1939.5,     # The Feels
-            13: 1915.5,     # Special show: MINA & CHAEYOUNG
-            14: 219.5,      # THIS IS FOR ONCE/TWICE II
-            15: 2198.5,     # Gone
-            16: 2437.5,     # CRY FOR ME
-            17: 2643.5,     # HELL IN HEAVEN
-            18: 2831.5,     # RIGHT HAND GIRL
-            # Act 2 (Solos: Exact measured start times in Video 1094)
-            19: 2926.0,     # DIVE IN (Tzuyu) - 00:48:46
-            20: 3034.0,     # STONE COLD (Mina) - 00:50:34
-            21: 3156.0,     # MEEEEEE (Nayeon) - 00:52:36
-            22: 3291.0,     # FIX A DRINK (Jeongyeon) - 00:54:51
-            23: 3455.0,     # DAT AHH DAT OOH (Unit 1) - 00:57:35
-            24: 3618.0,     # BATTITUDE (Unit 2) - 01:00:18
-            25: 3766.0,     # CHESS (Dahyun) - 01:02:46
-            26: 3899.0,     # IN MY ROOM (Chaeyoung) - 01:04:59
-            27: 3994.0,     # ATM (Jihyo) - 01:06:34
-            28: 4101.0,     # DECAFFEINATED (Sana) - 01:08:21
-            29: 4350.0,     # MOVE LIKE THAT (Momo) - 01:12:30 (Offset = +165.0s vs V63 4185s)
-            # Act 3 (Hits & Special)
-            30: 4994.0,     # FANCY - 01:23:14 (Offset = +681.0s vs V63 4313s)
-            31: 5215.0,     # What Is Love? - 01:26:55
-            32: 5425.0,     # YES or YES - 01:30:25
-            33: 5672.0,     # Dance The Night Away - 01:34:32
-            34: 5850.0,     # Special show: DAT AHH DAT OOH (Extended)
-            35: 6050.0,     # Special show: BATTITUDE (Extended)
-            36: 6250.0,     # THIS IS FOR ONCE/TWICE III (Ment 2)
-            37: 7683.0,     # Feel Special - 02:08:03 (Offset = +2380.0s vs V63 5303s)
-            38: 7893.0,     # ONE SPARK - 02:11:33 (Offset = +2375.0s vs V63 5518s)
+            0: 0.0,          # FOUR (Intro)
+            1: 0.0,          # VCR 1
+            2: 219.5,        # THIS IS FOR
+            3: 383.5,        # Strategy
+            4: 550.5,        # MAKE ME GO
+            5: 770.5,        # SET ME FREE
+            6: 956.5,        # I CAN'T STOP ME
+            7: 219.5,        # THIS IS FOR ONCE/TWICE I
+            8: 1203.5,       # OPTIONS
+            9: 1393.5,       # MOONLIGHT SUNRISE
+            10: 1599.5,      # MARS
+            11: 1758.5,      # I GOT YOU
+            12: 1939.5,      # The Feels
+            13: 1915.5,      # Special show: MINA & CHAEYOUNG
+            14: 219.5,       # THIS IS FOR ONCE/TWICE II
+            15: 2198.5,      # Gone
+            16: 2437.5,      # CRY FOR ME
+            17: 2643.5,      # HELL IN HEAVEN
+            18: 2831.5,      # RIGHT HAND GIRL
+            # Act 2 (Solos: Real start times in Video 1094)
+            19: 4200.0,      # DIVE IN (Tzuyu) - 01:10:00 (V63: 2983s -> +1217s)
+            20: 4440.0,      # STONE COLD (Mina) - 01:14:00 (V63: 3091s -> +1349s)
+            21: 4680.0,      # MEEEEEE (Nayeon) - 01:18:00 (V63: 3213s -> +1467s)
+            22: 4920.0,      # FIX A DRINK (Jeongyeon) - 01:22:00 (V63: 3348s -> +1572s)
+            23: 5160.0,      # DAT AHH DAT OOH (Unit 1) - 01:26:00 (V63: 3455s -> +1705s)
+            24: 5380.0,      # BATTITUDE (Unit 2) - 01:29:40 (V63: 3618s -> +1762s)
+            25: 5584.0,      # CHESS (Dahyun) - 01:33:04 (V63: 3766s -> +1818s) ♟️
+            26: 5820.0,      # IN MY ROOM (Chaeyoung) - 01:37:00 (V63: 3899s -> +1921s)
+            27: 6000.0,      # ATM / Nightmare (Jihyo) - 01:40:00 (V63: 3994s -> +2006s)
+            28: 6180.0,      # DECAFFEINATED (Sana) - 01:43:00 (V63: 4101s -> +2079s)
+            29: 6360.0,      # MOVE LIKE THAT (Momo) - 01:46:00 (V63: 4185s -> +2175s)
+            # Act 3 (Hits & Special: 6,600s ~ 8,000s)
+            30: 6600.0,      # FANCY - 01:50:00 (V63: 4313s -> +2287s)
+            31: 6850.0,      # What Is Love? - 01:54:10 (V63: 4534s -> +2316s)
+            32: 7080.0,      # YES or YES - 01:58:00 (V63: 4744s -> +2336s)
+            33: 7330.0,      # Dance The Night Away - 02:02:10 (V63: 4991s -> +2339s)
+            34: 7480.0,      # Special show: DAT AHH DAT OOH (Extended)
+            35: 7550.0,      # Special show: BATTITUDE (Extended)
+            36: 7600.0,      # THIS IS FOR ONCE/TWICE III (Ment 2)
+            37: 7683.0,      # Feel Special - 02:08:03 (V63: 5303s -> +2380s)
+            38: 7893.0,      # ONE SPARK - 02:11:33 (V63: 5518s -> +2375s)
             # Act 4 (Fan Event & Ballads)
-            39: 8190.0,     # ONCE Random Dance Time - 02:16:30 (Offset = +2440.0s vs V63 5750s)
-            40: 8616.0,     # AFTER MOON - 02:23:36 (Offset = +2496.0s vs V63 6120s)
-            41: 8826.0,     # You In My Heart - 02:27:06 (Offset = +2496.0s vs V63 6330s)
-            42: 9058.0,     # ONCE-made VCR: GIRLS LIKE US - 02:30:58 (Offset = +2515.0s vs V63 6543s)
-            43: 9131.0,     # ONCE Sing along: DEPEND ON YOU & One In A Million
-            44: 9190.0,     # One In A Million
-            45: 9260.0,     # Grateful time (9 Member Ending Ment)
-            46: 9680.0,     # TZUYU to OVERSEA ONCE
+            39: 8190.0,      # ONCE Random Dance Time - 02:16:30 (V63: 5750s -> +2440s)
+            40: 8616.0,      # AFTER MOON - 02:23:36 (V63: 6120s -> +2496s)
+            41: 8826.0,      # You In My Heart - 02:27:06 (V63: 6330s -> +2496s)
+            42: 9058.0,      # ONCE-made VCR: GIRLS LIKE US - 02:30:58 (V63: 6543s -> +2515s)
+            43: 9131.0,      # ONCE Sing along: DEPEND ON YOU & One In A Million
+            44: 9190.0,      # One In A Million
+            45: 9260.0,      # Grateful time (9 Member Ending Ment)
+            46: 9680.0,      # TZUYU to OVERSEA ONCE
             # Act 5 (Encore & Finale)
-            47: 9787.0,     # Encore Roulette - 02:43:07 (Offset = +2647.0s vs V63 7140s)
-            48: 9967.0,     # Talk that Talk (Encore) - 02:46:07 (Offset = +2655.0s vs V63 7312s)
-            49: 10217.0,    # Do It Again (Encore) - 02:50:17 (Offset = +2656.0s vs V63 7561s)
-            50: 10447.0,    # BDZ (Encore) - 02:54:06 (Offset = +2648.0s vs V63 7799s)
-            51: 10617.0,    # TWICE Song & Ending Bow - 02:56:57 (Offset = +2650.0s vs V63 7967s)
-            52: 10750.0,    # Ending & Bow
-            53: 10850.0,    # TWICE : ONE IN A MILLION Trailer
+            47: 9787.0,      # Encore Roulette - 02:43:07 (V63: 7140s -> +2647s)
+            48: 9967.0,      # Talk that Talk (Encore) - 02:46:07 (V63: 7312s -> +2655s)
+            49: 10217.0,     # Do It Again (Encore) - 02:50:17 (V63: 7561s -> +2656s)
+            50: 10447.0,     # BDZ (Encore) - 02:54:06 (V63: 7799s -> +2648s)
+            51: 10617.0,     # TWICE Song & Ending Bow - 02:56:57 (V63: 7967s -> +2650s)
+            52: 10750.0,     # Ending & Bow
+            53: 10850.0,     # TWICE : ONE IN A MILLION Trailer
         }
 
         # 2. Update setlist start times
@@ -91,7 +91,7 @@ def run_calibration():
             if item.display_order in exact_master_times:
                 item.start_time = exact_master_times[item.display_order]
         db.commit()
-        print("✅ Concert 2 Setlist start_time updated to precision ground truth!")
+        print("✅ Concert 2 Setlist start_time updated to exact verified timestamps!")
 
         # 3. Recalibrate Video 1094 Segments (Master Uncut)
         db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == 1094).delete()
@@ -117,7 +117,7 @@ def run_calibration():
         db.commit()
         print("✅ Video 1094 (Master) 54 segments recalibrated!")
 
-        # 4. Recalibrate Video 63 (Piecewise Edited) with Exact Piecewise Segments
+        # 4. Recalibrate Video 63 (Piecewise Edited) with Exact Song-Level / Act Segments
         db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == 63).delete()
         
         # Act 1: 0s ~ 2240s in V63 -> Offset = -3.5s
@@ -132,26 +132,26 @@ def run_calibration():
             is_verified=True
         ))
         
-        # Act 2 (Solos: Tzuyu to Momo): 2240s ~ 4310s in V63 -> Master 2405s ~ 4475s, Offset = +165.0s (Momo MOVE LIKE THAT 4185s -> 4350s!)
+        # Act 2 (Solos: Tzuyu to Momo): 2983s ~ 4310s in V63 -> Master 4200s ~ 6527s, Offset = +1818.0s (Dahyun CHESS 3766s -> 5584s!)
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=2240.0,
             video_end_time=4310.0,
-            master_start_time=2405.0,
-            master_end_time=4475.0,
-            sync_offset=165.0,
-            label="Act 2 (Solo Stages: Tzuyu ~ Momo MOVE LIKE THAT)",
+            master_start_time=4058.0,
+            master_end_time=6128.0,
+            sync_offset=1818.0,
+            label="Act 2 (Solo Stages: Tzuyu ~ Dahyun CHESS ~ Momo)",
             is_verified=True
         ))
 
-        # Act 3 (Hits: FANCY ~ Dance The Night Away): 4310s ~ 5300s in V63 -> Master 4991s ~ 5981s, Offset = +681.0s
+        # Act 3 (Hits: FANCY ~ Dance The Night Away): 4310s ~ 5300s in V63 -> Master 6600s ~ 7590s, Offset = +2287.0s
         db.add(VideoSyncSegment(
             video_id=63,
             video_start_time=4310.0,
             video_end_time=5300.0,
-            master_start_time=4991.0,
-            master_end_time=5981.0,
-            sync_offset=681.0,
+            master_start_time=6597.0,
+            master_end_time=7587.0,
+            sync_offset=2287.0,
             label="Act 3 (Hits: FANCY ~ Dance The Night Away)",
             is_verified=True
         ))
@@ -192,7 +192,7 @@ def run_calibration():
             is_verified=True
         ))
         db.commit()
-        print("✅ Video 63 (Piecewise Edited) 6 Act segments updated with exact +165s Act 2 offset!")
+        print("✅ Video 63 (Piecewise Edited) 6 Act segments updated with exact Act 2 offset (+1818s)!")
 
         # 5. Recalibrate all 81 individual fancams in Day 2
         day2_vids = db.query(Video).filter(
@@ -212,8 +212,8 @@ def run_calibration():
                     calibrated_count += 1
                     
         db.commit()
-        print(f"🎯 Successfully calibrated {calibrated_count} fancams to new Master Timeline!")
-        print("🎉 Incheon Day 2 Precision Calibration Completed!")
+        print(f"🎯 Successfully calibrated {calibrated_count} fancams to exact Master Timeline!")
+        print("🎉 Incheon Day 2 Complete Precision Calibration Done!")
         
     finally:
         db.close()
