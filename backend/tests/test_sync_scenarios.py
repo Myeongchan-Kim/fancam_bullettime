@@ -149,6 +149,21 @@ def test_sync_case_medley_opening_1681():
     finally:
         db.close()
 
+def test_sync_case_intro_four_1714():
+    """
+    Regression Test Case: Video 1714 (Intro FOUR + THIS IS FOR + STRATEGY)
+    Begins at concert VCR/Intro FOUR (t=0s), so offset relative to master concert timeline is ~ -11.3s.
+    """
+    db = SessionLocal()
+    try:
+        v1714 = db.query(Video).filter(Video.id == 1714).first()
+        assert v1714 is not None, "Video 1714 not found"
+        assert -15.0 <= v1714.sync_offset <= -8.0, f"Video 1714 sync_offset {v1714.sync_offset} should be ~ -11.3s"
+        assert v1714.calibration_count >= 1, "Video 1714 should have at least 1 calibration record"
+    finally:
+        db.close()
+
+
 
 
 
