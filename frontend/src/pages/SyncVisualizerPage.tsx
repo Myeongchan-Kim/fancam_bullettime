@@ -60,8 +60,8 @@ export default function SyncVisualizerPage() {
 
   // Lane geometry constants (in px) - compact & sleek
   const TIME_AXIS_WIDTH = 48;
-  const LANE_WIDTH = 14;
-  const LANE_GAP = 6;
+  const LANE_WIDTH = 13;
+  const LANE_GAP = 5;
 
   // 1. Fetch Concerts list
   useEffect(() => {
@@ -600,7 +600,7 @@ export default function SyncVisualizerPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
           {/* ================= LEFT COMPACT MULTI-TRACK CANVAS (4 COLS) ================= */}
-          <div className="lg:col-span-4 xl:col-span-3 bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-4 shadow-2xl backdrop-blur-md overflow-x-auto">
+          <div className="lg:col-span-4 xl:col-span-3 bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-4 pb-6 shadow-2xl backdrop-blur-md overflow-x-auto overflow-y-hidden">
             
             {/* Unified Track Header */}
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
@@ -618,7 +618,7 @@ export default function SyncVisualizerPage() {
               ref={timelineRef}
               onClick={handleTimelineClick}
               style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
-              className="relative mt-3 flex cursor-crosshair select-none"
+              className="relative mt-3 mb-2 flex cursor-crosshair select-none"
             >
               {/* 1. Left Time Scale Axis (Every 15 minutes) */}
               <div 
