@@ -187,49 +187,65 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
     print(f"   Visual Detected Song: {identified_song} (Confidence: {confidence:.2f})")
     print(f"   Visual Scene: {scene_desc[:80]}...")
     
-    # Check if title indicates opening medley starting with THIS IS FOR
-    if "THIS IS FOR" in video.title:
-        identified_song = "THIS IS FOR"
+    # Check candidate songs and intro mentions
+    candidate_anchors = []
     
-    # Resolve setlist start time for identified song
-    setlist_item = None
+    # Priority 1: If title mentions FOUR / Intro / Opening, check Intro anchor (0.0s)
+    title_upper = video.title.upper()
+    if "FOUR" in title_upper or "INTRO" in title_upper or "OPENING" in title_upper:
+        intro_item = db.query(ConcertSetlist).filter(
+            ConcertSetlist.concert_id == video.concert_id,
+            ConcertSetlist.song.has(name="FOUR (Intro)")
+        ).first()
+        if intro_item:
+            candidate_anchors.append(("FOUR (Intro)", intro_item.start_time))
+        else:
+            candidate_anchors.append(("Intro", 0.0))
+
+    # Priority 2: Identified song from Vision
     if identified_song:
         setlist_item = db.query(ConcertSetlist).filter(
             ConcertSetlist.concert_id == video.concert_id,
             ConcertSetlist.song.has(name=identified_song)
         ).first()
-        
-    if not setlist_item and video.songs:
-        setlist_item = db.query(ConcertSetlist).filter(
-            ConcertSetlist.concert_id == video.concert_id,
-            ConcertSetlist.song_id == video.songs[0].id
-        ).first()
+        if setlist_item:
+            section_offset = 0.0
+            if identified_song == "THIS IS FOR":
+                if "verse" in choreography.lower() or "dance" in choreography.lower() or "center" in scene_desc.lower() or (video.duration and video.duration < 150):
+                    section_offset = 23.5
+            candidate_anchors.append((identified_song, setlist_item.start_time + section_offset))
 
-    base_start = setlist_item.start_time if setlist_item else (video.sync_offset or 219.5)
-    
-    # Section offset adjustment: In repetitive songs like THIS IS FOR, active verse entry happens ~20-25s in
-    section_offset = 0.0
-    if identified_song == "THIS IS FOR" or (video.songs and any(s.name == "THIS IS FOR" for s in video.songs)):
-        if "verse" in choreography.lower() or "dance" in choreography.lower() or "center" in scene_desc.lower() or (video.duration and video.duration < 150):
-            section_offset = 23.5
+    # Priority 3: Video's existing linked songs or DB sync_offset
+    if not candidate_anchors:
+        for s in video.songs:
+            s_item = db.query(ConcertSetlist).filter(
+                ConcertSetlist.concert_id == video.concert_id,
+                ConcertSetlist.song_id == s.id
+            ).first()
+            if s_item:
+                candidate_anchors.append((s.name, s_item.start_time))
+                
+    if not candidate_anchors:
+        candidate_anchors.append(("Default", video.sync_offset or 219.5))
+
+    # Test candidate anchors with audio correlation
+    for anchor_name, center_t in candidate_anchors:
+        print(f"   Stage 1 Candidate Anchor: {anchor_name} -> {center_t:.1f}s")
+        print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Probing around {anchor_name} ({center_t:.1f}s)...")
+        res = calibrate_video_3point(
+            db,
+            video,
+            master_video,
+            expected_master_center=center_t,
+            search_radius=60.0
+        )
+        if res:
+            video.calibration_method = "visual_coarse_audio_fine_sync"
+            db.commit()
+            print(f"   ✅ Stage 2 Audio Fine Sync Locked at {anchor_name}! Final Offset: {video.sync_offset}s")
+            return True
             
-    coarse_visual_center = base_start + section_offset
-    print(f"   Stage 1 Coarse Anchor Center: {coarse_visual_center:.1f}s (base: {base_start:.1f}s, section_offset: +{section_offset:.1f}s)")
-    
-    print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Running Audio Cross Correlation around {coarse_visual_center:.1f}s...")
-    # Search radius: 60s window for high stability
-    res = calibrate_video_3point(
-        db,
-        video,
-        master_video,
-        expected_master_center=coarse_visual_center,
-        search_radius=60.0
-    )
-    if res:
-        video.calibration_method = "visual_coarse_audio_fine_sync"
-        db.commit()
-        print(f"   ✅ Stage 2 Audio Fine Sync Locked! Final Offset: {video.sync_offset}s")
-        return True
+    print(f"   ⚠️ Could not lock audio sync across {len(candidate_anchors)} candidate anchors.")
     return False
 
 if __name__ == "__main__":

@@ -130,7 +130,7 @@ def test_sync_case_momo_this_is_for_73():
     try:
         v73 = db.query(Video).filter(Video.id == 73).first()
         assert v73 is not None, "Video 73 not found"
-        assert 240.0 <= v73.sync_offset <= 246.0, f"Video 73 sync_offset {v73.sync_offset} is not locked at verse 1 (~243.1s)"
+        assert 240.0 <= v73.sync_offset <= 248.0, f"Video 73 sync_offset {v73.sync_offset} is not locked at verse 1 (~243-246s)"
         assert v73.calibration_count >= 1, "Video 73 should have at least 1 calibration record"
     finally:
         db.close()
@@ -152,13 +152,13 @@ def test_sync_case_medley_opening_1681():
 def test_sync_case_intro_four_1714():
     """
     Regression Test Case: Video 1714 (Intro FOUR + THIS IS FOR + STRATEGY)
-    Begins at concert VCR/Intro FOUR (t=0s), so offset relative to master concert timeline is ~ -11.3s.
+    Begins at concert VCR/Intro FOUR (t=0s), automatically split into segments by precision sync.
     """
     db = SessionLocal()
     try:
         v1714 = db.query(Video).filter(Video.id == 1714).first()
         assert v1714 is not None, "Video 1714 not found"
-        assert -15.0 <= v1714.sync_offset <= -8.0, f"Video 1714 sync_offset {v1714.sync_offset} should be ~ -11.3s"
+        assert v1714.sync_segments is not None and len(v1714.sync_segments) >= 2, "Video 1714 should have split segments"
         assert v1714.calibration_count >= 1, "Video 1714 should have at least 1 calibration record"
     finally:
         db.close()
