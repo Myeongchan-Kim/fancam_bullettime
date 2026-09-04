@@ -1533,19 +1533,19 @@ export default function SyncVisualizerPage() {
                             </button>
                           )}
                           <button
+                            onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
+                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
+                            title="수동 정밀 캘리브레이터 모달 열기"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> 수동 캘리브레이터
+                          </button>
+                          <button
                             onClick={() => handleTriggerAiSync(videoB)}
                             disabled={isAiSyncing}
                             className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 text-xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
                             title="Gemini Vision 화면 분석 + 3-Point 오디오 2-Stage 정밀 싱크 실행"
                           >
-                            <Sparkles className="w-3.5 h-3.5" /> 🤖 AI 2-Stage 싱크
-                          </button>
-                          <button
-                            onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
-                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
-                            title="정밀 오디오 파형 캘리브레이터 열기"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" /> 정밀 캘리브레이터
+                            <Sparkles className="w-3.5 h-3.5" /> 🤖 AI 정밀 싱크
                           </button>
                         </div>
                       </div>
