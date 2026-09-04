@@ -97,7 +97,15 @@ def build_visual_prompt(title: str, description: str) -> str:
     
     return f"""
 You are a world-class K-pop and TWICE Concert visual stage analyst.
-Analyze the provided YouTube video frame/thumbnail image, along with the title and description, to accurately identify which song and concert act is being performed.
+Analyze the provided YouTube video frame/thumbnail image with extreme visual precision, along with the title and description, to identify the exact song, concert act, and every detail of the performance.
+
+### Analysis Instructions:
+1. **Exhaustive Scene Description**: Describe every visual element in depth:
+   - **Members & Outfits**: Specific clothing items, fabric/textures (leather, satin, denim, mesh), primary/accent colors, jewelry, hair style & color, footwear.
+   - **Stage & Lighting**: Backdrop LED screen imagery/animations, overall lighting colors (e.g. crimson red, royal blue, warm amber), laser patterns, pyrotechnics/smoke/fog/confetti.
+   - **Props & Dancers**: Any stage props (e.g. microphone stand, bed, chair, instruments), presence of backup dancers and their costumes.
+   - **Choreography & Actions**: Key dance poses, formations, center member actions, or talking/singing gestures.
+2. **Setlist & Ground Truth Matching**: Compare the analyzed scene against the TWICE Concert Visual Guide below to determine the exact song.
 
 ### TWICE Concert Stage & Costume Visual Guide (From Central DB Ground Truth):
 {db_guide}
@@ -109,12 +117,15 @@ Analyze the provided YouTube video frame/thumbnail image, along with the title a
 ### Output Schema (Pure JSON):
 {{
   "detected_act": "Act 1 (Opening)" | "Act 2 (Solo)" | "Act 3 (Hits)" | "Act 4 (Encore/Talk)" | "Unknown",
-  "outfit_description": "Brief description of clothing, colors, and hair",
+  "detailed_scene_description": "Comprehensive, highly detailed 3-5 sentence description covering members, outfits, LED visuals, lighting colors, props, and actions.",
+  "outfit_description": "Precise breakdown of member clothing, accessories, hair color, and footwear.",
+  "stage_environment": "Detailed lighting colors, laser effects, LED screen content, and atmospheric effects (fog, sparks, confetti).",
+  "choreography_or_action": "Key pose, dance movements, prop interactions, or member positioning.",
   "detected_members": ["Nayeon", "Momo", ...],
   "identified_song": "EXACT_SONG_NAME_OR_TALK",
   "candidate_songs": ["SONG_1", "SONG_2"],
   "confidence": 0.0 to 1.0,
-  "reasoning": "Clear explanation linking outfit/stage visuals to the identified song"
+  "reasoning": "Clear step-by-step rationale matching the detailed visual scene to the specific song in the visual guide."
 }}
 """
 
