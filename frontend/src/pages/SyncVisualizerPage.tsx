@@ -2,12 +2,11 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
   GitBranch, Play, AlertTriangle, CheckCircle2, Split, 
-  Search, RefreshCw, Music, 
-  Calendar, Layers, Sparkles, AlertCircle,
-  X, User, ChevronDown, Volume2, Maximize2
+  Search, RefreshCw, Calendar, Sparkles, AlertCircle,
+  X, Volume2, Maximize2, ChevronDown
 } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
-import { Concert, SyncGraphData, SyncGraphVideoNode, SyncGraphSetlistItem } from '../types';
+import { Concert, SyncGraphData, SyncGraphVideoNode } from '../types';
 
 export default function SyncVisualizerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -24,13 +23,13 @@ export default function SyncVisualizerPage() {
   const [memberFilter, setMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Active / Selected Video & Song for Dedicated Right Player Panel
+  // Active / Selected Video for Dedicated Right Player Panel
   const [selectedVideo, setSelectedVideo] = useState<SyncGraphVideoNode | null>(null);
-  const [activeSong, setActiveSong] = useState<SyncGraphSetlistItem | null>(null);
+  const [hoveredVideo, setHoveredVideo] = useState<SyncGraphVideoNode | null>(null);
   const [playerSeekTime, setPlayerSeekTime] = useState<number>(0);
 
   // Timeline zoom/scale (px per 100 seconds)
-  const [scaleFactor, setScaleFactor] = useState<number>(25);
+  const [scaleFactor, setScaleFactor] = useState<number>(18);
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // 1. Fetch Concerts list
@@ -105,7 +104,7 @@ export default function SyncVisualizerPage() {
 
   // Health stats
   const stats = useMemo(() => {
-    if (!graphData) return { total: 0, verified: 0, segmented: 0, needsFix: 0 };
+    if (!graphData || !graphData.videos) return { total: 0, verified: 0, segmented: 0, needsFix: 0 };
     const total = graphData.videos.length;
     const verified = graphData.videos.filter(v => v.status === 'verified' || v.status === 'master').length;
     const segmented = graphData.videos.filter(v => v.status === 'segmented').length;
@@ -120,23 +119,17 @@ export default function SyncVisualizerPage() {
   }, [graphData]);
 
   const canvasHeight = useMemo(() => {
-    return (totalDuration / 100) * scaleFactor;
+    return Math.max(900, (totalDuration / 100) * scaleFactor);
   }, [totalDuration, scaleFactor]);
 
-  // Group videos into Hierarchy Track Columns:
-  // Col 1: Master (Spine)
-  // Col 2: Full Cams (duration >= 3600 or segments > 2)
-  // Col 3: Act / Medley Cams (600 <= duration < 3600)
-  // Col 4: Individual & Solo Fancams (duration < 600)
-  const tracks = useMemo(() => {
-    const res: {
-      master: SyncGraphVideoNode | null;
-      fulls: SyncGraphVideoNode[];
-      acts: SyncGraphVideoNode[];
-      solos: SyncGraphVideoNode[];
-    } = { master: null, fulls: [], acts: [], solos: [] };
+  // Simple Two-Tier Hierarchy:
+  // 1. Parent Tracks (상위 캠: Master, Full Cams, Multi-Song/Split Cams)
+  // 2. Child Tracks (하위 직캠: Solo stages & individual fancams)
+  const { parentTracks, childTracks } = useMemo(() => {
+    const parents: SyncGraphVideoNode[] = [];
+    const children: SyncGraphVideoNode[] = [];
 
-    if (!graphData) return res;
+    if (!graphData || !graphData.videos) return { parentTracks: parents, childTracks: children };
 
     graphData.videos.forEach(v => {
       // Filter check
@@ -159,24 +152,30 @@ export default function SyncVisualizerPage() {
         if (!matchTitle && !matchSong && !matchMember) return;
       }
 
-      if (v.is_master || (v.duration >= 7200 && !res.master)) {
-        res.master = v;
-      } else if (v.duration >= 3600 || (v.segments && v.segments.length > 2)) {
-        res.fulls.push(v);
-      } else if (v.duration >= 600 || (v.songs && v.songs.length >= 2)) {
-        res.acts.push(v);
+      if (v.is_master || v.duration >= 600 || (v.segments && v.segments.length > 1)) {
+        parents.push(v);
       } else {
-        res.solos.push(v);
+        children.push(v);
       }
     });
 
-    return res;
+    // Sort parents so Master is first, then longest duration
+    parents.sort((a, b) => {
+      if (a.is_master) return -1;
+      if (b.is_master) return 1;
+      return (b.duration || 0) - (a.duration || 0);
+    });
+
+    // Sort children by start time
+    children.sort((a, b) => a.master_start_time - b.master_start_time);
+
+    return { parentTracks: parents, childTracks: children };
   }, [graphData, statusFilter, memberFilter, searchQuery]);
 
   // Helper to calculate top & height in px
   const getPositionStyles = (startTime: number, duration: number) => {
     const top = (startTime / totalDuration) * canvasHeight;
-    const height = Math.max(28, (duration / totalDuration) * canvasHeight);
+    const height = Math.max(16, (duration / totalDuration) * canvasHeight);
     return { top: `${top}px`, height: `${height}px` };
   };
 
@@ -195,20 +194,17 @@ export default function SyncVisualizerPage() {
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl backdrop-blur-sm">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Vertical Multi-Track DAW
+              <GitBranch className="w-3.5 h-3.5" /> Sync Timeline Canvas
             </span>
-            <span className="text-gray-400 text-xs font-mono">Hierarchical Timeline Visualizer & Pinned Player</span>
+            <span className="text-gray-400 text-xs font-mono">상위 풀캠 (좌측) ➔ 하위 직캠 (우측) • 얇은 바 타임라인</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            TWICE Concert Multi-Track Sync Canvas
+          <h1 className="text-2xl font-black text-white tracking-tight">
+            TWICE Concert Multi-Track Timeline
           </h1>
-          <p className="text-gray-400 text-xs sm:text-sm mt-1">
-            상위 계층(마스터 &gt; 풀캠 &gt; 액트)이 왼쪽에 연속 세로 바로 배치되며, 오른쪽으로 갈라져 나오는 개별 직캠을 클릭하면 우측 분리 플레이어에서 즉시 재생/검증합니다.
-          </p>
         </div>
 
         {/* Concert Selector */}
@@ -218,7 +214,7 @@ export default function SyncVisualizerPage() {
             <select
               value={selectedConcertId}
               onChange={(e) => setSelectedConcertId(parseInt(e.target.value, 10))}
-              className="bg-slate-800 text-white pl-9 pr-8 py-2.5 rounded-xl border border-slate-700 text-sm font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
+              className="bg-slate-800 text-white pl-9 pr-8 py-2 rounded-xl border border-slate-700 text-xs font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
             >
               {concerts.map(c => (
                 <option key={c.id} value={c.id}>
@@ -230,110 +226,87 @@ export default function SyncVisualizerPage() {
           </div>
           <button 
             onClick={() => loadSyncGraph(selectedConcertId)}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
             title="Refresh Sync Data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
           </button>
         </div>
       </div>
 
-      {/* Health Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Status Filter Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
         <button
           onClick={() => setStatusFilter('all')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold transition-all ${
             statusFilter === 'all' 
-              ? 'bg-slate-800/90 border-slate-600 shadow-lg ring-1 ring-white/20' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-slate-800 text-white border-slate-600 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-white'
           }`}
         >
-          <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider">
-            <span>Total Videos</span>
-            <Layers className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-2xl font-black text-white mt-2">{stats.total}</div>
-          <div className="text-[11px] text-gray-400 mt-1 font-mono">전체 등록 직캠</div>
+          전체 ({stats.total})
         </button>
-
         <button
           onClick={() => setStatusFilter('verified')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'verified' 
-              ? 'bg-emerald-950/40 border-emerald-500/50 shadow-lg ring-1 ring-emerald-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-emerald-400'
           }`}
         >
-          <div className="flex items-center justify-between text-emerald-400 text-xs font-bold uppercase tracking-wider">
-            <span>Verified Sync</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-2xl font-black text-emerald-300 mt-2">{stats.verified}</div>
-          <div className="text-[11px] text-emerald-500/80 mt-1 font-mono">🟢 정밀 오차 &lt; 0.5s</div>
+          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 정밀 일치 ({stats.verified})
         </button>
-
         <button
           onClick={() => setStatusFilter('segmented')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'segmented' 
-              ? 'bg-amber-950/40 border-amber-500/50 shadow-lg ring-1 ring-amber-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-amber-950/60 text-amber-300 border-amber-500/50 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
           }`}
         >
-          <div className="flex items-center justify-between text-amber-400 text-xs font-bold uppercase tracking-wider">
-            <span>Split Segments</span>
-            <Split className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-2xl font-black text-amber-300 mt-2">{stats.segmented}</div>
-          <div className="text-[11px] text-amber-500/80 mt-1 font-mono">🟡 편집 컷 분할 관리</div>
+          <Split className="w-3.5 h-3.5 text-amber-400" /> 분할 Split ({stats.segmented})
         </button>
-
         <button
           onClick={() => setStatusFilter('needs_fix')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'needs_fix' 
-              ? 'bg-rose-950/40 border-rose-500/50 shadow-lg ring-1 ring-rose-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-rose-950/60 text-rose-300 border-rose-500/50 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-rose-400'
           }`}
         >
-          <div className="flex items-center justify-between text-rose-400 text-xs font-bold uppercase tracking-wider">
-            <span>Needs Attention</span>
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-2xl font-black text-rose-300 mt-2">{stats.needsFix}</div>
-          <div className="text-[11px] text-rose-500/80 mt-1 font-mono">🔴 드리프트/미보정 경고</div>
+          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> 수정 필요 ({stats.needsFix})
         </button>
       </div>
 
       {/* Filter Toolbar & Zoom Scale Slider */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-4 rounded-xl backdrop-blur-sm">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl backdrop-blur-sm">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="영상 제목, 곡명, 멤버 검색..."
+            placeholder="영상 제목, 곡명 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-800 text-white pl-9 pr-4 py-2 rounded-lg text-sm border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"
+            className="w-full bg-slate-800 text-white pl-8 pr-3 py-1.5 rounded-lg text-xs border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
         {/* Member Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+        <div className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full">
           <button
             onClick={() => setMemberFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
               memberFilter === 'all'
                 ? 'bg-twice-magenta text-white shadow-md'
-                : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-750'
+                : 'bg-slate-800 text-gray-400 hover:text-white'
             }`}
           >
             전체 멤버
@@ -342,10 +315,10 @@ export default function SyncVisualizerPage() {
             <button
               key={member}
               onClick={() => setMemberFilter(member)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
                 memberFilter === member
-                  ? 'bg-twice-apricot text-slate-950 shadow-md font-black'
-                  : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-750'
+                  ? 'bg-twice-apricot text-slate-950 font-black shadow-md'
+                  : 'bg-slate-800 text-gray-400 hover:text-white'
               }`}
             >
               {member}
@@ -354,60 +327,53 @@ export default function SyncVisualizerPage() {
         </div>
 
         {/* Zoom Scale Controller */}
-        <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs text-gray-300 font-mono">
-          <span>Scale:</span>
+        <div className="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-xs text-gray-300 font-mono">
+          <span className="text-[10px]">Scale:</span>
           <input 
             type="range" 
-            min="15" 
-            max="60" 
+            min="10" 
+            max="40" 
             value={scaleFactor} 
             onChange={(e) => setScaleFactor(parseInt(e.target.value, 10))}
-            className="w-20 accent-twice-magenta cursor-pointer"
+            className="w-16 accent-twice-magenta cursor-pointer"
           />
-          <span className="w-8 text-right text-twice-apricot font-bold">{scaleFactor}px</span>
+          <span className="w-6 text-right text-twice-apricot font-bold text-[10px]">{scaleFactor}</span>
         </div>
       </div>
 
       {/* Loading & Error */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <RefreshCw className="w-10 h-10 text-twice-magenta animate-spin mb-4" />
-          <h3 className="text-lg font-bold text-white">멀티트랙 캔버스 로딩 중...</h3>
-          <p className="text-gray-400 text-xs mt-1">마스터 척추 및 풀캠 트랙 세그먼트를 렌더링하고 있습니다.</p>
+          <RefreshCw className="w-8 h-8 text-twice-magenta animate-spin mb-3" />
+          <h3 className="text-sm font-bold text-white">타임라인 캔버스 로딩 중...</h3>
         </div>
       )}
 
       {error && !loading && (
-        <div className="bg-rose-950/30 border border-rose-500/40 p-6 rounded-2xl text-center">
-          <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-2" />
-          <h3 className="text-base font-bold text-rose-200">데이터를 불러오지 못했습니다</h3>
+        <div className="bg-rose-950/30 border border-rose-500/40 p-5 rounded-2xl text-center">
+          <AlertCircle className="w-6 h-6 text-rose-400 mx-auto mb-2" />
+          <h3 className="text-sm font-bold text-rose-200">데이터를 불러오지 못했습니다</h3>
           <p className="text-rose-400 text-xs mt-1">{error}</p>
         </div>
       )}
 
-      {/* ================= MAIN DUAL VIEW: Left Multi-Track Canvas (8 Cols) + Right Sticky Player (4 Cols) ================= */}
+      {/* ================= SIMPLIFIED DUAL-VIEW: Left Thin-Bar Canvas (8 Cols) + Right Pinned Player (4 Cols) ================= */}
       {!loading && !error && graphData && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* ================= LEFT MULTI-TRACK CANVAS (8 COLS) ================= */}
+          {/* ================= LEFT MULTI-TRACK THIN-BAR CANVAS (8 COLS) ================= */}
           <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md overflow-x-auto">
             
-            {/* Multi-Track Header Legend */}
-            <div className="grid grid-cols-12 gap-2 pb-4 border-b border-slate-850 text-[11px] font-mono text-gray-400 sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
-              <div className="col-span-3 font-bold text-white flex items-center gap-1.5">
-                <Music className="w-3.5 h-3.5 text-twice-magenta" /> ⏱️ 타임라인 곡
+            {/* Track Column Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
+              <div className="flex items-center gap-6">
+                <div className="w-16 text-gray-500 font-bold">시간</div>
+                <div className="text-purple-400 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3 h-3" /> 상위 캠 (마스터 & 풀캠 {parentTracks.length}개)
+                </div>
               </div>
-              <div className="col-span-2 font-bold text-purple-400 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> L0: 마스터
-              </div>
-              <div className="col-span-2 font-bold text-blue-400 flex items-center gap-1">
-                <Layers className="w-3 h-3" /> L1: 풀캠
-              </div>
-              <div className="col-span-2 font-bold text-amber-400 flex items-center gap-1">
-                <Split className="w-3 h-3" /> L2: 액트/메들리
-              </div>
-              <div className="col-span-3 font-bold text-pink-400 flex items-center gap-1">
-                <User className="w-3 h-3" /> L3: 개별 직캠
+              <div className="text-pink-400 font-bold flex items-center gap-1.5 pr-4">
+                <GitBranch className="w-3 h-3" /> 하위 직캠 (개별 & 솔로 {childTracks.length}개)
               </div>
             </div>
 
@@ -415,220 +381,155 @@ export default function SyncVisualizerPage() {
             <div 
               ref={timelineRef}
               style={{ height: `${canvasHeight}px` }} 
-              className="relative w-full mt-4 grid grid-cols-12 gap-2"
+              className="relative w-full mt-4 flex gap-4"
             >
-              {/* Background Time Grid Lines (Every 10 minutes) */}
-              {Array.from({ length: Math.ceil(totalDuration / 600) }).map((_, gIdx) => {
-                const sec = gIdx * 600;
-                const topPx = (sec / totalDuration) * canvasHeight;
-                return (
-                  <div
-                    key={gIdx}
-                    style={{ top: `${topPx}px` }}
-                    className="absolute left-0 right-0 border-t border-slate-850/60 pointer-events-none flex items-center"
-                  >
-                    <span className="text-[9px] font-mono text-slate-600 pl-1 -mt-3.5">
-                      {formatTime(sec)}
-                    </span>
-                  </div>
-                );
-              })}
-
-              {/* ---------- COL 1 (Col-span 3): Setlist Song Milestone Indicators ---------- */}
-              <div className="col-span-3 relative h-full border-r border-slate-800/80 pr-2">
-                {graphData.setlist.map((song) => {
-                  const pos = getPositionStyles(song.start_time, song.end_time - song.start_time);
-                  const isCurActive = activeSong?.id === song.id;
-
+              {/* 1. Left Time Scale Axis (Every 15 minutes) */}
+              <div className="w-16 relative h-full flex-shrink-0 border-r border-slate-800/80">
+                {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
+                  const sec = gIdx * 900;
+                  const topPx = (sec / totalDuration) * canvasHeight;
                   return (
                     <div
-                      key={song.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => {
-                        setActiveSong(song);
-                        if (selectedVideo) {
-                          handleSelectVideo(selectedVideo, song.start_time);
-                        }
-                      }}
-                      className={`absolute left-0 right-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isCurActive
-                          ? 'bg-twice-magenta/20 border-twice-magenta text-white shadow-lg ring-1 ring-twice-magenta/40'
-                          : 'bg-slate-850/80 border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-gray-300'
-                      }`}
+                      key={gIdx}
+                      style={{ top: `${topPx}px` }}
+                      className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none"
                     >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-bold text-twice-apricot font-mono">
-                          {formatTime(song.start_time)}
-                        </span>
-                        {song.is_solo && (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-pink-950 text-pink-400 border border-pink-500/30">
-                            Solo
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs font-black truncate leading-tight mt-0.5">
-                        {song.name}
-                      </div>
+                      <span className="text-[9px] font-mono text-gray-500 -mt-2">
+                        {formatTime(sec)}
+                      </span>
                     </div>
                   );
                 })}
               </div>
 
-              {/* ---------- COL 2 (Col-span 2): Master Spine (Video 1094) ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.master && (
-                  <div
-                    style={getPositionStyles(0, totalDuration)}
-                    onClick={() => handleSelectVideo(tracks.master!)}
-                    className={`absolute inset-x-1 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between p-2.5 overflow-hidden shadow-lg ${
-                      selectedVideo?.id === tracks.master.id
-                        ? 'bg-purple-900/30 border-purple-400 ring-2 ring-purple-500/50 shadow-purple-900/40'
-                        : 'bg-purple-950/20 border-purple-500/30 hover:border-purple-500/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1 text-[10px] font-black text-purple-300 uppercase tracking-widest">
-                      <Sparkles className="w-3 h-3 text-twice-magenta" /> Master
-                    </div>
-                    <div className="rotate-90 origin-left text-xs font-bold text-purple-200 whitespace-nowrap opacity-70 ml-2">
-                      🏆 1094 Master (00:00:00 ~ {formatTime(totalDuration)})
-                    </div>
-                    <div className="text-[10px] font-mono text-purple-300 font-bold">
-                      {formatDuration(totalDuration)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ---------- COL 3 (Col-span 2): Full Cam Rails (Discontinuous in Split cuts) ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.fulls.map((fCam) => {
-                  const isSelected = selectedVideo?.id === fCam.id;
-                  const hasSegments = fCam.segments && fCam.segments.length > 0;
-
-                  if (hasSegments) {
-                    return fCam.segments.map((seg, sIdx) => {
-                      const segDur = seg.video_end - seg.video_start;
-                      const pos = getPositionStyles(seg.master_start, segDur);
-                      return (
-                        <div
-                          key={`${fCam.id}-seg-${sIdx}`}
-                          style={{ top: pos.top, height: pos.height }}
-                          onClick={() => handleSelectVideo(fCam, seg.master_start)}
-                          className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-md ${
-                            isSelected
-                              ? 'bg-amber-900/40 border-amber-400 ring-2 ring-amber-500/50 shadow-amber-900/30'
-                              : 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400 hover:bg-amber-950/50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between text-[9px] font-bold text-amber-300">
-                            <span>#{fCam.id} {seg.label || `Part ${sIdx + 1}`}</span>
-                            <span className="font-mono">+{seg.sync_offset.toFixed(1)}s</span>
-                          </div>
-                          <div className="text-[9px] font-mono text-amber-400 truncate">
-                            {formatTime(seg.master_start)} ~ {formatTime(seg.master_end)}
-                          </div>
-                        </div>
-                      );
-                    });
-                  }
-
-                  const pos = getPositionStyles(fCam.master_start_time, fCam.duration);
-                  return (
-                    <div
-                      key={fCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(fCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2.5 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-md ${
-                        isSelected
-                          ? 'bg-blue-900/40 border-blue-400 ring-2 ring-blue-500/50 shadow-blue-900/30'
-                          : 'bg-blue-950/30 border-blue-500/40 hover:border-blue-400 hover:bg-blue-950/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px] font-bold text-blue-300">
-                        <span>📹 #{fCam.id} Full Cam</span>
-                        <span className="font-mono">{formatDuration(fCam.duration)}</span>
-                      </div>
-                      <div className="text-[10px] font-mono text-blue-400">
-                        {formatTime(fCam.master_start_time)} ~ {formatTime(fCam.master_end_time)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* ---------- COL 4 (Col-span 2): Act / Medley Cam Tracks ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.acts.map((aCam) => {
-                  const pos = getPositionStyles(aCam.master_start_time, aCam.duration);
-                  const isSelected = selectedVideo?.id === aCam.id;
-                  return (
-                    <div
-                      key={aCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(aCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isSelected
-                          ? 'bg-amber-900/40 border-amber-400 ring-2 ring-amber-500/50 shadow-amber-900/30 z-10'
-                          : 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400 text-amber-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[9px] font-bold">
-                        <span className="truncate">🎬 #{aCam.id}</span>
-                        <span className="font-mono">{formatDuration(aCam.duration)}</span>
-                      </div>
-                      <div className="text-[9px] font-mono text-amber-300 truncate">
-                        {formatTime(aCam.master_start_time)} ~ {formatTime(aCam.master_end_time)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* ---------- COL 5 (Col-span 3): Individual & Solo Fancams Track ---------- */}
-              <div className="col-span-3 relative h-full pl-1">
-                {tracks.solos.map((vCam) => {
-                  const pos = getPositionStyles(vCam.master_start_time, vCam.duration);
-                  const isSelected = selectedVideo?.id === vCam.id;
-                  const isDrift = vCam.status === 'uncalibrated' || vCam.status === 'drift_warning';
+              {/* 2. Parent Tracks (상위 캠: Thin Vertical Bars Side-by-Side) */}
+              <div className="flex items-start gap-2.5 relative h-full flex-shrink-0 border-r border-slate-800/80 pr-4">
+                {parentTracks.map((pCam) => {
+                  const isSelected = selectedVideo?.id === pCam.id;
+                  const isHovered = hoveredVideo?.id === pCam.id;
+                  const hasSegments = pCam.segments && pCam.segments.length > 0;
+                  const isMaster = pCam.is_master;
 
                   return (
-                    <div
-                      key={vCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(vCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isSelected
-                          ? 'bg-pink-900/40 border-pink-400 ring-2 ring-pink-500/50 shadow-pink-900/30 z-10'
-                          : isDrift
-                          ? 'bg-rose-950/40 border-rose-500/50 hover:bg-rose-950/60 text-rose-200'
-                          : 'bg-slate-800/80 border-slate-700 hover:border-slate-500 hover:bg-slate-750 text-gray-200'
-                      }`}
+                    <div 
+                      key={pCam.id}
+                      className="relative w-6 sm:w-8 h-full flex flex-col items-center group cursor-pointer"
+                      onClick={() => handleSelectVideo(pCam)}
+                      onMouseEnter={() => setHoveredVideo(pCam)}
+                      onMouseLeave={() => setHoveredVideo(null)}
                     >
-                      <div className="flex items-center justify-between gap-1 text-[10px] font-bold">
-                        <span className="truncate max-w-[120px]">{vCam.title}</span>
-                        {isDrift ? (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-rose-950 text-rose-400 border border-rose-500/40">
-                            🔴 Drift
-                          </span>
+                      {/* Track Header Label */}
+                      <div className="text-[9px] font-mono font-black text-gray-400 truncate w-full text-center mb-1">
+                        {isMaster ? '🏆' : `#${pCam.id}`}
+                      </div>
+
+                      {/* Thin Bar Body */}
+                      <div className="relative w-2.5 sm:w-3.5 h-full bg-slate-950/60 rounded-full overflow-hidden border border-slate-800">
+                        {hasSegments ? (
+                          // Split Bar: Discontinuous segmented blocks (띄엄띄엄)
+                          pCam.segments.map((seg, sIdx) => {
+                            const segDur = seg.video_end - seg.video_start;
+                            const pos = getPositionStyles(seg.master_start, segDur);
+                            return (
+                              <div
+                                key={sIdx}
+                                style={{ top: pos.top, height: pos.height }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectVideo(pCam, seg.master_start);
+                                }}
+                                className={`absolute inset-x-0 rounded-sm transition-all ${
+                                  isSelected || isHovered
+                                    ? 'bg-amber-300 ring-2 ring-amber-400 shadow-lg shadow-amber-500/40'
+                                    : 'bg-amber-500/80 hover:bg-amber-400'
+                                }`}
+                                title={`${seg.label || `Part ${sIdx + 1}`}: ${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)} (+${seg.sync_offset.toFixed(1)}s)`}
+                              />
+                            );
+                          })
                         ) : (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                            🟢 OK
-                          </span>
+                          // Continuous Single Bar
+                          <div
+                            style={getPositionStyles(pCam.master_start_time, pCam.duration)}
+                            className={`absolute inset-x-0 rounded-sm transition-all ${
+                              isMaster
+                                ? isSelected || isHovered
+                                  ? 'bg-purple-300 ring-2 ring-purple-400 shadow-lg shadow-purple-500/40'
+                                  : 'bg-gradient-to-b from-purple-500 to-twice-magenta'
+                                : isSelected || isHovered
+                                ? 'bg-cyan-300 ring-2 ring-cyan-400 shadow-lg shadow-cyan-500/40'
+                                : 'bg-cyan-500/80 hover:bg-cyan-400'
+                            }`}
+                            title={`#${pCam.id} ${pCam.title} (${formatDuration(pCam.duration)})`}
+                          />
                         )}
-                      </div>
-                      <div className="flex items-center justify-between text-[9px] font-mono text-twice-apricot mt-0.5">
-                        <span>{formatTime(vCam.master_start_time)} ~ {formatTime(vCam.master_end_time)}</span>
-                        <span>{formatDuration(vCam.duration)}</span>
                       </div>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* 3. Child Tracks (하위 직캠: Thin Vertical Bars at Specific Time Spans) */}
+              <div className="flex-1 relative h-full">
+                {/* Visual horizontal guide lines across timeline */}
+                {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
+                  const sec = gIdx * 900;
+                  const topPx = (sec / totalDuration) * canvasHeight;
+                  return (
+                    <div
+                      key={gIdx}
+                      style={{ top: `${topPx}px` }}
+                      className="absolute left-0 right-0 border-t border-slate-850/40 pointer-events-none"
+                    />
+                  );
+                })}
+
+                {/* Sub-grid of individual fancams */}
+                <div className="relative w-full h-full">
+                  {childTracks.map((cCam, cIdx) => {
+                    const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
+                    const isSelected = selectedVideo?.id === cCam.id;
+                    const isHovered = hoveredVideo?.id === cCam.id;
+                    const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
+                    
+                    // Distribute across lanes horizontally based on index mod
+                    const laneLeft = (cIdx % 10) * 9.5;
+
+                    return (
+                      <div
+                        key={cCam.id}
+                        style={{ 
+                          top: pos.top, 
+                          height: pos.height,
+                          left: `${laneLeft}%`,
+                          width: '8%'
+                        }}
+                        onClick={() => handleSelectVideo(cCam)}
+                        onMouseEnter={() => setHoveredVideo(cCam)}
+                        onMouseLeave={() => setHoveredVideo(null)}
+                        className={`absolute rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
+                          isSelected || isHovered
+                            ? 'bg-twice-magenta ring-2 ring-twice-apricot shadow-lg shadow-twice-magenta/50 z-20'
+                            : isDrift
+                            ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
+                            : 'bg-twice-magenta/60 border-twice-magenta/80 hover:bg-twice-magenta'
+                        }`}
+                        title={`#${cCam.id} ${cCam.title} [${formatTime(cCam.master_start_time)} ~ ${formatTime(cCam.master_end_time)}]`}
+                      >
+                        {/* Member/Short Tag */}
+                        <span className="text-[8px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
+                          {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
             </div>
           </div>
 
-          {/* ================= RIGHT DEDICATED PLAYER & INSPECTOR PANEL (4 COLS) ================= */}
+          {/* ================= RIGHT DEDICATED PLAYER & INSPECTOR (4 COLS) ================= */}
           <div className="lg:col-span-4 lg:sticky lg:top-4 space-y-4">
             {selectedVideo ? (
               <div className="bg-slate-900/95 border-2 border-twice-magenta/40 rounded-3xl p-5 shadow-2xl backdrop-blur-md space-y-4">
@@ -641,7 +542,7 @@ export default function SyncVisualizerPage() {
                     </span>
                     <div>
                       <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                        Dedicated Video Inspector
+                        Video Inspector
                       </h3>
                       <span className="text-[10px] font-mono text-twice-apricot">
                         Video #{selectedVideo.id} • Offset: +{selectedVideo.sync_offset.toFixed(1)}s
@@ -652,7 +553,7 @@ export default function SyncVisualizerPage() {
                   <Link
                     to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
                     className="p-1.5 text-xs font-bold text-gray-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg flex items-center gap-1 border border-slate-700"
-                    title="360° 멀티앵글 플레이어로 열기"
+                    title="360° 대형 플레이어로 열기"
                   >
                     <Maximize2 className="w-3.5 h-3.5" />
                   </Link>
@@ -671,49 +572,49 @@ export default function SyncVisualizerPage() {
 
                 {/* Video Info */}
                 <div>
-                  <h4 className="text-sm font-bold text-white line-clamp-2">
+                  <h4 className="text-xs sm:text-sm font-bold text-white line-clamp-2">
                     {selectedVideo.title}
                   </h4>
-                  <div className="flex items-center gap-2 text-xs font-mono text-gray-400 mt-1">
-                    <span>마스터 타임라인: {formatTime(selectedVideo.master_start_time)} ~ {formatTime(selectedVideo.master_end_time)}</span>
+                  <div className="flex items-center gap-2 text-[11px] font-mono text-gray-400 mt-1">
+                    <span>타임라인: {formatTime(selectedVideo.master_start_time)} ~ {formatTime(selectedVideo.master_end_time)}</span>
                   </div>
                 </div>
 
-                {/* Metadata & Diagnostics */}
+                {/* Metadata */}
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">Duration</span>
-                    <div className="text-sm font-mono font-black text-white mt-0.5">
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase">Duration</span>
+                    <div className="text-xs font-mono font-black text-white mt-0.5">
                       {formatDuration(selectedVideo.duration)}
                     </div>
                   </div>
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">Sync Offset</span>
-                    <div className="text-sm font-mono font-black text-twice-apricot mt-0.5">
+                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
+                    <span className="text-[9px] font-bold text-gray-400 uppercase">Sync Offset</span>
+                    <div className="text-xs font-mono font-black text-twice-apricot mt-0.5">
                       +{selectedVideo.sync_offset.toFixed(2)}s
                     </div>
                   </div>
                 </div>
 
                 {/* Health Diagnostic Badge */}
-                <div className={`p-3 rounded-xl border text-xs ${
+                <div className={`p-2.5 rounded-xl border text-xs ${
                   selectedVideo.status === 'verified' || selectedVideo.status === 'master'
                     ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
                     : selectedVideo.status === 'segmented'
                     ? 'bg-amber-950/30 border-amber-500/40 text-amber-300'
                     : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
                 }`}>
-                  <div className="text-[10px] font-bold uppercase tracking-wider">진단 상태</div>
-                  <div className="font-bold mt-0.5">{selectedVideo.status_reason}</div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider">진단 상태</div>
+                  <div className="font-bold text-xs mt-0.5">{selectedVideo.status_reason}</div>
                 </div>
 
-                {/* If Split Segments exist */}
+                {/* If Split Segments exist (e.g. Video 63) */}
                 {selectedVideo.segments && selectedVideo.segments.length > 0 && (
                   <div className="space-y-1.5 pt-2 border-t border-slate-800">
                     <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                      <Split className="w-3 h-3" /> 세그먼트 분할 구간 ({selectedVideo.segments.length}개)
+                      <Split className="w-3 h-3" /> 분할 구간 Split Bar ({selectedVideo.segments.length}개)
                     </div>
-                    <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
                       {selectedVideo.segments.map((seg, sIdx) => (
                         <button
                           key={sIdx}
@@ -721,7 +622,7 @@ export default function SyncVisualizerPage() {
                           className="w-full text-left p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700 text-[10px] font-mono flex items-center justify-between transition-all"
                         >
                           <span className="text-white font-bold">{seg.label || `Part ${sIdx + 1}`}</span>
-                          <span className="text-twice-apricot">Offset: +{seg.sync_offset.toFixed(1)}s</span>
+                          <span className="text-twice-apricot">+{seg.sync_offset.toFixed(1)}s</span>
                         </button>
                       ))}
                     </div>
@@ -731,14 +632,14 @@ export default function SyncVisualizerPage() {
                 {/* Open in Main Player */}
                 <Link
                   to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
-                  className="w-full py-2.5 bg-twice-magenta hover:bg-twice-magenta/80 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg transition-all"
+                  className="w-full py-2 bg-twice-magenta hover:bg-twice-magenta/80 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg transition-all"
                 >
-                  <Play className="w-3.5 h-3.5 fill-current" /> 360° 대형 플레이어로 보기
+                  <Play className="w-3 h-3 fill-current" /> 360° 대형 플레이어로 보기
                 </Link>
               </div>
             ) : (
               <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center text-gray-500 font-mono text-xs">
-                왼쪽 타임라인에서 영상을 클릭하면 여기에 실시간 검증 플레이어가 표시됩니다.
+                왼쪽 타임라인에서 바를 클릭하면 여기에 실시간 검증 플레이어가 표시됩니다.
               </div>
             )}
           </div>
