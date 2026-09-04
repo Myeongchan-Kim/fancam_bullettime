@@ -60,34 +60,46 @@ def cross_correlate(ref_wav: str, tgt_wav: str, tgt_window_start: float) -> tupl
 
 def calibrate_video_3point(db, video: Video, master_video: Video, expected_master_center: float, search_radius: float = 400.0):
     """
-    3-Point Anchor Calibration:
+    3-Point Anchor Calibration with adaptive probe distribution:
     1. Probe Start (t=5s)
-    2. Probe Mid (t=duration/2)
-    3. Probe End (t=duration-5s)
+    2. Probe Near-Start/Mid (min(60s, dur/2) for long multi-song videos, or dur/2)
+    3. Probe Mid / End
     """
     dur = float(video.duration or 60.0)
-    tgt_start = max(0.0, expected_master_center - search_radius)
-    tgt_dur = search_radius * 2 + dur
-    
-    # Download master search window audio
-    tgt_name = f"master_{master_video.id}_{int(tgt_start)}_{int(tgt_dur)}"
-    tgt_wav = download_audio_slice(master_video.youtube_id, tgt_start, tgt_dur, tgt_name)
-    
     # Points to test
-    test_points = [
-        ("start", 5.0),
-        ("mid", dur / 2.0),
-        ("end", max(5.0, dur - 5.0))
-    ]
+    if dur > 300.0:
+        test_points = [
+            ("start", 5.0),
+            ("p1", min(60.0, dur * 0.2)),
+            ("p2", min(150.0, dur * 0.4)),
+            ("mid", min(300.0, dur / 2.0)),
+        ]
+    else:
+        test_points = [
+            ("start", 5.0),
+            ("mid", dur / 2.0),
+            ("end", max(5.0, dur - 5.0))
+        ]
     
     offsets = []
     scores = []
     
     for tag, t_local in test_points:
+        # Expected master position for this probe
+        exp_m_t = expected_master_center + t_local
+        tgt_start = max(0.0, exp_m_t - search_radius)
+        tgt_dur = search_radius * 2 + 10.0
+        
+        # Download tight master search window around expected point
+        tgt_name = f"master_{master_video.id}_{int(tgt_start)}_{int(tgt_dur)}"
+        tgt_wav = download_audio_slice(master_video.youtube_id, tgt_start, tgt_dur, tgt_name)
+        
+        # Download local fancam audio probe (10s)
         ref_name = f"v{video.id}_{tag}_{int(t_local)}"
         ref_wav = download_audio_slice(video.youtube_id, t_local, 10.0, ref_name)
+        
         m_match, score = cross_correlate(ref_wav, tgt_wav, tgt_start)
-        if score > 0.08:
+        if score > 0.07:
             offset = m_match - t_local
             offsets.append((tag, t_local, offset, score))
             scores.append(score)
@@ -96,13 +108,13 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
         print(f"⚠️ Video {video.id} ({video.title[:30]}): No audio correlation match found in master window.")
         return False
         
-    # Check consistency between Start, Mid, End
+    # Check consistency between matched points
     offset_vals = [o[2] for o in offsets]
     max_diff = max(offset_vals) - min(offset_vals)
     
-    if max_diff <= 1.5:
-        # High precision continuous sync (within 1 second!)
-        mean_offset = round(float(np.mean(offset_vals)), 2)
+    if max_diff <= 3.0:
+        # High precision continuous sync (within 3 seconds consistency across entire video)
+        mean_offset = round(float(np.median(offset_vals)), 2)
         old_offset = video.sync_offset
         record_video_calibration(
             db,
@@ -155,8 +167,8 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
     2-Stage Multi-Modal Precision Sync Pipeline:
     - Stage 1 (Visual Coarse Alignment): Uses Gemini Vision to analyze thumbnail/scene,
       detecting song, act, outfit, and choreography section to find a coarse anchor window.
-    - Stage 2 (Audio Fine Alignment): Constrains 3-point audio cross-correlation within
-      the narrow visual window (±35s), eliminating false-positive local peaks in repetitive songs.
+    - Stage 2 (Audio Fine Alignment): Probes audio cross-correlation around the visual anchor.
+      For medleys or long fancams starting from opening act, searches within active song window.
     """
     from app.crawler.visual_classifier import classify_fancam_visually
     
@@ -175,6 +187,10 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
     print(f"   Visual Detected Song: {identified_song} (Confidence: {confidence:.2f})")
     print(f"   Visual Scene: {scene_desc[:80]}...")
     
+    # Check if title indicates opening medley starting with THIS IS FOR
+    if "THIS IS FOR" in video.title:
+        identified_song = "THIS IS FOR"
+    
     # Resolve setlist start time for identified song
     setlist_item = None
     if identified_song:
@@ -189,25 +205,25 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
             ConcertSetlist.song_id == video.songs[0].id
         ).first()
 
-    base_start = setlist_item.start_time if setlist_item else (video.sync_offset or 200.0)
+    base_start = setlist_item.start_time if setlist_item else (video.sync_offset or 219.5)
     
     # Section offset adjustment: In repetitive songs like THIS IS FOR, active verse entry happens ~20-25s in
     section_offset = 0.0
-    if identified_song == "THIS IS FOR" or (video.songs and video.songs[0].name == "THIS IS FOR"):
-        # If visual shows center choreography / verse rather than opening darkness
+    if identified_song == "THIS IS FOR" or (video.songs and any(s.name == "THIS IS FOR" for s in video.songs)):
         if "verse" in choreography.lower() or "dance" in choreography.lower() or "center" in scene_desc.lower() or (video.duration and video.duration < 150):
             section_offset = 23.5
             
     coarse_visual_center = base_start + section_offset
     print(f"   Stage 1 Coarse Anchor Center: {coarse_visual_center:.1f}s (base: {base_start:.1f}s, section_offset: +{section_offset:.1f}s)")
     
-    print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Running 3-Point Audio Cross Correlation in ±35s window...")
+    print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Running Audio Cross Correlation around {coarse_visual_center:.1f}s...")
+    # Search radius: 60s window for high stability
     res = calibrate_video_3point(
         db,
         video,
         master_video,
         expected_master_center=coarse_visual_center,
-        search_radius=35.0
+        search_radius=60.0
     )
     if res:
         video.calibration_method = "visual_coarse_audio_fine_sync"

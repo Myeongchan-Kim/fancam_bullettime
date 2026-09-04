@@ -135,5 +135,20 @@ def test_sync_case_momo_this_is_for_73():
     finally:
         db.close()
 
+def test_sync_case_medley_opening_1681():
+    """
+    Regression Test Case: Video 1681 (Multi-song medley: THIS IS FOR + Strategy + SET ME FREE + I CAN'T STOP ME)
+    Should be anchored to opening THIS IS FOR (~242.7s), verified across continuous multi-song probes.
+    """
+    db = SessionLocal()
+    try:
+        v1681 = db.query(Video).filter(Video.id == 1681).first()
+        assert v1681 is not None, "Video 1681 not found"
+        assert 240.0 <= v1681.sync_offset <= 246.0, f"Video 1681 sync_offset {v1681.sync_offset} should be ~242.7s"
+        assert v1681.calibration_count >= 1, "Video 1681 should have at least 1 calibration record"
+    finally:
+        db.close()
+
+
 
 
