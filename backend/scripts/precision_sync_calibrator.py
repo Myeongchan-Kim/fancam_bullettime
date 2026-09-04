@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.db import SessionLocal
 from app.models.models import Video, ConcertSetlist, VideoSyncSegment
+from app.services.calibration import record_video_calibration
 
 os.makedirs("scratch/precision_sync", exist_ok=True)
 
@@ -103,11 +104,17 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
         # High precision continuous sync (within 1 second!)
         mean_offset = round(float(np.mean(offset_vals)), 2)
         old_offset = video.sync_offset
-        video.sync_offset = mean_offset
-        db.commit()
+        record_video_calibration(
+            db,
+            video,
+            sync_offset=mean_offset,
+            method="ai_audio_cross_correlation_3point",
+            status="ai_calibrated",
+            commit=True
+        )
         print(f"🎯 [PRECISION SYNC] Video {video.id} ('{video.title[:35]}'):")
         print(f"   Anchor points: {[f'{o[0]}: {o[2]:.2f}s (score: {o[3]:.2f})' for o in offsets]}")
-        print(f"   Updated offset: {old_offset}s -> {mean_offset}s (Δ = {mean_offset - (old_offset or 0.0):+.2f}s)")
+        print(f"   Updated offset: {old_offset}s -> {mean_offset}s (Δ = {mean_offset - (old_offset or 0.0):+.2f}s), Count: {video.calibration_count}")
         return True
     else:
         # Drift / Cuts detected: Video needs Split Timeline Segments
@@ -131,8 +138,16 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
                 is_verified=True
             )
             db.add(seg)
-        db.commit()
-        print(f"   ✅ Created {len(offsets)} split timeline segments for Video {video.id}!")
+        
+        record_video_calibration(
+            db,
+            video,
+            sync_offset=round(offsets[0][2], 2),
+            method="ai_audio_cross_correlation_split",
+            status="ai_calibrated",
+            commit=True
+        )
+        print(f"   ✅ Created {len(offsets)} split timeline segments for Video {video.id}! Calibration Count: {video.calibration_count}")
         return True
 
 if __name__ == "__main__":
