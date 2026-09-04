@@ -35,29 +35,37 @@ export default function SyncVisualizerPage() {
 
   // 1. Fetch Concerts list
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/concerts`)
-      .then(res => res.json())
+    fetch(`${API_BASE_URL}/concerts`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        return res.json();
+      })
       .then((data: Concert[]) => {
-        setConcerts(data);
-        if (data.length > 0 && !selectedConcertId) {
-          setSelectedConcertId(data[0].id);
+        if (Array.isArray(data)) {
+          setConcerts(data);
+          if (data.length > 0 && !selectedConcertId) {
+            setSelectedConcertId(data[0].id);
+          }
         }
       })
-      .catch(err => console.error('Failed to load concerts', err));
+      .catch(err => {
+        console.error('Failed to load concerts', err);
+        setConcerts([]);
+      });
   }, []);
 
   // 2. Fetch Sync Graph Data
   const loadSyncGraph = (concertId: number) => {
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE_URL}/api/concerts/${concertId}/sync-graph`)
+    fetch(`${API_BASE_URL}/concerts/${concertId}/sync-graph`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
         return res.json();
       })
       .then((data: SyncGraphData) => {
         setGraphData(data);
-        if (data.videos.length > 0 && !selectedVideo) {
+        if (data.videos && data.videos.length > 0 && !selectedVideo) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
           setSelectedVideo(master);
         }
