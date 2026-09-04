@@ -43,6 +43,8 @@ export default function SyncVisualizerPage() {
   const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
   const lastTimeRefA = useRef<number>(0);
   const lastTimeRefB = useRef<number>(0);
+  const lastSeekTimeARef = useRef<number>(0);
+  const lastSeekTimeBRef = useRef<number>(0);
   const isPlaybackTickRef = useRef<boolean>(false);
   const isDraggingTimelineRef = useRef<boolean>(false);
   const timelineRef = useRef<HTMLDivElement>(null);
@@ -483,15 +485,17 @@ export default function SyncVisualizerPage() {
   // 1. External cursor change (e.g. clicking on timeline canvas or paused seeking) -> Sync players
   useEffect(() => {
     if (isPlaybackTickRef.current || isDraggingTimelineRef.current) return;
-    const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
-    const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
     try {
-      if (playerA && typeof playerA.seekTo === 'function') {
+      const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+      const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+
+      // Only seek players that are NOT currently playing (state !== 1) to eliminate stutter during playback
+      if (playerA && typeof playerA.seekTo === 'function' && stateA !== 1) {
+        const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
         playerA.seekTo(targetA, true);
       }
-    } catch (e) {}
-    try {
-      if (playerB && typeof playerB.seekTo === 'function') {
+      if (playerB && typeof playerB.seekTo === 'function' && stateB !== 1) {
+        const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
         playerB.seekTo(targetB, true);
       }
     } catch (e) {}
@@ -548,10 +552,14 @@ export default function SyncVisualizerPage() {
             const durB = videoB.duration || 300;
             if (expB >= 0 && expB <= durB) {
               if (stateB !== 1 && stateB !== 3) {
+                // Deck B is paused/cued, start playing from target sync position
                 playerB.seekTo(expB, true);
                 playerB.playVideo();
-              } else if (Math.abs(timeB - expB) > 0.5) {
+                lastSeekTimeBRef.current = Date.now();
+              } else if (stateB === 1 && Math.abs(timeB - expB) > 0.9 && (Date.now() - lastSeekTimeBRef.current > 2000)) {
+                // Correct significant drift only after 2s stabilization grace period
                 playerB.seekTo(expB, true);
+                lastSeekTimeBRef.current = Date.now();
               }
             } else if (stateB === 1) {
               playerB.pauseVideo();
@@ -579,8 +587,10 @@ export default function SyncVisualizerPage() {
               if (stateA !== 1 && stateA !== 3) {
                 playerA.seekTo(expA, true);
                 playerA.playVideo();
-              } else if (Math.abs(timeA - expA) > 0.5) {
+                lastSeekTimeARef.current = Date.now();
+              } else if (stateA === 1 && Math.abs(timeA - expA) > 0.9 && (Date.now() - lastSeekTimeARef.current > 2000)) {
                 playerA.seekTo(expA, true);
+                lastSeekTimeARef.current = Date.now();
               }
             } else if (stateA === 1) {
               playerA.pauseVideo();
@@ -1015,7 +1025,7 @@ export default function SyncVisualizerPage() {
                             }`}
                           >
                             <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                             </span>
                           </div>
                         );
