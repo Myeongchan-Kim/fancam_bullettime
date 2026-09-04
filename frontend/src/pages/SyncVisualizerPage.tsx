@@ -61,6 +61,13 @@ export default function SyncVisualizerPage() {
   const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // AI 2-Stage Multi-Modal Precision Sync Modal State
+  const [isAiSyncModalOpen, setIsAiSyncModalOpen] = useState<boolean>(false);
+  const [isAiSyncing, setIsAiSyncing] = useState<boolean>(false);
+  const [aiSyncResult, setAiSyncResult] = useState<any>(null);
+  const [aiSyncError, setAiSyncError] = useState<string | null>(null);
+  const [aiSyncTargetVideo, setAiSyncTargetVideo] = useState<SyncGraphVideoNode | null>(null);
+
   // Full Calibrator Modals
   const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
   const [showSegmentModal, setShowSegmentModal] = useState<boolean>(false);
@@ -441,6 +448,52 @@ export default function SyncVisualizerPage() {
       alert(`저장 실패: ${err?.response?.data?.detail || err.message}`);
     } finally {
       setIsSavingOffset(false);
+    }
+  };
+
+  // AI 2-Stage Multi-Modal Precision Sync Trigger Handler
+  const handleTriggerAiSync = async (targetVideo: SyncGraphVideoNode | null) => {
+    if (!targetVideo || targetVideo.is_master) return;
+    setAiSyncTargetVideo(targetVideo);
+    setIsAiSyncModalOpen(true);
+    setIsAiSyncing(true);
+    setAiSyncResult(null);
+    setAiSyncError(null);
+
+    try {
+      let adminKey = localStorage.getItem('admin_key') || '';
+      if (!adminKey) {
+        const inputKey = window.prompt('AI 2-Stage 정밀 싱크를 실행하려면 Admin Key가 필요합니다:');
+        if (!inputKey) {
+          setIsAiSyncModalOpen(false);
+          setIsAiSyncing(false);
+          return;
+        }
+        adminKey = inputKey.trim();
+        localStorage.setItem('admin_key', adminKey);
+        setIsAdminMode(true);
+      }
+
+      const res = await axios.post(
+        `${API_BASE_URL}/videos/${targetVideo.id}/ai-sync`,
+        {},
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      setAiSyncResult(res.data);
+      setFineTuneDelta(0);
+      await loadSyncGraph(selectedConcertId);
+    } catch (err: any) {
+      console.error('AI Sync failed', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
+      } else {
+        setAiSyncError(err?.response?.data?.detail || err?.message || 'AI 정밀 싱크 실행 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setIsAiSyncing(false);
     }
   };
 
@@ -1469,6 +1522,14 @@ export default function SyncVisualizerPage() {
                             </button>
                           )}
                           <button
+                            onClick={() => handleTriggerAiSync(videoB)}
+                            disabled={isAiSyncing}
+                            className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 text-xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                            title="Gemini Vision 화면 분석 + 3-Point 오디오 2-Stage 정밀 싱크 실행"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" /> 🤖 AI 2-Stage 싱크
+                          </button>
+                          <button
                             onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
                             className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
                             title="정밀 오디오 파형 캘리브레이터 열기"
@@ -1744,6 +1805,114 @@ export default function SyncVisualizerPage() {
             loadSyncGraph(selectedConcertId);
           }}
         />
+      )}
+
+      {/* ================= AI 2-STAGE SYNC SPINNER MODAL ================= */}
+      {isAiSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 max-w-md w-full shadow-2xl shadow-emerald-950/80 relative text-center">
+            
+            {/* Close button if not running */}
+            {!isAiSyncing && (
+              <button
+                onClick={() => setIsAiSyncModalOpen(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Target Video Info */}
+            <div className="mb-4">
+              <span className="px-2.5 py-1 bg-emerald-950 border border-emerald-500/40 text-emerald-400 text-xs rounded-full font-mono font-bold">
+                Video #{aiSyncTargetVideo?.id}
+              </span>
+              <h3 className="text-base font-bold text-white mt-2 truncate">
+                {aiSyncTargetVideo?.title}
+              </h3>
+            </div>
+
+            {/* Running State with Spinner */}
+            {isAiSyncing && (
+              <div className="py-6 flex flex-col items-center justify-center space-y-4">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full border-4 border-slate-700 border-t-twice-magenta border-r-twice-apricot animate-spin" />
+                  <Sparkles className="w-6 h-6 text-emerald-400 absolute inset-0 m-auto animate-pulse" />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-bold text-white">AI 2-Stage 정밀 싱크 분석 중...</h4>
+                  <p className="text-xs text-gray-400">
+                    Stage 1: Gemini Vision 화면 의상/안무 분석<br/>
+                    Stage 2: 3-Point 오디오 서브세컨드 파형 정밀 정렬
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Success Result State */}
+            {!isAiSyncing && aiSyncResult && (
+              <div className="py-4 space-y-4">
+                <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto text-emerald-400">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-emerald-300">AI 정밀 싱크 성공!</h4>
+                  <p className="text-xs text-gray-400">
+                    오프셋이 마스터 영상에 0.01초 단위로 정확히 잠겼습니다.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/80 rounded-2xl p-3 border border-slate-800 text-left space-y-2 text-xs font-mono">
+                  <div className="flex justify-between items-center text-gray-400">
+                    <span>이전 오프셋:</span>
+                    <span className="text-gray-300">{aiSyncResult.previous_offset}s</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-400 font-bold">
+                    <span>보정 오프셋:</span>
+                    <span>{aiSyncResult.new_offset}s (Δ {aiSyncResult.delta >= 0 ? `+${aiSyncResult.delta}` : aiSyncResult.delta}s)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-400">
+                    <span>보정 횟수:</span>
+                    <span className="text-cyan-300">{aiSyncResult.calibration_count}회차 ({aiSyncResult.calibration_status})</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsAiSyncModalOpen(false)}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-950"
+                >
+                  확인 및 스튜디오로 복귀
+                </button>
+              </div>
+            )}
+
+            {/* Error State */}
+            {!isAiSyncing && aiSyncError && (
+              <div className="py-4 space-y-4">
+                <div className="w-12 h-12 bg-rose-500/20 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto text-rose-400">
+                  <AlertTriangle className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-rose-300">AI 정밀 싱크 실패</h4>
+                  <p className="text-xs text-rose-200/80 break-words">
+                    {aiSyncError}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsAiSyncModalOpen(false)}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition-all"
+                >
+                  닫기
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
       )}
 
     </div>
