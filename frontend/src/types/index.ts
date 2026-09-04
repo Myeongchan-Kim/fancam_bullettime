@@ -90,3 +90,65 @@ export interface PaginatedVideos {
   total_count: number;
   videos: Video[];
 }
+
+export interface SyncGraphVideoNode {
+  id: number;
+  youtube_id: string;
+  title: string;
+  duration: number;
+  sync_offset: number;
+  master_start_time: number;
+  master_end_time: number;
+  members: string[];
+  angle?: string;
+  is_master: boolean;
+  status: 'master' | 'verified' | 'segmented' | 'uncalibrated' | 'drift_warning';
+  status_reason: string;
+  segments: {
+    id: number;
+    video_start: number;
+    video_end: number;
+    master_start: number;
+    master_end: number;
+    sync_offset: number;
+    label?: string | null;
+    is_verified?: boolean;
+  }[];
+  songs: {
+    id: number;
+    name: string;
+    is_solo: boolean;
+    member_name?: string;
+  }[];
+}
+
+export interface SyncGraphSetlistItem {
+  id: number;
+  song_id: number | null;
+  name: string;
+  is_solo: boolean;
+  member_name?: string | null;
+  act?: string | null;
+  display_order: number;
+  start_time: number;
+  end_time: number;
+}
+
+export interface SyncGraphData {
+  concert: {
+    id: number;
+    date: string | null;
+    city: string;
+    venue: string;
+    total_videos: number;
+  };
+  master_video: {
+    id: number;
+    youtube_id: string;
+    duration: number;
+    title: string;
+  } | null;
+  setlist: SyncGraphSetlistItem[];
+  videos: SyncGraphVideoNode[];
+}
+

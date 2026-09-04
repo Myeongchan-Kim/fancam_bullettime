@@ -51,3 +51,125 @@ def import_setlist(concert_id: int, items: List[dict], db: Session = Depends(get
         db.add(ConcertSetlist(concert_id=concert_id, song_id=item.get("song_id"), event_name=item.get("event_name"), start_time=item.get("start_time"), display_order=idx))
     db.commit()
     return {"message": f"Successfully imported {len(items)} setlist items"}
+
+@router.get("/concerts/{concert_id}/sync-graph")
+def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
+    concert = db.query(Concert).options(
+        selectinload(Concert.setlist).joinedload(ConcertSetlist.song)
+    ).filter(Concert.id == concert_id).first()
+    if not concert:
+        raise HTTPException(status_code=404, detail="Concert not found")
+        
+    videos = db.query(Video).options(
+        selectinload(Video.sync_segments),
+        selectinload(Video.songs)
+    ).filter(
+        Video.concert_id == concert_id,
+        Video.is_unavailable == False
+    ).order_by(Video.sync_offset.asc()).all()
+    
+    master_video = next((v for v in videos if v.sync_offset == 0.0 and v.duration and v.duration > 3600), None)
+    if not master_video:
+        master_video = next((v for v in videos if v.duration and v.duration > 3600), None)
+        
+    setlist_items = []
+    sorted_setlist = sorted(concert.setlist, key=lambda x: x.display_order if x.display_order is not None else 999)
+    for idx, item in enumerate(sorted_setlist):
+        s_name = item.song.name if item.song else (item.event_name or "Event")
+        start_t = item.start_time or 0.0
+        next_t = sorted_setlist[idx + 1].start_time if (idx + 1 < len(sorted_setlist) and sorted_setlist[idx + 1].start_time is not None and sorted_setlist[idx + 1].start_time > start_t) else start_t + 200.0
+        setlist_items.append({
+            "id": item.id,
+            "song_id": item.song_id,
+            "name": s_name,
+            "is_solo": item.song.is_solo if item.song else False,
+            "member_name": item.song.member_name if item.song else None,
+            "act": item.song.act if item.song else None,
+            "display_order": item.display_order,
+            "start_time": start_t,
+            "end_time": next_t
+        })
+        
+    video_nodes = []
+    for v in videos:
+        is_master = (master_video and v.id == master_video.id)
+        dur = v.duration or 0.0
+        offset = v.sync_offset or 0.0
+        
+        segs = []
+        if v.sync_segments:
+            for seg in v.sync_segments:
+                segs.append({
+                    "id": seg.id,
+                    "video_start": seg.video_start_time,
+                    "video_end": seg.video_end_time,
+                    "master_start": seg.master_start_time,
+                    "master_end": seg.master_end_time,
+                    "sync_offset": seg.sync_offset,
+                    "label": seg.label,
+                    "is_verified": seg.is_verified
+                })
+                
+        if segs:
+            master_start = min(s["master_start"] for s in segs)
+            master_end = max(s["master_end"] for s in segs)
+        else:
+            master_start = offset
+            master_end = offset + dur
+            
+        status = "verified"
+        status_reason = "Verified audio/visual sync"
+        if is_master:
+            status = "master"
+            status_reason = "Master Timeline Reference"
+        elif segs:
+            status = "segmented"
+            status_reason = f"Split into {len(segs)} segments"
+        elif offset == 0.0 and dur < 3600:
+            status = "uncalibrated"
+            status_reason = "Zero offset (Needs Calibration)"
+        else:
+            if v.songs:
+                matching_setlists = [s for s in setlist_items if s["song_id"] in [sg.id for sg in v.songs]]
+                if matching_setlists:
+                    expected_start = matching_setlists[0]["start_time"]
+                    diff = abs(offset - expected_start)
+                    if diff > 180.0 and not v.sync_segments:
+                        status = "drift_warning"
+                        status_reason = f"Potential Drift ({diff:.0f}s gap from setlist song)"
+                        
+        video_nodes.append({
+            "id": v.id,
+            "youtube_id": v.youtube_id,
+            "title": v.title,
+            "duration": dur,
+            "sync_offset": offset,
+            "master_start_time": master_start,
+            "master_end_time": master_end,
+            "members": v.members or [],
+            "angle": v.angle,
+            "is_master": is_master,
+            "status": status,
+            "status_reason": status_reason,
+            "segments": segs,
+            "songs": [{"id": s.id, "name": s.name, "is_solo": s.is_solo, "member_name": s.member_name} for s in v.songs] if v.songs else []
+        })
+        
+    return {
+        "concert": {
+            "id": concert.id,
+            "date": concert.date.isoformat() if concert.date else None,
+            "city": concert.city,
+            "venue": concert.venue,
+            "total_videos": len(videos)
+        },
+        "master_video": {
+            "id": master_video.id if master_video else None,
+            "youtube_id": master_video.youtube_id if master_video else None,
+            "duration": master_video.duration if master_video else 10800.0,
+            "title": master_video.title if master_video else None
+        } if master_video else None,
+        "setlist": setlist_items,
+        "videos": video_nodes
+    }
+

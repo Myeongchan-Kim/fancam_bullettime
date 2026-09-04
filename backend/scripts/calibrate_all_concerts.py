@@ -1,13 +1,17 @@
 """
 Universal Concert Timeline Calibrator & Multi-Angle Sync Engine.
 Calibrates Master Concert Timelines, generates piecewise VideoSyncSegments,
-propagates tree offsets to all individual fancams, and verifies sync alignment.
+runs 3-Point Anchor Precision Audio Sync, and verifies sync alignment.
 
-Usage:
-  python backend/scripts/calibrate_all_concerts.py --concert-id 1           # Calibrate Incheon Day 1
-  python backend/scripts/calibrate_all_concerts.py --concert-id 2 --verify  # Verify Incheon Day 2 (3-min interval)
-  python backend/scripts/calibrate_all_concerts.py --all                    # Calibrate all registered concerts
-  python backend/scripts/calibrate_all_concerts.py --propagate-all          # Propagate offsets to all fancams
+Usage Examples:
+  # 1. Calibrate single concert with precision 3-point audio matching
+  python backend/scripts/calibrate_all_concerts.py --concert-id 1 --precision
+
+  # 2. Verify 3-minute interval alignment for a concert
+  python backend/scripts/calibrate_all_concerts.py --concert-id 1 --verify --step 3
+
+  # 3. Calibrate all registered concerts in the database
+  python backend/scripts/calibrate_all_concerts.py --all --precision
 """
 
 import os
@@ -15,12 +19,17 @@ import sys
 import argparse
 import datetime
 import dotenv
+import subprocess
+import numpy as np
+import scipy.signal
+from scipy.io import wavfile
 
 dotenv.load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env"))
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 from app.db import SessionLocal
 from app.models.models import Concert, Video, ConcertSetlist, Song, VideoSyncSegment
+from scripts.precision_sync_calibrator import calibrate_video_3point
 
 def propagate_fancam_offsets(db, concert_id: int) -> int:
     """Propagate setlist start_time to individual fancams (duration < 3600s)."""
@@ -78,7 +87,7 @@ def verify_concert_timeline(db, concert_id: int, step_minutes: int = 3):
     
     print("\n" + "=" * 115)
     print(f"📊 3-Minute Interval Verification: Concert {concert_id} - {concert.city} ({concert.date.strftime('%Y-%m-%d') if concert.date else ''})")
-    print(f"   Master Video: ID {master_vid.id} ({master_vid.duration/60:.0f}m - {master_vid.title[:45]})")
+    print(f"   Master Video: ID {master_vid.id} ({master_vid.duration/60:.0f}m - '{master_vid.title[:45]}')")
     if sec_vids:
         sec_info = ", ".join([f"ID {v.id} ({v.duration/60:.0f}m)" for v in sec_vids])
         print(f"   Secondary Full Videos: {sec_info}")
@@ -86,7 +95,7 @@ def verify_concert_timeline(db, concert_id: int, step_minutes: int = 3):
     print(f"{'마스터 시점':<24} | {'보조 풀영상 매핑 위치':<26} | {'동시 활성 직캠 수':<16} | {'동기화 상태'}")
     print("-" * 115)
     
-    v63_segments = db.query(VideoSyncSegment).filter(
+    v_segments = db.query(VideoSyncSegment).filter(
         VideoSyncSegment.video_id.in_([v.id for v in sec_vids])
     ).all() if sec_vids else []
     
@@ -96,7 +105,7 @@ def verify_concert_timeline(db, concert_id: int, step_minutes: int = 3):
         
         # Mapped position in secondary video
         sec_mapped = []
-        for s in v63_segments:
+        for s in v_segments:
             if s.master_start_time <= m_sec <= s.master_end_time:
                 v_t = m_sec - s.sync_offset
                 if s.video_start_time <= v_t <= s.video_end_time:
@@ -115,7 +124,7 @@ def verify_concert_timeline(db, concert_id: int, step_minutes: int = 3):
         
     print("=" * 115 + "\n")
 
-def calibrate_single_concert(db, concert_id: int, auto_verify: bool = True):
+def calibrate_single_concert(db, concert_id: int, precision: bool = False, auto_verify: bool = True):
     """Main calibration pipeline for a single concert."""
     concert = db.query(Concert).filter(Concert.id == concert_id).first()
     if not concert:
@@ -126,7 +135,7 @@ def calibrate_single_concert(db, concert_id: int, auto_verify: bool = True):
     print(f"🎬 Calibrating Concert {concert_id}: {concert.city} ({concert.date.strftime('%Y-%m-%d') if concert.date else ''})")
     print(f"=======================================================")
     
-    # 1. Fetch all full videos and setlist
+    # 1. Fetch full videos and setlist
     full_vids = db.query(Video).filter(
         Video.concert_id == concert_id,
         Video.is_unavailable == False,
@@ -146,7 +155,7 @@ def calibrate_single_concert(db, concert_id: int, auto_verify: bool = True):
     master_vid = full_vids[0]
     print(f"👑 Master Continuous Video: ID {master_vid.id} (Duration: {master_vid.duration/60:.1f}m - '{master_vid.title[:45]}')")
     
-    # 2. Master Sync Segments (Continuous timeline)
+    # 2. Master Sync Segments
     db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == master_vid.id).delete()
     for i, item in enumerate(setlist_items):
         s_name = item.song.name if item.song else (item.event_name or f"Track {item.display_order}")
@@ -170,19 +179,32 @@ def calibrate_single_concert(db, concert_id: int, auto_verify: bool = True):
     db.commit()
     print(f"✅ Master Video ID {master_vid.id}: {len(setlist_items)} timeline segments synchronized.")
     
-    # 3. Propagate to all fancams
+    # 3. Propagate baseline offsets to all fancams
     propagated = propagate_fancam_offsets(db, concert_id)
-    print(f"🌳 Propagated exact offsets to {propagated} individual fancams.")
+    print(f"🌳 Propagated baseline offsets to {propagated} individual fancams.")
     
-    # 4. Verify
+    # 4. Optional 3-Point Precision Waveform Audio Matching & Split Timeline
+    if precision:
+        fancams = db.query(Video).filter(
+            Video.concert_id == concert_id,
+            Video.is_unavailable == False,
+            Video.duration < 3600
+        ).all()
+        print(f"\n🔍 Running 3-Point Precision Waveform Matching on {len(fancams)} fancams...")
+        for v in fancams:
+            if v.sync_offset and v.sync_offset > 0:
+                calibrate_video_3point(db, v, master_vid, expected_master_center=v.sync_offset, search_radius=300.0)
+                
+    # 5. Verify
     if auto_verify:
-        verify_concert_timeline(db, concert_id, step_minutes=5)
+        verify_concert_timeline(db, concert_id, step_minutes=3)
 
 def main():
     parser = argparse.ArgumentParser(description="Universal Concert Timeline Calibrator")
     parser.add_argument("--concert-id", type=int, help="Specific Concert ID to calibrate")
     parser.add_argument("--all", action="store_true", help="Calibrate all registered concerts")
     parser.add_argument("--propagate-all", action="store_true", help="Propagate offsets to all fancams across all concerts")
+    parser.add_argument("--precision", action="store_true", help="Run sub-second 3-point audio cross-correlation & split timeline")
     parser.add_argument("--verify", action="store_true", help="Run 3-minute interval verification")
     parser.add_argument("--step", type=int, default=3, help="Verification step in minutes (default: 3)")
     
@@ -201,7 +223,7 @@ def main():
             if args.verify:
                 verify_concert_timeline(db, args.concert_id, step_minutes=args.step)
             else:
-                calibrate_single_concert(db, args.concert_id, auto_verify=True)
+                calibrate_single_concert(db, args.concert_id, precision=args.precision, auto_verify=True)
                 
         elif args.all:
             concerts = db.query(Concert).order_by(Concert.id).all()
@@ -209,7 +231,7 @@ def main():
             for c in concerts:
                 v_count = db.query(Video).filter(Video.concert_id == c.id, Video.is_unavailable == False).count()
                 if v_count > 0:
-                    calibrate_single_concert(db, c.id, auto_verify=False)
+                    calibrate_single_concert(db, c.id, precision=args.precision, auto_verify=False)
             print("🎉 Universal Multi-Concert Calibration Completed!")
             
         else:
