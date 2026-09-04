@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 import imageio_ffmpeg
 
 from app.models.models import Video, Concert, ConcertSetlist, VideoSyncSegment
+from app.services.calibration import record_video_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -188,8 +189,15 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
                 db.add(seg)
                 created_segments.append(seg)
         
-        # Also update scalar sync_offset on video
-        video.sync_offset = -delta_start
+        # Also update scalar sync_offset on video via calibration layer
+        record_video_calibration(
+            db,
+            video,
+            sync_offset=-delta_start,
+            method="ai_audio_probe_continuous",
+            status="ai_calibrated",
+            commit=False
+        )
     else:
         # Stepwise / Act-level alignment for edited videos
         # Run parallel landmark probes on major Acts
@@ -210,13 +218,13 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
         # Interpolate deltas to all setlist items
         for i, item in enumerate(setlist_items):
             m_start = float(item.start_time or 0.0)
-            m_end = float(setlist_items[i+1].start_time) if i+1 < len(setlist_items) and setlist_items[i+1].start_time else m_start + 240.0
+            next_start = float(setlist_items[i+1].start_time) if i+1 < len(setlist_items) and setlist_items[i+1].start_time else m_start + 200.0
+            m_end = next_start
             
-            # Find nearest act delta
-            closest_delta = min(act_deltas, key=lambda d: abs(d[0] - m_start))[1]
-            
-            v_start = max(0.0, m_start + closest_delta)
-            v_end = min(float(video.duration), m_end + closest_delta)
+            # Find closest landmark delta
+            best_d = min(act_deltas, key=lambda d: abs(d[0] - m_start))
+            v_start = max(0.0, m_start + best_d[1])
+            v_end = max(0.0, m_end + best_d[1])
             
             if v_start < float(video.duration) and v_end > v_start:
                 seg = VideoSyncSegment(
@@ -231,6 +239,15 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
                 )
                 db.add(seg)
                 created_segments.append(seg)
+
+        record_video_calibration(
+            db,
+            video,
+            sync_offset=-delta_start,
+            method="ai_audio_probe_piecewise",
+            status="ai_calibrated",
+            commit=False
+        )
 
     db.commit()
 

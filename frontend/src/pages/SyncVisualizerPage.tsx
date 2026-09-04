@@ -25,7 +25,7 @@ export default function SyncVisualizerPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_fix' | 'verified' | 'segmented' | 'solos'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'uncalibrated' | 'ai' | 'verified' | 'segmented' | 'solos'>('all');
   const [memberFilter, setMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
@@ -156,12 +156,14 @@ export default function SyncVisualizerPage() {
 
   // Health stats
   const stats = useMemo(() => {
-    if (!graphData || !graphData.videos) return { total: 0, verified: 0, segmented: 0, needsFix: 0 };
+    if (!graphData || !graphData.videos) return { total: 0, verified: 0, segmented: 0, uncalibrated: 0, ai: 0, solos: 0 };
     const total = graphData.videos.length;
-    const verified = graphData.videos.filter(v => v.status === 'verified' || v.status === 'master').length;
+    const verified = graphData.videos.filter(v => (v.status === 'verified' || v.status === 'master') && ((v.calibration_count || 0) > 0 || v.is_master)).length;
     const segmented = graphData.videos.filter(v => v.status === 'segmented').length;
-    const needsFix = graphData.videos.filter(v => v.status === 'uncalibrated' || v.status === 'drift_warning').length;
-    return { total, verified, segmented, needsFix };
+    const uncalibrated = graphData.videos.filter(v => !v.is_master && ((v.calibration_count || 0) === 0 || v.status === 'uncalibrated')).length;
+    const ai = graphData.videos.filter(v => v.status === 'ai_calibrated').length;
+    const solos = graphData.videos.filter(v => v.songs.some(s => s.is_solo)).length;
+    return { total, verified, segmented, uncalibrated, ai, solos };
   }, [graphData]);
 
   // Total Timeline Duration
@@ -185,7 +187,8 @@ export default function SyncVisualizerPage() {
 
     graphData.videos.forEach(v => {
       // Filter check
-      if (statusFilter === 'needs_fix' && v.status !== 'uncalibrated' && v.status !== 'drift_warning') return;
+      if (statusFilter === 'uncalibrated' && (v.is_master || ((v.calibration_count || 0) > 0 && v.status !== 'uncalibrated'))) return;
+      if (statusFilter === 'ai' && v.status !== 'ai_calibrated') return;
       if (statusFilter === 'verified' && v.status !== 'verified' && v.status !== 'master') return;
       if (statusFilter === 'segmented' && v.status !== 'segmented') return;
       if (statusFilter === 'solos' && !v.songs.some(s => s.is_solo)) return;
@@ -396,11 +399,15 @@ export default function SyncVisualizerPage() {
       
       await axios.patch(
         `${API_BASE_URL}/videos/${videoB.id}`,
-        { sync_offset: newOffset },
+        { 
+          sync_offset: newOffset,
+          calibration_method: 'manual_studio',
+          calibration_status: 'manually_verified'
+        },
         { headers: adminKey ? { 'x-admin-key': adminKey } : {} }
       );
 
-      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s)`);
+      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 검증 카운트 증가)`);
       setFineTuneDelta(0);
       loadSyncGraph(selectedConcertId);
       setTimeout(() => setSaveSuccessMsg(null), 3000);
@@ -672,34 +679,54 @@ export default function SyncVisualizerPage() {
           전체 ({stats.total})
         </button>
         <button
-          onClick={() => setStatusFilter('verified')}
+          onClick={() => setStatusFilter('uncalibrated')}
           className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'verified' 
-              ? 'bg-emerald-950/60 text-emerald-300 border-emerald-500/50 shadow-sm' 
+            statusFilter === 'uncalibrated' 
+              ? 'bg-amber-950/70 text-amber-300 border-amber-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> ⚠️ 미보정 ({stats.uncalibrated})
+        </button>
+        <button
+          onClick={() => setStatusFilter('ai')}
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+            statusFilter === 'ai' 
+              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/60 shadow-sm' 
               : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-emerald-400'
           }`}
         >
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> 정밀 일치 ({stats.verified})
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> 🤖 AI 보정 ({stats.ai})
+        </button>
+        <button
+          onClick={() => setStatusFilter('verified')}
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+            statusFilter === 'verified' 
+              ? 'bg-purple-950/70 text-purple-300 border-purple-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-purple-400'
+          }`}
+        >
+          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" /> ✅ 검증 완료 ({stats.verified})
         </button>
         <button
           onClick={() => setStatusFilter('segmented')}
           className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'segmented' 
-              ? 'bg-amber-950/60 text-amber-300 border-amber-500/50 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
+              ? 'bg-sky-950/70 text-sky-300 border-sky-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-sky-400'
           }`}
         >
-          <Split className="w-3.5 h-3.5 text-amber-400" /> 분할 Split ({stats.segmented})
+          <Split className="w-3.5 h-3.5 text-sky-400" /> 분할 Split ({stats.segmented})
         </button>
         <button
-          onClick={() => setStatusFilter('needs_fix')}
+          onClick={() => setStatusFilter('solos')}
           className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'needs_fix' 
-              ? 'bg-rose-950/60 text-rose-300 border-rose-500/50 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-rose-400'
+            statusFilter === 'solos' 
+              ? 'bg-pink-950/70 text-pink-300 border-pink-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-pink-400'
           }`}
         >
-          <AlertTriangle className="w-3.5 h-3.5 text-rose-400" /> 수정 필요 ({stats.needsFix})
+          솔로곡 ({stats.solos})
         </button>
       </div>
 
@@ -908,8 +935,10 @@ export default function SyncVisualizerPage() {
                         const isDeckA = videoA?.id === cam.id;
                         const isDeckB = videoB?.id === cam.id;
                         const isHovered = hoveredVideo?.id === cam.id;
-                        const isDrift = cam.status === 'uncalibrated' || cam.status === 'drift_warning';
                         const isMaster = cam.is_master;
+                        const isUncalibrated = !isMaster && ((cam.calibration_count || 0) === 0 || cam.status === 'uncalibrated');
+                        const isAI = cam.status === 'ai_calibrated';
+                        const isDrift = cam.status === 'drift_warning';
                         const hasSegments = cam.segments && cam.segments.length > 0;
 
                         if (hasSegments) {
@@ -936,7 +965,7 @@ export default function SyncVisualizerPage() {
                                     ? 'bg-amber-400 border-amber-300 ring-1 ring-twice-apricot z-15'
                                     : 'bg-amber-600/80 border-amber-500/80 hover:bg-amber-500'
                                 }`}
-                                title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}]`}
+                                title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}] - 세그먼트`}
                               >
                                 <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
                                   {isDeckA ? 'A' : isDeckB ? 'B' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
@@ -967,16 +996,26 @@ export default function SyncVisualizerPage() {
                                 ? 'bg-gradient-to-b from-purple-500 to-twice-magenta border-purple-400'
                                 : isHovered
                                 ? 'bg-twice-magenta/80 border-pink-300 ring-1 ring-twice-apricot z-15'
+                                : isUncalibrated
+                                ? 'bg-slate-800 border-2 border-dashed border-amber-400/90 text-amber-300 hover:bg-amber-950/80 shadow-sm shadow-amber-950/50'
+                                : isAI
+                                ? 'bg-emerald-600/70 border-emerald-400 hover:bg-emerald-500'
                                 : isDrift
                                 ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
                                 : cam.duration >= 3600
                                 ? 'bg-cyan-500/80 border-cyan-400 hover:bg-cyan-400'
                                 : 'bg-pink-600/70 border-pink-500/80 hover:bg-twice-magenta'
                             }`}
-                            title={`#${cam.id} ${cam.title} [${formatTime(cam.master_start_time)} ~ ${formatTime(cam.master_end_time)}]`}
+                            title={`#${cam.id} ${cam.title} [${formatTime(cam.master_start_time)} ~ ${formatTime(cam.master_end_time)}] - ${
+                              isUncalibrated 
+                                ? '⚠️ 미보정 영상 (Count: 0)' 
+                                : isAI 
+                                ? `🤖 AI 자동보정 (${cam.calibration_count || 1}회)` 
+                                : `✅ 검증완료 (${cam.calibration_count || 1}회)`
+                            }`}
                           >
                             <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                             </span>
                           </div>
                         );
@@ -1507,7 +1546,9 @@ export default function SyncVisualizerPage() {
                   {overlappingVideos.map((v) => {
                     const isDeckA = videoA?.id === v.id;
                     const isDeckB = videoB?.id === v.id;
-                    const isDrift = v.status === 'uncalibrated' || v.status === 'drift_warning';
+                    const isUncalibrated = !v.is_master && ((v.calibration_count || 0) === 0 || v.status === 'uncalibrated');
+                    const isAI = v.status === 'ai_calibrated';
+                    const isDrift = v.status === 'drift_warning';
                     const vSeek = calculateLocalSeekTime(v, selectedTimeCursor);
 
                     return (
@@ -1522,6 +1563,8 @@ export default function SyncVisualizerPage() {
                             ? 'bg-twice-magenta/20 border-twice-magenta text-white shadow-md ring-1 ring-twice-magenta/40'
                             : isDeckA
                             ? 'bg-sky-500/20 border-sky-400 text-white shadow-md ring-1 ring-sky-400/40'
+                            : isUncalibrated
+                            ? 'bg-slate-800/80 border-dashed border-amber-500/50 hover:bg-slate-800 text-gray-300'
                             : 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-gray-300'
                         }`}
                       >
@@ -1585,13 +1628,21 @@ export default function SyncVisualizerPage() {
                               )}
                               {v.title}
                             </p>
-                            {isDrift ? (
-                              <span className="text-[7px] font-bold text-rose-400 bg-rose-950 px-1 rounded border border-rose-500/30 flex-shrink-0">
+                            {isUncalibrated ? (
+                              <span className="text-[7px] font-bold text-amber-300 bg-amber-950/80 px-1 rounded border border-amber-500/50 flex-shrink-0">
+                                ⚠️ 미보정
+                              </span>
+                            ) : isAI ? (
+                              <span className="text-[7px] font-bold text-emerald-300 bg-emerald-950/80 px-1 rounded border border-emerald-500/50 flex-shrink-0">
+                                🤖 AI({v.calibration_count || 1})
+                              </span>
+                            ) : isDrift ? (
+                              <span className="text-[7px] font-bold text-rose-400 bg-rose-950/80 px-1 rounded border border-rose-500/50 flex-shrink-0">
                                 🔴 오차
                               </span>
                             ) : (
-                              <span className="text-[7px] font-bold text-emerald-400 bg-emerald-950 px-1 rounded border border-emerald-500/30 flex-shrink-0">
-                                🟢 싱크
+                              <span className="text-[7px] font-bold text-purple-300 bg-purple-950/80 px-1 rounded border border-purple-500/50 flex-shrink-0">
+                                ✅ 검증({v.calibration_count || 1})
                               </span>
                             )}
                           </div>

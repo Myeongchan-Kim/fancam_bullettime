@@ -131,6 +131,9 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
                 master_start = offset
                 master_end = offset + dur
             
+        calib_count = v.calibration_count or 0
+        calib_status = v.calibration_status or ("uncalibrated" if calib_count == 0 and not is_master else "verified")
+        
         status = "verified"
         status_reason = "Verified audio/visual sync"
         if is_master:
@@ -139,9 +142,12 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         elif segs:
             status = "segmented"
             status_reason = f"Split into {len(segs)} segments"
-        elif offset == 0.0 and dur < 3600:
+        elif calib_count == 0 or calib_status == "uncalibrated":
             status = "uncalibrated"
-            status_reason = "Zero offset (Needs Calibration)"
+            status_reason = "미보정 영상 (Calibration Count: 0)"
+        elif calib_status == "ai_calibrated":
+            status = "ai_calibrated"
+            status_reason = f"AI 자동 보정 ({v.calibration_method or 'AI'})"
         else:
             if v.songs:
                 matching_setlists = [s for s in setlist_items if s["song_id"] in [sg.id for sg in v.songs]]
@@ -165,6 +171,12 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
             "is_master": is_master,
             "status": status,
             "status_reason": status_reason,
+            "calibration_count": calib_count,
+            "calibration_status": calib_status,
+            "calibrated_at": v.calibrated_at.isoformat() if v.calibrated_at else None,
+            "calibration_method": v.calibration_method,
+            "view_count": v.view_count or 0,
+            "like_count": v.like_count or 0,
             "segments": segs,
             "songs": [{"id": s.id, "name": s.name, "is_solo": s.is_solo, "member_name": s.member_name} for s in v.songs] if v.songs else []
         })

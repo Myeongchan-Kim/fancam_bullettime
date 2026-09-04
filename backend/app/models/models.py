@@ -61,6 +61,14 @@ class Video(Base):
     is_shorts = Column(Boolean, default=False)
     is_unavailable = Column(Boolean, default=False, index=True)
     
+    # Calibration & Metric Tracking Layer
+    calibration_count = Column(Integer, default=0, index=True)
+    calibration_status = Column(String, default="uncalibrated", index=True) # 'uncalibrated' | 'ai_calibrated' | 'manually_verified'
+    calibrated_at = Column(DateTime, nullable=True)
+    calibration_method = Column(String, nullable=True) # 'manual_studio' | 'pairwise_modal' | 'ai_audio_sync' | 'ai_setlist' | etc.
+    view_count = Column(Integer, default=0)
+    like_count = Column(Integer, default=0)
+    
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), index=True)
     
     # Relationships
