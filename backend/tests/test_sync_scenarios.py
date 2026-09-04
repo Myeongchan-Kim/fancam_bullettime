@@ -105,3 +105,19 @@ def test_sync_case_chaeyoung_gone_654():
     finally:
         db.close()
 
+def test_sync_case_chaeyoung_dat_ahh_1161():
+    """
+    Regression Test Case: Video 1161 (Chaeyoung 'DAT AHH DAT OOH' Fancam)
+    Should be attached to 'DAT AHH DAT OOH' (start_time ~5164s), NOT tour title 'THIS IS FOR' (219.5s).
+    """
+    db = SessionLocal()
+    try:
+        v1161 = db.query(Video).filter(Video.id == 1161).first()
+        assert v1161 is not None, "Video 1161 not found"
+        assert v1161.sync_offset >= 5000.0, f"Video 1161 sync_offset {v1161.sync_offset} is falsely attached to concert start (must be ~5164s)"
+        assert any("DAT AHH" in s.name for s in v1161.songs), f"Video 1161 should be associated with 'DAT AHH DAT OOH', found {[s.name for s in v1161.songs]}"
+        assert v1161.calibration_count >= 1, "Video 1161 should have at least 1 calibration record"
+    finally:
+        db.close()
+
+
