@@ -401,6 +401,34 @@ export default function SyncVisualizerPage() {
   const seekTimeA = calculateLocalSeekTime(videoA, selectedTimeCursor);
   const seekTimeB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
 
+  // Handle seek on Deck A scrubber -> Updates master cursor and syncs Deck B
+  const handleSeekDeckA = (timeA: number) => {
+    if (!videoA) return;
+    let masterTime = timeA + (videoA.sync_offset || 0);
+    if (videoA.segments && videoA.segments.length > 0) {
+      const seg = videoA.segments.find(s => timeA >= (s.video_start || 0) && timeA <= (s.video_end || videoA.duration || 300));
+      if (seg) {
+        masterTime = timeA + seg.sync_offset;
+      }
+    }
+    masterTime = Math.max(0, Math.min(totalDuration, masterTime));
+    setSelectedTimeCursor(masterTime);
+  };
+
+  // Handle seek on Deck B scrubber (Calculated using current adjusted sync offset: videoB.sync_offset + fineTuneDelta)
+  const handleSeekDeckB = (timeB: number) => {
+    if (!videoB) return;
+    let masterTime = timeB + (videoB.sync_offset || 0) + fineTuneDelta;
+    if (videoB.segments && videoB.segments.length > 0) {
+      const seg = videoB.segments.find(s => timeB >= (s.video_start || 0) && timeB <= (s.video_end || videoB.duration || 300));
+      if (seg) {
+        masterTime = timeB + seg.sync_offset + fineTuneDelta;
+      }
+    }
+    masterTime = Math.max(0, Math.min(totalDuration, masterTime));
+    setSelectedTimeCursor(masterTime);
+  };
+
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
@@ -937,7 +965,7 @@ export default function SyncVisualizerPage() {
                     {videoA && (
                       <iframe
                         key={`deckA-${videoA.id}-${seekTimeA}`}
-                        src={`https://www.youtube.com/embed/${videoA.youtube_id}?start=${seekTimeA}&autoplay=1&mute=${audioSource === 'DECK_A' ? '0' : '1'}`}
+                        src={`https://www.youtube.com/embed/${videoA.youtube_id}?enablejsapi=1&start=${seekTimeA}&autoplay=1&mute=${audioSource === 'DECK_A' ? '0' : '1'}`}
                         title={videoA.title}
                         className="w-full h-full"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -949,6 +977,28 @@ export default function SyncVisualizerPage() {
                   <p className="text-[11px] text-gray-300 truncate font-semibold">
                     <span className="text-sky-400 font-mono font-bold mr-1">#{videoA?.id}</span> {videoA?.title}
                   </p>
+
+                  {/* Deck A Interactive Seek Bar */}
+                  {videoA && (
+                    <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-gray-400">
+                        <span className="text-sky-300 font-bold flex items-center gap-1">
+                          <MoveHorizontal className="w-3 h-3" /> Deck A 탐색
+                        </span>
+                        <span>{formatTime(seekTimeA)} / {formatTime(videoA.duration || 0)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={videoA.duration || 300}
+                        step={1}
+                        value={seekTimeA}
+                        onChange={(e) => handleSeekDeckA(parseFloat(e.target.value))}
+                        className="w-full accent-sky-400 bg-slate-800 h-1.5 rounded-lg cursor-pointer"
+                        title="Deck A 재생바 이동 시 타임라인 가로선과 Deck B 영상이 조정된 싱크로 연동 이동합니다."
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Right Deck: Video B (타겟 캠 / 비교 대상 2 with In-Place Calibrator) */}
@@ -997,7 +1047,7 @@ export default function SyncVisualizerPage() {
                     {videoB && (
                       <iframe
                         key={`deckB-${videoB.id}-${seekTimeB}`}
-                        src={`https://www.youtube.com/embed/${videoB.youtube_id}?start=${seekTimeB}&autoplay=1&mute=${audioSource === 'DECK_B' ? '0' : '1'}`}
+                        src={`https://www.youtube.com/embed/${videoB.youtube_id}?enablejsapi=1&start=${seekTimeB}&autoplay=1&mute=${audioSource === 'DECK_B' ? '0' : '1'}`}
                         title={videoB.title}
                         className="w-full h-full"
                         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1009,6 +1059,28 @@ export default function SyncVisualizerPage() {
                   <p className="text-[11px] text-gray-300 truncate font-semibold">
                     {videoB?.title}
                   </p>
+
+                  {/* Deck B Interactive Seek Bar */}
+                  {videoB && (
+                    <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 space-y-1">
+                      <div className="flex items-center justify-between text-[10px] font-mono text-gray-400">
+                        <span className="text-twice-magenta font-bold flex items-center gap-1">
+                          <MoveHorizontal className="w-3 h-3" /> Deck B 탐색 (조정 싱크 적용)
+                        </span>
+                        <span>{formatTime(seekTimeB)} / {formatTime(videoB.duration || 0)}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min={0}
+                        max={videoB.duration || 300}
+                        step={1}
+                        value={seekTimeB}
+                        onChange={(e) => handleSeekDeckB(parseFloat(e.target.value))}
+                        className="w-full accent-twice-magenta bg-slate-800 h-1.5 rounded-lg cursor-pointer"
+                        title="Deck B 재생바 이동 시 타임라인 가로선과 Deck A 영상이 조정된 싱크로 연동 이동합니다."
+                      />
+                    </div>
+                  )}
 
                   {/* In-Place Target Offset Calibrator Pad for Deck B */}
                   {videoB && !videoB.is_master && (
