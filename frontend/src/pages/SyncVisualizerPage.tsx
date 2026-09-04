@@ -32,6 +32,11 @@ export default function SyncVisualizerPage() {
   const [scaleFactor, setScaleFactor] = useState<number>(18);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  // Lane geometry constants (in px)
+  const TIME_AXIS_WIDTH = 56;
+  const LANE_WIDTH = 22;
+  const LANE_GAP = 14;
+
   // 1. Fetch Concerts list
   useEffect(() => {
     fetch(`${API_BASE_URL}/concerts`)
@@ -97,11 +102,7 @@ export default function SyncVisualizerPage() {
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}m ${s}s`;
-  };
+
 
   // Health stats
   const stats = useMemo(() => {
@@ -123,12 +124,16 @@ export default function SyncVisualizerPage() {
     return Math.max(900, (totalDuration / 100) * scaleFactor);
   }, [totalDuration, scaleFactor]);
 
-  // Greedy Interval Scheduling: Pack non-overlapping videos into compact lanes
-  const { parentTracks, childLanes } = useMemo(() => {
-    const parents: SyncGraphVideoNode[] = [];
-    const children: SyncGraphVideoNode[] = [];
+  // Unified Multi-Track Lane Packing:
+  // All videos are treated in a single continuum without artificial category separation.
+  // Lane 0: Master Video Spine
+  // Lane 1..N: Non-overlapping videos packed into parallel lanes by start time & duration.
+  const { lanes, allVisibleVideos } = useMemo(() => {
+    if (!graphData || !graphData.videos) return { lanes: [], allVisibleVideos: [] };
 
-    if (!graphData || !graphData.videos) return { parentTracks: parents, childLanes: [] };
+    const visible: SyncGraphVideoNode[] = [];
+    let masterNode: SyncGraphVideoNode | null = null;
+    const nonMaster: SyncGraphVideoNode[] = [];
 
     graphData.videos.forEach(v => {
       // Filter check
@@ -151,44 +156,55 @@ export default function SyncVisualizerPage() {
         if (!matchTitle && !matchSong && !matchMember) return;
       }
 
-      // True Full Cams only (Master or duration >= 1 hour / 3600s)
-      if (v.is_master || v.duration >= 3600) {
-        parents.push(v);
+      visible.push(v);
+      if (v.is_master) {
+        masterNode = v;
       } else {
-        children.push(v);
+        nonMaster.push(v);
       }
     });
 
-    parents.sort((a, b) => {
-      if (a.is_master) return -1;
-      if (b.is_master) return 1;
-      return (b.duration || 0) - (a.duration || 0);
+    // Sort non-master videos: long videos first, then by master_start_time
+    nonMaster.sort((a, b) => {
+      if (b.duration !== a.duration) return (b.duration || 0) - (a.duration || 0);
+      return a.master_start_time - b.master_start_time;
     });
 
-    // Sort children by start time and pack into minimum parallel lanes
-    children.sort((a, b) => a.master_start_time - b.master_start_time);
+    const packedLanes: { lastEnd: number; items: SyncGraphVideoNode[] }[] = [];
 
-    const lanes: { lastEnd: number; items: SyncGraphVideoNode[] }[] = [];
-    for (const c of children) {
+    // Lane 0 is dedicated to Master Video
+    if (masterNode) {
+      packedLanes.push({ lastEnd: totalDuration, items: [masterNode] });
+    }
+
+    // Pack non-master videos into parallel lanes (reusing lanes as videos end)
+    for (const v of nonMaster) {
+      const vStart = v.master_start_time;
+      const vEnd = v.master_end_time;
       let placed = false;
-      for (const lane of lanes) {
-        if (lane.lastEnd <= c.master_start_time + 1) {
-          lane.items.push(c);
-          lane.lastEnd = c.master_end_time;
+
+      // Try placing in existing lanes after Lane 0
+      const startIdx = masterNode ? 1 : 0;
+      for (let i = startIdx; i < packedLanes.length; i++) {
+        const lane = packedLanes[i];
+        if (lane.lastEnd <= vStart + 2) {
+          lane.items.push(v);
+          lane.lastEnd = vEnd;
           placed = true;
           break;
         }
       }
+
       if (!placed) {
-        lanes.push({ lastEnd: c.master_end_time, items: [c] });
+        packedLanes.push({ lastEnd: vEnd, items: [v] });
       }
     }
 
     return { 
-      parentTracks: parents, 
-      childLanes: lanes.map(l => l.items) 
+      lanes: packedLanes.map(l => l.items),
+      allVisibleVideos: visible
     };
-  }, [graphData, statusFilter, memberFilter, searchQuery]);
+  }, [graphData, statusFilter, memberFilter, searchQuery, totalDuration]);
 
   // Calculate videos overlapping with selected horizontal time line
   const overlappingVideos = useMemo(() => {
@@ -205,8 +221,13 @@ export default function SyncVisualizerPage() {
   // Helper to calculate top & height in px
   const getPositionStyles = (startTime: number, duration: number) => {
     const top = (startTime / totalDuration) * canvasHeight;
-    const height = Math.max(16, (duration / totalDuration) * canvasHeight);
+    const height = Math.max(14, (duration / totalDuration) * canvasHeight);
     return { top: `${top}px`, height: `${height}px` };
+  };
+
+  // Helper to calculate exact X pixel position for a lane
+  const getLaneX = (laneIdx: number) => {
+    return TIME_AXIS_WIDTH + 12 + laneIdx * (LANE_WIDTH + LANE_GAP);
   };
 
   // Handle timeline click to select horizontal time line
@@ -231,7 +252,6 @@ export default function SyncVisualizerPage() {
   const playerLocalSeekTime = useMemo(() => {
     if (!selectedVideo) return 0;
     
-    // If video has split segments, find matching segment offset
     if (selectedVideo.segments && selectedVideo.segments.length > 0) {
       const activeSeg = selectedVideo.segments.find(
         seg => selectedTimeCursor >= seg.master_start && selectedTimeCursor <= seg.master_end
@@ -253,9 +273,9 @@ export default function SyncVisualizerPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Sync Timeline Canvas
+              <GitBranch className="w-3.5 h-3.5" /> Unified Multi-Track Sync
             </span>
-            <span className="text-gray-400 text-xs font-mono">가로 타임 커서 선택 ➔ 우측 동시 겹치는 다각도 영상 리스트업</span>
+            <span className="text-gray-400 text-xs font-mono">1:1 타임라인 싱크 연결선 • 가로 커서 멀티뷰</span>
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
             TWICE Concert Multi-Track Timeline
@@ -412,35 +432,36 @@ export default function SyncVisualizerPage() {
         </div>
       )}
 
-      {/* ================= DUAL-VIEW: Left Canvas (7 Cols) + Right Synchronized Multi-Angle Inspector (5 Cols) ================= */}
+      {/* ================= DUAL-VIEW: Left Unified Canvas (7 Cols) + Right Synchronized Multi-Angle Inspector (5 Cols) ================= */}
       {!loading && !error && graphData && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* ================= LEFT MULTI-TRACK THIN-BAR CANVAS (7 COLS) ================= */}
+          {/* ================= LEFT UNIFIED MULTI-TRACK CANVAS (7 COLS) ================= */}
           <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md overflow-x-auto">
             
-            {/* Track Column Header */}
+            {/* Unified Track Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
-              <div className="flex items-center gap-4">
-                <div className="w-14 text-gray-500 font-bold">시간</div>
-                <div className="text-purple-400 font-bold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" /> 상위 캠 ({parentTracks.length})
-                </div>
+              <div className="flex items-center gap-3">
+                <span className="w-14 text-gray-500 font-bold">시간</span>
+                <span className="text-purple-400 font-bold flex items-center gap-1">
+                  <Sparkles className="w-3.5 h-3.5" /> 콘서트 멀티트랙 타임라인 ({lanes.length} 레인 • 총 {allVisibleVideos.length}개 영상)
+                </span>
               </div>
-              <div className="text-pink-400 font-bold flex items-center gap-1 pr-4">
-                <GitBranch className="w-3 h-3" /> 하위 직캠 ({childLanes.reduce((acc, l) => acc + l.length, 0)}개 • {childLanes.length} 레인)
-              </div>
+              <span className="text-gray-500 text-[10px]">1:1 Sync 연결선</span>
             </div>
 
-            {/* Continuous Vertical Canvas Container with Interactive Horizontal Line Selection */}
+            {/* Continuous Vertical Canvas Container with SVG Background Sync Connection Lines */}
             <div 
               ref={timelineRef}
               onClick={handleTimelineClick}
               style={{ height: `${canvasHeight}px` }} 
-              className="relative w-full mt-4 flex gap-3 cursor-crosshair select-none"
+              className="relative w-full mt-4 flex cursor-crosshair select-none"
             >
               {/* 1. Left Time Scale Axis (Every 15 minutes) */}
-              <div className="w-14 relative h-full flex-shrink-0 border-r border-slate-800/80">
+              <div 
+                style={{ width: `${TIME_AXIS_WIDTH}px` }}
+                className="relative h-full flex-shrink-0 border-r border-slate-800/80"
+              >
                 {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
                   const sec = gIdx * 900;
                   const topPx = (sec / totalDuration) * canvasHeight;
@@ -458,169 +479,153 @@ export default function SyncVisualizerPage() {
                 })}
               </div>
 
-              {/* 2. Parent Tracks (상위 캠: Thin Vertical Bars Side-by-Side) */}
-              <div className="flex items-start gap-2 relative h-full flex-shrink-0 border-r border-slate-800/80 pr-3">
-                {parentTracks.map((pCam) => {
-                  const isSelected = selectedVideo?.id === pCam.id;
-                  const isHovered = hoveredVideo?.id === pCam.id;
-                  const hasSegments = pCam.segments && pCam.segments.length > 0;
-                  const isMaster = pCam.is_master;
+              {/* 2. Background SVG for 1:1 Timeline Sync Connection Lines (회색 연결선) */}
+              <svg 
+                className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
+                style={{ height: `${canvasHeight}px` }}
+              >
+                {lanes.slice(1).flatMap((laneVideos, lIdx) => {
+                  const targetLaneIdx = lIdx + 1;
+                  const targetX = getLaneX(targetLaneIdx) + LANE_WIDTH / 2;
+                  const masterX = getLaneX(0) + LANE_WIDTH / 2;
 
-                  return (
-                    <div 
-                      key={pCam.id}
-                      className="relative w-5 sm:w-6 h-full flex flex-col items-center group cursor-pointer"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleSelectVideo(pCam);
-                      }}
-                      onMouseEnter={() => setHoveredVideo(pCam)}
-                      onMouseLeave={() => setHoveredVideo(null)}
-                    >
-                      {/* Track Header Label */}
-                      <div className="text-[8px] font-mono font-bold text-gray-400 truncate w-full text-center mb-1">
-                        {isMaster ? '🏆' : `#${pCam.id}`}
-                      </div>
+                  return laneVideos.flatMap((v) => {
+                    const isHovered = hoveredVideo?.id === v.id;
+                    const isSelected = selectedVideo?.id === v.id;
+                    const isHighlighted = isHovered || isSelected;
 
-                      {/* Thin Bar Body */}
-                      <div className="relative w-2 sm:w-2.5 h-full bg-slate-950/60 rounded-full overflow-hidden border border-slate-800">
-                        {hasSegments ? (
-                          // Split Bar: Discontinuous segmented blocks (띄엄띄엄)
-                          pCam.segments.map((seg, sIdx) => {
-                            const segDur = seg.video_end - seg.video_start;
-                            const pos = getPositionStyles(seg.master_start, segDur);
-                            return (
-                              <div
-                                key={sIdx}
-                                style={{ top: pos.top, height: pos.height }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSelectVideo(pCam, seg.master_start);
-                                }}
-                                className={`absolute inset-x-0 rounded-sm transition-all ${
-                                  isSelected || isHovered
-                                    ? 'bg-amber-300 ring-2 ring-amber-400 shadow-lg shadow-amber-500/40'
-                                    : 'bg-amber-500/80 hover:bg-amber-400'
-                                }`}
-                                title={`${seg.label || `Part ${sIdx + 1}`}: ${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)} (+${seg.sync_offset.toFixed(1)}s)`}
-                              />
-                            );
-                          })
-                        ) : (
-                          // Continuous Single Bar
-                          <div
-                            style={getPositionStyles(pCam.master_start_time, pCam.duration)}
-                            className={`absolute inset-x-0 rounded-sm transition-all ${
-                              isMaster
-                                ? isSelected || isHovered
-                                  ? 'bg-purple-300 ring-2 ring-purple-400 shadow-lg shadow-purple-500/40'
-                                  : 'bg-gradient-to-b from-purple-500 to-twice-magenta'
-                                : isSelected || isHovered
-                                ? 'bg-cyan-300 ring-2 ring-cyan-400 shadow-lg shadow-cyan-500/40'
-                                : 'bg-cyan-500/80 hover:bg-cyan-400'
-                            }`}
-                            title={`#${pCam.id} ${pCam.title} (${formatDuration(pCam.duration)})`}
+                    // If video has split segments, draw connection for each segment
+                    if (v.segments && v.segments.length > 0) {
+                      return v.segments.map((seg, sIdx) => {
+                        const y = (seg.master_start / totalDuration) * canvasHeight;
+                        return (
+                          <line
+                            key={`sync-seg-${v.id}-${sIdx}`}
+                            x1={masterX}
+                            y1={y}
+                            x2={targetX}
+                            y2={y}
+                            stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
+                            strokeWidth={isHighlighted ? 2 : 1}
+                            strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                            className="transition-all duration-150"
                           />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                        );
+                      });
+                    }
 
-              {/* 3. Child Tracks (하위 직캠: Thin Vertical Bars at Specific Time Spans) */}
-              <div className="flex-1 relative h-full">
-                {/* Visual horizontal guide lines across timeline */}
-                {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
-                  const sec = gIdx * 900;
-                  const topPx = (sec / totalDuration) * canvasHeight;
+                    // Continuous video sync connection line from Master Spine (Lane 0) to this video's lane
+                    const y = (v.master_start_time / totalDuration) * canvasHeight;
+                    return (
+                      <line
+                        key={`sync-${v.id}`}
+                        x1={masterX}
+                        y1={y}
+                        x2={targetX}
+                        y2={y}
+                        stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
+                        strokeWidth={isHighlighted ? 2 : 1}
+                        strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                        className="transition-all duration-150"
+                      />
+                    );
+                  });
+                })}
+              </svg>
+
+              {/* 3. Unified Parallel Lanes System */}
+              <div className="flex-1 relative h-full flex items-start pl-3 gap-[14px] z-10">
+                {lanes.map((laneVideos, lIdx) => {
+                  const isMasterLane = lIdx === 0 && laneVideos.some(v => v.is_master);
+
                   return (
                     <div
-                      key={gIdx}
-                      style={{ top: `${topPx}px` }}
-                      className="absolute left-0 right-0 border-t border-slate-850/40 pointer-events-none"
-                    />
-                  );
-                })}
-
-                {/* Packed Parallel Child Lanes (하위 직캠 레인: 이전 영상이 끝나면 같은 레인 아래에 다음 영상 배치) */}
-                <div className="relative w-full h-full flex items-start gap-2">
-                  {childLanes.map((laneVideos, lIdx) => (
-                    <div 
-                      key={lIdx} 
-                      className="relative w-4 sm:w-5 h-full flex-shrink-0"
+                      key={lIdx}
+                      style={{ width: `${LANE_WIDTH}px` }}
+                      className="relative h-full flex flex-col items-center flex-shrink-0 group"
                     >
-                      {/* Lane background vertical line */}
-                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-slate-800/50 pointer-events-none" />
+                      {/* Lane Header Label */}
+                      <div className="text-[8px] font-mono font-bold text-gray-500 truncate w-full text-center mb-1 pointer-events-none">
+                        {isMasterLane ? '🏆' : `T${lIdx}`}
+                      </div>
 
-                      {/* Stacked videos in this lane */}
-                      {laneVideos.map((cCam) => {
-                        const isSelected = selectedVideo?.id === cCam.id;
-                        const isHovered = hoveredVideo?.id === cCam.id;
-                        const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
-                        const hasSegments = cCam.segments && cCam.segments.length > 0;
+                      {/* Lane Background Vertical Rail Guide */}
+                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-slate-800/40 pointer-events-none" />
+
+                      {/* Stacked Thin Bars in this Lane */}
+                      {laneVideos.map((cam) => {
+                        const isSelected = selectedVideo?.id === cam.id;
+                        const isHovered = hoveredVideo?.id === cam.id;
+                        const isDrift = cam.status === 'uncalibrated' || cam.status === 'drift_warning';
+                        const isMaster = cam.is_master;
+                        const hasSegments = cam.segments && cam.segments.length > 0;
 
                         if (hasSegments) {
-                          return cCam.segments.map((seg, sIdx) => {
+                          // Split Video Bar (Discontinuous Segments with cut gaps)
+                          return cam.segments.map((seg, sIdx) => {
                             const segDur = seg.video_end - seg.video_start;
                             const pos = getPositionStyles(seg.master_start, segDur);
                             return (
                               <div
-                                key={`${cCam.id}-seg-${sIdx}`}
+                                key={`${cam.id}-seg-${sIdx}`}
                                 style={{ top: pos.top, height: pos.height }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  handleSelectVideo(cCam, seg.master_start);
+                                  handleSelectVideo(cam, seg.master_start);
                                 }}
-                                onMouseEnter={() => setHoveredVideo(cCam)}
+                                onMouseEnter={() => setHoveredVideo(cam)}
                                 onMouseLeave={() => setHoveredVideo(null)}
-                                className={`absolute inset-x-0.5 rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
+                                className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
                                   isSelected || isHovered
-                                    ? 'bg-amber-400 ring-2 ring-twice-apricot shadow-lg shadow-amber-500/50 z-20'
+                                    ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-apricot shadow-lg shadow-amber-500/50 z-20'
                                     : 'bg-amber-600/80 border-amber-500/80 hover:bg-amber-500'
                                 }`}
-                                title={`#${cCam.id} (${seg.label || `Cut ${sIdx+1}`}) ${cCam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}]`}
+                                title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}]`}
                               >
                                 <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
-                                  {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
+                                  {cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                                 </span>
                               </div>
                             );
                           });
                         }
 
-                        const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
+                        // Continuous Single Bar
+                        const pos = getPositionStyles(cam.master_start_time, cam.duration);
                         return (
                           <div
-                            key={cCam.id}
-                            style={{ 
-                              top: pos.top, 
-                              height: pos.height
-                            }}
+                            key={cam.id}
+                            style={{ top: pos.top, height: pos.height }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              handleSelectVideo(cCam);
+                              handleSelectVideo(cam);
                             }}
-                            onMouseEnter={() => setHoveredVideo(cCam)}
+                            onMouseEnter={() => setHoveredVideo(cam)}
                             onMouseLeave={() => setHoveredVideo(null)}
-                            className={`absolute inset-x-0.5 rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
-                              isSelected || isHovered
-                                ? 'bg-twice-magenta ring-2 ring-twice-apricot shadow-lg shadow-twice-magenta/50 z-20'
+                            className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                              isMaster
+                                ? isSelected || isHovered
+                                  ? 'bg-purple-300 border-purple-200 ring-2 ring-purple-400 shadow-lg shadow-purple-500/50 z-20'
+                                  : 'bg-gradient-to-b from-purple-500 to-twice-magenta border-purple-400'
+                                : isSelected || isHovered
+                                ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-apricot shadow-lg shadow-twice-magenta/50 z-20'
                                 : isDrift
                                 ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
+                                : cam.duration >= 3600
+                                ? 'bg-cyan-500/80 border-cyan-400 hover:bg-cyan-400'
                                 : 'bg-pink-600/70 border-pink-500/80 hover:bg-twice-magenta'
                             }`}
-                            title={`#${cCam.id} ${cCam.title} [${formatTime(cCam.master_start_time)} ~ ${formatTime(cCam.master_end_time)}]`}
+                            title={`#${cam.id} ${cam.title} [${formatTime(cam.master_start_time)} ~ ${formatTime(cam.master_end_time)}]`}
                           >
                             <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                              {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
+                              {isMaster ? 'M' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                             </span>
                           </div>
                         );
                       })}
                     </div>
-                  ))}
-                </div>
+                  );
+                })}
               </div>
 
               {/* 4. Interactive Horizontal Time Scrubber Line (선택된 타임라인 가로선) */}
