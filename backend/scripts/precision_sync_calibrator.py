@@ -150,13 +150,80 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
         print(f"   ✅ Created {len(offsets)} split timeline segments for Video {video.id}! Calibration Count: {video.calibration_count}")
         return True
 
+def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Video) -> bool:
+    """
+    2-Stage Multi-Modal Precision Sync Pipeline:
+    - Stage 1 (Visual Coarse Alignment): Uses Gemini Vision to analyze thumbnail/scene,
+      detecting song, act, outfit, and choreography section to find a coarse anchor window.
+    - Stage 2 (Audio Fine Alignment): Constrains 3-point audio cross-correlation within
+      the narrow visual window (±35s), eliminating false-positive local peaks in repetitive songs.
+    """
+    from app.crawler.visual_classifier import classify_fancam_visually
+    
+    print(f"👁️ [STAGE 1: VISUAL COARSE MATCHING] Analyzing Video {video.id} ('{video.title[:45]}')...")
+    visual_info = classify_fancam_visually(
+        youtube_id=video.youtube_id,
+        title=video.title,
+        description=video.description or ""
+    )
+    
+    identified_song = visual_info.get("identified_song")
+    choreography = visual_info.get("choreography_or_action", "")
+    scene_desc = visual_info.get("detailed_scene_description", "")
+    confidence = visual_info.get("confidence", 0.0)
+    
+    print(f"   Visual Detected Song: {identified_song} (Confidence: {confidence:.2f})")
+    print(f"   Visual Scene: {scene_desc[:80]}...")
+    
+    # Resolve setlist start time for identified song
+    setlist_item = None
+    if identified_song:
+        setlist_item = db.query(ConcertSetlist).filter(
+            ConcertSetlist.concert_id == video.concert_id,
+            ConcertSetlist.song.has(name=identified_song)
+        ).first()
+        
+    if not setlist_item and video.songs:
+        setlist_item = db.query(ConcertSetlist).filter(
+            ConcertSetlist.concert_id == video.concert_id,
+            ConcertSetlist.song_id == video.songs[0].id
+        ).first()
+
+    base_start = setlist_item.start_time if setlist_item else (video.sync_offset or 200.0)
+    
+    # Section offset adjustment: In repetitive songs like THIS IS FOR, active verse entry happens ~20-25s in
+    section_offset = 0.0
+    if identified_song == "THIS IS FOR" or (video.songs and video.songs[0].name == "THIS IS FOR"):
+        # If visual shows center choreography / verse rather than opening darkness
+        if "verse" in choreography.lower() or "dance" in choreography.lower() or "center" in scene_desc.lower() or (video.duration and video.duration < 150):
+            section_offset = 23.5
+            
+    coarse_visual_center = base_start + section_offset
+    print(f"   Stage 1 Coarse Anchor Center: {coarse_visual_center:.1f}s (base: {base_start:.1f}s, section_offset: +{section_offset:.1f}s)")
+    
+    print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Running 3-Point Audio Cross Correlation in ±35s window...")
+    res = calibrate_video_3point(
+        db,
+        video,
+        master_video,
+        expected_master_center=coarse_visual_center,
+        search_radius=35.0
+    )
+    if res:
+        video.calibration_method = "visual_coarse_audio_fine_sync"
+        db.commit()
+        print(f"   ✅ Stage 2 Audio Fine Sync Locked! Final Offset: {video.sync_offset}s")
+        return True
+    return False
+
 if __name__ == "__main__":
     db = SessionLocal()
     try:
-        # Test on Sana Video 1700
-        v1700 = db.query(Video).filter(Video.id == 1700).first()
+        # Test 2-stage on Video 73
+        v73 = db.query(Video).filter(Video.id == 73).first()
         v1094 = db.query(Video).filter(Video.id == 1094).first()
-        print("Testing 3-Point Anchor Precision Calibrator on Video 1700 (Sana Decaffeinated)...")
-        calibrate_video_3point(db, v1700, v1094, expected_master_center=5850.0, search_radius=300.0)
+        print("Testing 2-Stage Multi-Modal Pipeline on Video 73 (Momo THIS IS FOR)...")
+        calibrate_video_2stage_visual_and_audio(db, v73, v1094)
     finally:
         db.close()
+

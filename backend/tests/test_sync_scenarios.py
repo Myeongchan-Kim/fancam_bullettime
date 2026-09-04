@@ -120,4 +120,20 @@ def test_sync_case_chaeyoung_dat_ahh_1161():
     finally:
         db.close()
 
+def test_sync_case_momo_this_is_for_73():
+    """
+    Regression Test Case: Video 73 (Momo 'THIS IS FOR' Fancam)
+    Should be accurately synced using 2-Stage Visual + Audio to ~243.1s (verse 1 entry),
+    NOT trapped in repetitive audio local peaks (219.5s / 223.3s).
+    """
+    db = SessionLocal()
+    try:
+        v73 = db.query(Video).filter(Video.id == 73).first()
+        assert v73 is not None, "Video 73 not found"
+        assert 240.0 <= v73.sync_offset <= 246.0, f"Video 73 sync_offset {v73.sync_offset} is not locked at verse 1 (~243.1s)"
+        assert v73.calibration_count >= 1, "Video 73 should have at least 1 calibration record"
+    finally:
+        db.close()
+
+
 
