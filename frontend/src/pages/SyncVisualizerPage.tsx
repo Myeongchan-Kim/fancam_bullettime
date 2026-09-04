@@ -43,7 +43,9 @@ export default function SyncVisualizerPage() {
   const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
   const lastTimeRefA = useRef<number>(0);
   const lastTimeRefB = useRef<number>(0);
-  const isSyncingFromPlayerRef = useRef<boolean>(false);
+  const isPlaybackTickRef = useRef<boolean>(false);
+  const isDraggingTimelineRef = useRef<boolean>(false);
+  const timelineRef = useRef<HTMLDivElement>(null);
 
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
@@ -64,7 +66,6 @@ export default function SyncVisualizerPage() {
 
   // Timeline zoom/scale (px per 100 seconds)
   const [scaleFactor, setScaleFactor] = useState<number>(18);
-  const timelineRef = useRef<HTMLDivElement>(null);
 
   // Lane geometry constants (in px) - compact & sleek
   const TIME_AXIS_WIDTH = 48;
@@ -279,29 +280,6 @@ export default function SyncVisualizerPage() {
     return TIME_AXIS_WIDTH + 8 + laneIdx * (LANE_WIDTH + LANE_GAP);
   };
 
-  // Handle timeline click to select horizontal time line
-  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!timelineRef.current) return;
-    const rect = timelineRef.current.getBoundingClientRect();
-    const clickY = e.clientY - rect.top;
-    const clickedSec = Math.max(0, Math.min(totalDuration, (clickY / canvasHeight) * totalDuration));
-    setSelectedTimeCursor(clickedSec);
-  };
-
-  const handleSelectVideo = (video: SyncGraphVideoNode, seekToMasterTime?: number) => {
-    if (activeDeckSlot === 'A') {
-      setVideoA(video);
-    } else {
-      setVideoB(video);
-    }
-
-    if (seekToMasterTime !== undefined) {
-      setSelectedTimeCursor(seekToMasterTime);
-    } else {
-      setSelectedTimeCursor(video.master_start_time);
-    }
-  };
-
   // Calculate local player seek time for any video
   const calculateLocalSeekTime = (video: SyncGraphVideoNode | null, currentCursor: number, delta: number = 0) => {
     if (!video) return 0;
@@ -316,6 +294,66 @@ export default function SyncVisualizerPage() {
     }
     
     return Math.max(0, Math.floor(currentCursor - (video.sync_offset + delta)));
+  };
+
+  // User Timeline Seeking (Click & Drag)
+  const seekToMasterTimeline = (masterSec: number) => {
+    const clamped = Math.max(0, Math.min(totalDuration, masterSec));
+    isPlaybackTickRef.current = false;
+    setSelectedTimeCursor(clamped);
+
+    const targetA = calculateLocalSeekTime(videoA, clamped);
+    const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
+    try {
+      playerA?.seekTo?.(targetA, true);
+    } catch (e) {}
+    try {
+      playerB?.seekTo?.(targetB, true);
+    } catch (e) {}
+  };
+
+  const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
+    if (!timelineRef.current) return;
+    const rect = timelineRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const clickedSec = (clickY / canvasHeight) * totalDuration;
+    seekToMasterTimeline(clickedSec);
+  };
+
+  const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    isDraggingTimelineRef.current = true;
+    updateCursorFromMouseEvent(e);
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isDraggingTimelineRef.current) return;
+      updateCursorFromMouseEvent(e);
+    };
+    const handleGlobalMouseUp = () => {
+      isDraggingTimelineRef.current = false;
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [totalDuration, canvasHeight, videoA, videoB, fineTuneDelta, playerA, playerB]);
+
+  const handleSelectVideo = (video: SyncGraphVideoNode, seekToMasterTime?: number) => {
+    if (activeDeckSlot === 'A') {
+      setVideoA(video);
+    } else {
+      setVideoB(video);
+    }
+
+    if (seekToMasterTime !== undefined) {
+      seekToMasterTimeline(seekToMasterTime);
+    } else {
+      seekToMasterTimeline(video.master_start_time);
+    }
   };
 
   // Nudge delta helper
@@ -437,31 +475,17 @@ export default function SyncVisualizerPage() {
 
   // 1. External cursor change (e.g. clicking on timeline canvas or paused seeking) -> Sync players
   useEffect(() => {
-    if (isSyncingFromPlayerRef.current) return;
+    if (isPlaybackTickRef.current || isDraggingTimelineRef.current) return;
     const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
     const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
     try {
-      if (playerA && typeof playerA.getCurrentTime === 'function' && typeof playerA.getPlayerState === 'function') {
-        const stateA = playerA.getPlayerState();
-        // NEVER seek Player A if Player A is currently playing (to prevent micro-buffering/stutter)
-        if (stateA !== 1) {
-          const curA = playerA.getCurrentTime();
-          if (Math.abs(curA - targetA) > 0.5) {
-            playerA.seekTo(targetA, true);
-          }
-        }
+      if (playerA && typeof playerA.seekTo === 'function') {
+        playerA.seekTo(targetA, true);
       }
     } catch (e) {}
     try {
-      if (playerB && typeof playerB.getCurrentTime === 'function' && typeof playerB.getPlayerState === 'function') {
-        const stateB = playerB.getPlayerState();
-        // NEVER seek Player B if Player B is currently playing
-        if (stateB !== 1) {
-          const curB = playerB.getCurrentTime();
-          if (Math.abs(curB - targetB) > 0.5) {
-            playerB.seekTo(targetB, true);
-          }
-        }
+      if (playerB && typeof playerB.seekTo === 'function') {
+        playerB.seekTo(targetB, true);
       }
     } catch (e) {}
   }, [selectedTimeCursor, videoA?.id, videoB?.id]);
@@ -495,6 +519,7 @@ export default function SyncVisualizerPage() {
   useEffect(() => {
     const interval = setInterval(() => {
       if (!playerA && !playerB) return;
+      if (isDraggingTimelineRef.current) return;
 
       try {
         const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
@@ -504,10 +529,9 @@ export default function SyncVisualizerPage() {
 
         // --- Deck A is actively playing ---
         if (stateA === 1 && videoA) {
-          isSyncingFromPlayerRef.current = true;
+          isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
           
-          // Throttled cursor update to prevent excessive React render cascades
           if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
             setSelectedTimeCursor(masterTime);
           }
@@ -526,7 +550,7 @@ export default function SyncVisualizerPage() {
               playerB.pauseVideo();
             }
           }
-          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           lastTimeRefA.current = timeA;
           lastTimeRefB.current = timeB;
           return;
@@ -534,7 +558,7 @@ export default function SyncVisualizerPage() {
 
         // --- Deck B is actively playing ---
         if (stateB === 1 && videoB && stateA !== 1) {
-          isSyncingFromPlayerRef.current = true;
+          isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
           
           if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
@@ -555,7 +579,7 @@ export default function SyncVisualizerPage() {
               playerA.pauseVideo();
             }
           }
-          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           lastTimeRefA.current = timeA;
           lastTimeRefB.current = timeB;
           return;
@@ -564,23 +588,23 @@ export default function SyncVisualizerPage() {
         // --- Both paused: Detect user seeking on native YouTube seekbar ---
         if (stateA !== 1 && stateB !== 1) {
           if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
-            isSyncingFromPlayerRef.current = true;
+            isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
             setSelectedTimeCursor(masterTime);
             if (playerB && videoB) {
               const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
               playerB.seekTo(expB, true);
             }
-            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
-            isSyncingFromPlayerRef.current = true;
+            isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
             setSelectedTimeCursor(masterTime);
             if (playerA && videoA) {
               const expA = calculateLocalSeekTime(videoA, masterTime);
               playerA.seekTo(expA, true);
             }
-            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           }
         }
 
@@ -779,7 +803,7 @@ export default function SyncVisualizerPage() {
             {/* Continuous Vertical Canvas Container with SVG Background Sync Connection Lines */}
             <div 
               ref={timelineRef}
-              onClick={handleTimelineClick}
+              onMouseDown={handleTimelineMouseDown}
               style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
               className="relative mt-3 mb-2 flex cursor-crosshair select-none"
             >
