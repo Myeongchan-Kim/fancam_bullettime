@@ -401,6 +401,20 @@ export default function SyncVisualizerPage() {
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
+  // Static player options to prevent iframe re-creation/blinking
+  const playerOpts = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    playerVars: {
+      autoplay: 0,
+      controls: 1,
+      mute: 1,
+      playsinline: 1,
+      enablejsapi: 1,
+      rel: 0
+    }
+  }), []);
+
   // Current effective offset for Deck B
   const effectiveOffsetB = videoB 
     ? Number((videoB.sync_offset + fineTuneDelta).toFixed(2))
@@ -421,22 +435,28 @@ export default function SyncVisualizerPage() {
     return Math.max(0, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
   };
 
-  // 1. External cursor change (timeline click) -> Sync both players
+  // 1. External cursor change (e.g. clicking on timeline canvas) -> Sync players
   useEffect(() => {
     if (isSyncingFromPlayerRef.current) return;
     const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
     const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
     try {
-      if (playerA && Math.abs(playerA.getCurrentTime() - targetA) > 0.6) {
-        playerA.seekTo(targetA, true);
+      if (playerA && typeof playerA.getCurrentTime === 'function') {
+        const curA = playerA.getCurrentTime();
+        if (Math.abs(curA - targetA) > 0.8) {
+          playerA.seekTo(targetA, true);
+        }
       }
     } catch (e) {}
     try {
-      if (playerB && Math.abs(playerB.getCurrentTime() - targetB) > 0.6) {
-        playerB.seekTo(targetB, true);
+      if (playerB && typeof playerB.getCurrentTime === 'function') {
+        const curB = playerB.getCurrentTime();
+        if (Math.abs(curB - targetB) > 0.8) {
+          playerB.seekTo(targetB, true);
+        }
       }
     } catch (e) {}
-  }, [selectedTimeCursor, videoA, videoB]);
+  }, [selectedTimeCursor, videoA?.id, videoB?.id]);
 
   // 2. Instant visual feedback when fineTuneDelta changes
   useEffect(() => {
@@ -463,22 +483,26 @@ export default function SyncVisualizerPage() {
     } catch (e) {}
   }, [audioSource, playerA, playerB]);
 
-  // 4. Bidirectional Native YouTube Playback & Seek Sync Loop
+  // 4. Stable Pairwise Sync Loop (Adopting PairwiseTimelineCalibratorModal algorithm)
   useEffect(() => {
     const interval = setInterval(() => {
       if (!playerA && !playerB) return;
 
       try {
-        const stateA = playerA?.getPlayerState?.() ?? -1;
-        const stateB = playerB?.getPlayerState?.() ?? -1;
-        const timeA = playerA?.getCurrentTime?.() ?? 0;
-        const timeB = playerB?.getCurrentTime?.() ?? 0;
+        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+        const timeA = typeof playerA?.getCurrentTime === 'function' ? playerA.getCurrentTime() : 0;
+        const timeB = typeof playerB?.getCurrentTime === 'function' ? playerB.getCurrentTime() : 0;
 
         // --- Deck A is actively playing ---
         if (stateA === 1 && videoA) {
           isSyncingFromPlayerRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
-          setSelectedTimeCursor(masterTime);
+          
+          // Throttled cursor update to prevent excessive React render cascades
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
+          }
 
           if (playerB && videoB) {
             const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
@@ -487,14 +511,14 @@ export default function SyncVisualizerPage() {
               if (stateB !== 1 && stateB !== 3) {
                 playerB.seekTo(expB, true);
                 playerB.playVideo();
-              } else if (Math.abs(timeB - expB) > 0.4) {
+              } else if (Math.abs(timeB - expB) > 0.5) {
                 playerB.seekTo(expB, true);
               }
             } else if (stateB === 1) {
               playerB.pauseVideo();
             }
           }
-          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
           lastTimeRefA.current = timeA;
           lastTimeRefB.current = timeB;
           return;
@@ -504,7 +528,10 @@ export default function SyncVisualizerPage() {
         if (stateB === 1 && videoB && stateA !== 1) {
           isSyncingFromPlayerRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
-          setSelectedTimeCursor(masterTime);
+          
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
+          }
 
           if (playerA && videoA) {
             const expA = calculateLocalSeekTime(videoA, masterTime);
@@ -513,23 +540,22 @@ export default function SyncVisualizerPage() {
               if (stateA !== 1 && stateA !== 3) {
                 playerA.seekTo(expA, true);
                 playerA.playVideo();
-              } else if (Math.abs(timeA - expA) > 0.4) {
+              } else if (Math.abs(timeA - expA) > 0.5) {
                 playerA.seekTo(expA, true);
               }
             } else if (stateA === 1) {
               playerA.pauseVideo();
             }
           }
-          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
           lastTimeRefA.current = timeA;
           lastTimeRefB.current = timeB;
           return;
         }
 
-        // --- Both paused: Detect dragging/scrubbing inside YouTube's native progress bar ---
+        // --- Both paused: Detect user seeking on native YouTube seekbar ---
         if (stateA !== 1 && stateB !== 1) {
-          // Deck A native seek
-          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.2) {
+          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
             isSyncingFromPlayerRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
             setSelectedTimeCursor(masterTime);
@@ -537,10 +563,8 @@ export default function SyncVisualizerPage() {
               const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
               playerB.seekTo(expB, true);
             }
-            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
-          }
-          // Deck B native seek
-          else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.2) {
+            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
+          } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
             isSyncingFromPlayerRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
             setSelectedTimeCursor(masterTime);
@@ -548,7 +572,7 @@ export default function SyncVisualizerPage() {
               const expA = calculateLocalSeekTime(videoA, masterTime);
               playerA.seekTo(expA, true);
             }
-            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 60);
           }
         }
 
@@ -558,7 +582,7 @@ export default function SyncVisualizerPage() {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration]);
+  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -1098,22 +1122,13 @@ export default function SyncVisualizerPage() {
                         key={`deckA-${videoA.id}`}
                         videoId={videoA.youtube_id}
                         className="w-full h-full"
-                        opts={{
-                          width: '100%',
-                          height: '100%',
-                          playerVars: {
-                            autoplay: 1,
-                            controls: 1,
-                            mute: audioSource === 'DECK_A' ? 0 : 1,
-                            playsinline: 1,
-                            start: seekTimeA
-                          }
-                        }}
+                        opts={playerOpts}
                         onReady={(e) => {
                           setPlayerA(e.target);
+                          const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+                          e.target.seekTo(startA, true);
                           if (audioSource === 'DECK_A') e.target.unMute();
                           else e.target.mute();
-                          e.target.seekTo(seekTimeA, true);
                         }}
                       />
                     )}
@@ -1172,22 +1187,13 @@ export default function SyncVisualizerPage() {
                         key={`deckB-${videoB.id}`}
                         videoId={videoB.youtube_id}
                         className="w-full h-full"
-                        opts={{
-                          width: '100%',
-                          height: '100%',
-                          playerVars: {
-                            autoplay: 1,
-                            controls: 1,
-                            mute: audioSource === 'DECK_B' ? 0 : 1,
-                            playsinline: 1,
-                            start: seekTimeB
-                          }
-                        }}
+                        opts={playerOpts}
                         onReady={(e) => {
                           setPlayerB(e.target);
+                          const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+                          e.target.seekTo(startB, true);
                           if (audioSource === 'DECK_B') e.target.unMute();
                           else e.target.mute();
-                          e.target.seekTo(seekTimeB, true);
                         }}
                       />
                     )}
