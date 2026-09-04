@@ -71,6 +71,7 @@ export default function SyncVisualizerPage() {
   // Full Calibrator Modals
   const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
   const [showSegmentModal, setShowSegmentModal] = useState<boolean>(false);
+  const [isLoadingCalibrator, setIsLoadingCalibrator] = useState<boolean>(false);
   const [calibratorVideo, setCalibratorVideo] = useState<Video | null>(null);
   const [allVideosForModal, setAllVideosForModal] = useState<Video[]>([]);
 
@@ -499,13 +500,17 @@ export default function SyncVisualizerPage() {
 
   // Open Full Calibrator Modal
   const handleOpenCalibrator = async (video: SyncGraphVideoNode, isSegment: boolean = false) => {
+    setIsLoadingCalibrator(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/videos/${video.id}/full`);
+      const [res, allRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/videos/${video.id}/full`),
+        fetch(`${API_BASE_URL}/videos?concert_id=${selectedConcertId}&limit=100`)
+      ]);
+
       if (!res.ok) throw new Error('Failed to fetch full video details');
       const data = await res.json();
       setCalibratorVideo(data);
 
-      const allRes = await fetch(`${API_BASE_URL}/videos?concert_id=${selectedConcertId}&limit=100`);
       if (allRes.ok) {
         const allData = await allRes.json();
         setAllVideosForModal(allData.videos || []);
@@ -519,6 +524,8 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('Failed to open calibrator', err);
       alert(`캘리브레이터 로드 실패: ${err.message}`);
+    } finally {
+      setIsLoadingCalibrator(false);
     }
   };
 
@@ -1534,10 +1541,12 @@ export default function SyncVisualizerPage() {
                           )}
                           <button
                             onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
-                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
-                            title="수동 정밀 캘리브레이터 모달 열기"
+                            disabled={isLoadingCalibrator}
+                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all disabled:opacity-50"
+                            title={videoB.segments && videoB.segments.length > 0 ? "구간별 다중 타임라인 캘리브레이터 열기" : "수동 정밀 캘리브레이터 모달 열기"}
                           >
-                            <ShieldCheck className="w-3.5 h-3.5" /> 수동 캘리브레이터
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            {videoB.segments && videoB.segments.length > 0 ? 'Split 구간 캘리브레이터' : '수동 캘리브레이터'}
                           </button>
                           <button
                             onClick={() => handleTriggerAiSync(videoB)}
@@ -1816,6 +1825,23 @@ export default function SyncVisualizerPage() {
             loadSyncGraph(selectedConcertId);
           }}
         />
+      )}
+
+      {/* ================= CALIBRATOR LOADING SPINNER MODAL ================= */}
+      {isLoadingCalibrator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900/90 border border-twice-magenta/40 rounded-2xl p-5 max-w-xs w-full shadow-2xl shadow-twice-magenta/20 flex flex-col items-center text-center gap-3">
+            <div className="relative w-10 h-10 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-2 border-twice-magenta/20"></div>
+              <div className="absolute inset-0 rounded-full border-2 border-t-twice-magenta border-r-twice-apricot animate-spin"></div>
+              <Sparkles className="w-4 h-4 text-twice-magenta animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">캘리브레이터 준비 중</p>
+              <p className="text-xs text-gray-400 mt-0.5">영상 메타데이터 및 콘서트 목록 로드 중...</p>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ================= AI 2-STAGE SYNC SPINNER MODAL ================= */}
