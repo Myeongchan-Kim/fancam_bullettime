@@ -435,24 +435,32 @@ export default function SyncVisualizerPage() {
     return Math.max(0, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
   };
 
-  // 1. External cursor change (e.g. clicking on timeline canvas) -> Sync players
+  // 1. External cursor change (e.g. clicking on timeline canvas or paused seeking) -> Sync players
   useEffect(() => {
     if (isSyncingFromPlayerRef.current) return;
     const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
     const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
     try {
-      if (playerA && typeof playerA.getCurrentTime === 'function') {
-        const curA = playerA.getCurrentTime();
-        if (Math.abs(curA - targetA) > 0.8) {
-          playerA.seekTo(targetA, true);
+      if (playerA && typeof playerA.getCurrentTime === 'function' && typeof playerA.getPlayerState === 'function') {
+        const stateA = playerA.getPlayerState();
+        // NEVER seek Player A if Player A is currently playing (to prevent micro-buffering/stutter)
+        if (stateA !== 1) {
+          const curA = playerA.getCurrentTime();
+          if (Math.abs(curA - targetA) > 0.5) {
+            playerA.seekTo(targetA, true);
+          }
         }
       }
     } catch (e) {}
     try {
-      if (playerB && typeof playerB.getCurrentTime === 'function') {
-        const curB = playerB.getCurrentTime();
-        if (Math.abs(curB - targetB) > 0.8) {
-          playerB.seekTo(targetB, true);
+      if (playerB && typeof playerB.getCurrentTime === 'function' && typeof playerB.getPlayerState === 'function') {
+        const stateB = playerB.getPlayerState();
+        // NEVER seek Player B if Player B is currently playing
+        if (stateB !== 1) {
+          const curB = playerB.getCurrentTime();
+          if (Math.abs(curB - targetB) > 0.5) {
+            playerB.seekTo(targetB, true);
+          }
         }
       }
     } catch (e) {}
