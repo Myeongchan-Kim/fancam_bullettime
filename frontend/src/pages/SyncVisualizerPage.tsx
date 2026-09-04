@@ -32,10 +32,10 @@ export default function SyncVisualizerPage() {
   const [scaleFactor, setScaleFactor] = useState<number>(18);
   const timelineRef = useRef<HTMLDivElement>(null);
 
-  // Lane geometry constants (in px)
-  const TIME_AXIS_WIDTH = 56;
-  const LANE_WIDTH = 22;
-  const LANE_GAP = 14;
+  // Lane geometry constants (in px) - compact & sleek
+  const TIME_AXIS_WIDTH = 48;
+  const LANE_WIDTH = 14;
+  const LANE_GAP = 6;
 
   // 1. Fetch Concerts list
   useEffect(() => {
@@ -164,11 +164,8 @@ export default function SyncVisualizerPage() {
       }
     });
 
-    // Sort non-master videos: long videos first, then by master_start_time
-    nonMaster.sort((a, b) => {
-      if (b.duration !== a.duration) return (b.duration || 0) - (a.duration || 0);
-      return a.master_start_time - b.master_start_time;
-    });
+    // Sort strictly by master_start_time ascending to achieve maximum left-compaction (왼쪽 밀착)
+    nonMaster.sort((a, b) => a.master_start_time - b.master_start_time);
 
     const packedLanes: { lastEnd: number; items: SyncGraphVideoNode[] }[] = [];
 
@@ -177,17 +174,17 @@ export default function SyncVisualizerPage() {
       packedLanes.push({ lastEnd: totalDuration, items: [masterNode] });
     }
 
-    // Pack non-master videos into parallel lanes (reusing lanes as videos end)
+    // Pack non-master videos into parallel lanes (reusing leftmost available lane)
     for (const v of nonMaster) {
       const vStart = v.master_start_time;
       const vEnd = v.master_end_time;
       let placed = false;
 
-      // Try placing in existing lanes after Lane 0
+      // Try placing in leftmost existing lane after Lane 0
       const startIdx = masterNode ? 1 : 0;
       for (let i = startIdx; i < packedLanes.length; i++) {
         const lane = packedLanes[i];
-        if (lane.lastEnd <= vStart + 2) {
+        if (lane.lastEnd <= vStart + 1) {
           lane.items.push(v);
           lane.lastEnd = vEnd;
           placed = true;
@@ -205,6 +202,11 @@ export default function SyncVisualizerPage() {
       allVisibleVideos: visible
     };
   }, [graphData, statusFilter, memberFilter, searchQuery, totalDuration]);
+
+  // Total width of packed timeline canvas
+  const totalCanvasWidth = useMemo(() => {
+    return TIME_AXIS_WIDTH + 16 + (lanes.length * (LANE_WIDTH + LANE_GAP));
+  }, [lanes.length]);
 
   // Calculate videos overlapping with selected horizontal time line
   const overlappingVideos = useMemo(() => {
@@ -227,7 +229,7 @@ export default function SyncVisualizerPage() {
 
   // Helper to calculate exact X pixel position for a lane
   const getLaneX = (laneIdx: number) => {
-    return TIME_AXIS_WIDTH + 12 + laneIdx * (LANE_WIDTH + LANE_GAP);
+    return TIME_AXIS_WIDTH + 8 + laneIdx * (LANE_WIDTH + LANE_GAP);
   };
 
   // Handle timeline click to select horizontal time line
@@ -454,8 +456,8 @@ export default function SyncVisualizerPage() {
             <div 
               ref={timelineRef}
               onClick={handleTimelineClick}
-              style={{ height: `${canvasHeight}px` }} 
-              className="relative w-full mt-4 flex cursor-crosshair select-none"
+              style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
+              className="relative mt-4 flex cursor-crosshair select-none"
             >
               {/* 1. Left Time Scale Axis (Every 15 minutes) */}
               <div 
@@ -534,7 +536,7 @@ export default function SyncVisualizerPage() {
               </svg>
 
               {/* 3. Unified Parallel Lanes System */}
-              <div className="flex-1 relative h-full flex items-start pl-3 gap-[14px] z-10">
+              <div className="relative h-full flex items-start pl-2 gap-[6px] z-10">
                 {lanes.map((laneVideos, lIdx) => {
                   const isMasterLane = lIdx === 0 && laneVideos.some(v => v.is_master);
 
