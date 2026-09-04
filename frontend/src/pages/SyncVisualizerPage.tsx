@@ -1072,7 +1072,11 @@ export default function SyncVisualizerPage() {
                                 : `✅ 검증완료 (${cam.calibration_count || 1}회)`
                             }`}
                           >
-                            <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
+                            <span className={`font-mono font-black text-white pointer-events-none select-none ${
+                              isDeckA || isDeckB || isMaster || isUncalibrated
+                                ? 'text-[8px]'
+                                : 'text-[7.5px] rotate-90 whitespace-nowrap tracking-tighter'
+                            }`}>
                               {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : `#${cam.id}`}
                             </span>
                           </div>
