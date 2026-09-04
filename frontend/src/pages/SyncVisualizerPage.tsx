@@ -895,24 +895,40 @@ export default function SyncVisualizerPage() {
                 <div className={`bg-slate-900/95 rounded-2xl p-3 sm:p-4 shadow-xl space-y-2 transition-all border-2 ${
                   activeDeckSlot === 'A' ? 'border-sky-500/70 ring-2 ring-sky-500/30' : 'border-sky-500/30'
                 }`}>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-sky-400 flex items-center gap-1.5 truncate max-w-[200px]">
-                      <span className="w-4 h-4 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-[10px] font-mono font-black border border-sky-400/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                      <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-[11px] font-mono font-black border border-sky-400/30 flex-shrink-0">
                         A
                       </span>
-                      {videoA?.is_master ? '🏆 마스터 기준 풀캠' : `직캠 #${videoA?.id || ''}`}
-                    </span>
+                      {/* Direct Dropdown Video Selector for Deck A */}
+                      <select
+                        value={videoA?.id || ''}
+                        onChange={(e) => {
+                          const targetId = parseInt(e.target.value, 10);
+                          const found = graphData?.videos?.find(v => v.id === targetId);
+                          if (found) setVideoA(found);
+                        }}
+                        className="bg-slate-800 text-sky-300 px-2 py-1 rounded-lg border border-sky-500/30 text-xs font-bold focus:outline-none focus:border-sky-400 w-full max-w-[220px] truncate cursor-pointer hover:bg-slate-750"
+                      >
+                        {graphData?.videos?.map(v => (
+                          <option key={`opt-a-${v.id}`} value={v.id} className="bg-slate-900 text-white">
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.members?.join(', ') || v.title.slice(0, 20)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
                     <div className="flex items-center gap-2">
                       <span className="text-gray-400 font-mono text-[10px]">
                         재생: {formatTime(seekTimeA)}
                       </span>
                       <button
                         onClick={() => setActiveDeckSlot('A')}
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
-                          activeDeckSlot === 'A' ? 'bg-sky-500 text-white' : 'bg-slate-800 text-gray-400 hover:text-white'
+                        className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold transition-all ${
+                          activeDeckSlot === 'A' ? 'bg-sky-500 text-white shadow' : 'bg-slate-800 text-gray-400 hover:text-white'
                         }`}
                       >
-                        {activeDeckSlot === 'A' ? '선택중' : 'A 선택'}
+                        {activeDeckSlot === 'A' ? '● 좌측(A) 활성' : 'A 선택'}
                       </button>
                     </div>
                   </div>
@@ -939,24 +955,40 @@ export default function SyncVisualizerPage() {
                 <div className={`bg-slate-900/95 rounded-2xl p-3 sm:p-4 shadow-xl space-y-2 transition-all border-2 ${
                   activeDeckSlot === 'B' ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/40'
                 }`}>
-                  <div className="flex items-center justify-between text-xs font-bold">
-                    <span className="text-twice-magenta flex items-center gap-1.5 truncate max-w-[200px]">
-                      <span className="w-4 h-4 rounded-full bg-twice-magenta/20 text-twice-magenta flex items-center justify-center text-[10px] font-mono font-black border border-twice-magenta/30">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                      <span className="w-5 h-5 rounded-full bg-twice-magenta/20 text-twice-magenta flex items-center justify-center text-[11px] font-mono font-black border border-twice-magenta/30 flex-shrink-0">
                         B
                       </span>
-                      {videoB?.is_master ? '🏆 마스터 풀캠' : `타겟 직캠 #${videoB?.id || ''}`}
-                    </span>
+                      {/* Direct Dropdown Video Selector for Deck B */}
+                      <select
+                        value={videoB?.id || ''}
+                        onChange={(e) => {
+                          const targetId = parseInt(e.target.value, 10);
+                          const found = graphData?.videos?.find(v => v.id === targetId);
+                          if (found) setVideoB(found);
+                        }}
+                        className="bg-slate-800 text-twice-magenta px-2 py-1 rounded-lg border border-twice-magenta/30 text-xs font-bold focus:outline-none focus:border-twice-magenta w-full max-w-[220px] truncate cursor-pointer hover:bg-slate-750"
+                      >
+                        {graphData?.videos?.map(v => (
+                          <option key={`opt-b-${v.id}`} value={v.id} className="bg-slate-900 text-white">
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.members?.join(', ') || v.title.slice(0, 20)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="flex items-center gap-2">
                       <span className="text-twice-apricot font-mono text-[10px]">
                         재생: {formatTime(seekTimeB)}
                       </span>
                       <button
                         onClick={() => setActiveDeckSlot('B')}
-                        className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-bold transition-all ${
-                          activeDeckSlot === 'B' ? 'bg-twice-magenta text-white' : 'bg-slate-800 text-gray-400 hover:text-white'
+                        className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold transition-all ${
+                          activeDeckSlot === 'B' ? 'bg-twice-magenta text-white shadow' : 'bg-slate-800 text-gray-400 hover:text-white'
                         }`}
                       >
-                        {activeDeckSlot === 'B' ? '선택중' : 'B 선택'}
+                        {activeDeckSlot === 'B' ? '● 우측(B) 활성' : 'B 선택'}
                       </button>
                     </div>
                   </div>
@@ -1287,30 +1319,34 @@ export default function SyncVisualizerPage() {
                             </span>
                             
                             {/* Deck Assign Badges */}
-                            <div className="flex items-center gap-1">
+                            <div className="flex items-center gap-1 font-mono">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setVideoA(v);
                                 }}
-                                className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold transition-all ${
-                                  isDeckA ? 'bg-sky-500 text-white' : 'bg-slate-800 text-gray-400 hover:text-sky-300'
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-black transition-all ${
+                                  isDeckA 
+                                    ? 'bg-sky-500 text-white shadow ring-1 ring-white' 
+                                    : 'bg-slate-800 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30'
                                 }`}
-                                title="Deck A (좌측)로 지정"
+                                title="Deck A (좌측 레퍼런스)로 지정"
                               >
-                                A
+                                Deck A
                               </button>
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setVideoB(v);
                                 }}
-                                className={`text-[8px] px-1 py-0.2 rounded font-mono font-bold transition-all ${
-                                  isDeckB ? 'bg-twice-magenta text-white' : 'bg-slate-800 text-gray-400 hover:text-pink-300'
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-black transition-all ${
+                                  isDeckB 
+                                    ? 'bg-twice-magenta text-white shadow ring-1 ring-white' 
+                                    : 'bg-slate-800 hover:bg-twice-magenta/30 text-twice-magenta border border-twice-magenta/30'
                                 }`}
-                                title="Deck B (우측)로 지정"
+                                title="Deck B (우측 타겟 직캠)로 지정"
                               >
-                                B
+                                Deck B
                               </button>
                             </div>
                           </div>
