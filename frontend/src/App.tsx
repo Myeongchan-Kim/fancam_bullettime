@@ -6,7 +6,7 @@ import AboutPage from './pages/AboutPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import PresentationPage from './pages/PresentationPage';
 import SyncVisualizerPage from './pages/SyncVisualizerPage';
-import { Candy, LayoutDashboard, GitBranch } from 'lucide-react';
+import { Candy, LayoutDashboard } from 'lucide-react';
 import { API_BASE_URL } from './constants';
 
 function ScrollToTop() {
@@ -44,9 +44,6 @@ function App() {
               </Link>
               <div className="flex items-center space-x-3">
                 <Link to="/" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">Home</Link>
-                <Link to="/sync-tree" className="text-twice-apricot hover:text-white px-3 py-2 text-sm font-bold flex items-center gap-1.5 bg-slate-800/80 rounded-xl border border-twice-apricot/30 transition-all shadow-sm">
-                  <GitBranch className="h-4 w-4 text-twice-magenta" /> Sync Tree
-                </Link>
                 <Link to="/about" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">About</Link>
                 {adminKey && (
                   <Link to="/admin" className="bg-slate-800 text-twice-apricot hover:bg-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all border border-twice-apricot/20">

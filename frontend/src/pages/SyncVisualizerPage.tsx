@@ -117,7 +117,10 @@ export default function SyncVisualizerPage() {
         setGraphData(data);
         if (data.videos && data.videos.length > 0) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
-          const second = data.videos.find(v => !v.is_master) || data.videos[1] || master;
+          const targetVideoId = parseInt(searchParams.get('video_id') || '0', 10);
+          const targetVideo = targetVideoId ? data.videos.find(v => v.id === targetVideoId) : null;
+          const second = targetVideo || data.videos.find(v => !v.is_master) || data.videos[1] || master;
+          
           setVideoA(master);
           setVideoB(second);
           setSelectedTimeCursor(second.master_start_time || master.master_start_time || 0);
@@ -133,7 +136,10 @@ export default function SyncVisualizerPage() {
 
   useEffect(() => {
     if (selectedConcertId) {
-      setSearchParams({ concert_id: selectedConcertId.toString() });
+      const currentVideoId = searchParams.get('video_id');
+      const params: any = { concert_id: selectedConcertId.toString() };
+      if (currentVideoId) params.video_id = currentVideoId;
+      setSearchParams(params);
       loadSyncGraph(selectedConcertId);
     }
   }, [selectedConcertId]);
