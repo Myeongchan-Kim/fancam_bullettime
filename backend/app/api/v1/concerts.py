@@ -34,6 +34,9 @@ def get_concert(concert_id: int, response: Response, db: Session = Depends(get_d
     concert.video_count = count
     return concert
 
+@router.post("/admin/verify")
+def verify_admin_key(admin: bool = Depends(verify_admin)):
+    return {"status": "success", "message": "Admin key verified successfully"}
 
 @router.patch("/admin/setlist/{item_id}")
 def update_setlist_item(item_id: int, start_time: float = Query(...), db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):

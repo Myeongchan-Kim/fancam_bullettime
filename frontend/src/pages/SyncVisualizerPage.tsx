@@ -750,7 +750,7 @@ export default function SyncVisualizerPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
           </button>
           <button 
-            onClick={() => {
+            onClick={async () => {
               if (isAdminMode) {
                 if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
                   localStorage.removeItem('admin_key');
@@ -759,8 +759,19 @@ export default function SyncVisualizerPage() {
               } else {
                 const key = window.prompt('Admin Key를 입력해주세요:');
                 if (key) {
-                  localStorage.setItem('admin_key', key.trim());
-                  setIsAdminMode(true);
+                  const trimmed = key.trim();
+                  try {
+                    await axios.post(
+                      `${API_BASE_URL}/admin/verify`,
+                      {},
+                      { headers: { 'x-admin-key': trimmed } }
+                    );
+                    localStorage.setItem('admin_key', trimmed);
+                    setIsAdminMode(true);
+                    alert('Admin 인증에 성공했습니다!');
+                  } catch (err) {
+                    alert('Admin Key가 올바르지 않습니다.');
+                  }
                 }
               }
             }}
