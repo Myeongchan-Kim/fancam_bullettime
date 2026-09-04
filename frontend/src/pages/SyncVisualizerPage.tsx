@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { 
   GitBranch, Play, AlertTriangle, CheckCircle2, Split, 
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
-  X, Volume2, Maximize2, ChevronDown
+  X, Volume2, Maximize2, ChevronDown, Layers
 } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 import { Concert, SyncGraphData, SyncGraphVideoNode } from '../types';
@@ -23,10 +23,10 @@ export default function SyncVisualizerPage() {
   const [memberFilter, setMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Active / Selected Video for Dedicated Right Player Panel
+  // Horizontal Scrubber Time Cursor (in Master seconds)
+  const [selectedTimeCursor, setSelectedTimeCursor] = useState<number>(0);
   const [selectedVideo, setSelectedVideo] = useState<SyncGraphVideoNode | null>(null);
   const [hoveredVideo, setHoveredVideo] = useState<SyncGraphVideoNode | null>(null);
-  const [playerSeekTime, setPlayerSeekTime] = useState<number>(0);
 
   // Timeline zoom/scale (px per 100 seconds)
   const [scaleFactor, setScaleFactor] = useState<number>(18);
@@ -64,9 +64,10 @@ export default function SyncVisualizerPage() {
       })
       .then((data: SyncGraphData) => {
         setGraphData(data);
-        if (data.videos && data.videos.length > 0 && !selectedVideo) {
+        if (data.videos && data.videos.length > 0) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
           setSelectedVideo(master);
+          setSelectedTimeCursor(master.master_start_time || 0);
         }
         setLoading(false);
       })
@@ -159,18 +160,28 @@ export default function SyncVisualizerPage() {
       }
     });
 
-    // Sort parents so Master is first, then longest duration
     parents.sort((a, b) => {
       if (a.is_master) return -1;
       if (b.is_master) return 1;
       return (b.duration || 0) - (a.duration || 0);
     });
 
-    // Sort children by start time
     children.sort((a, b) => a.master_start_time - b.master_start_time);
 
     return { parentTracks: parents, childTracks: children };
   }, [graphData, statusFilter, memberFilter, searchQuery]);
+
+  // Calculate videos overlapping with selected horizontal time line
+  const overlappingVideos = useMemo(() => {
+    if (!graphData || !graphData.videos) return [];
+    
+    return graphData.videos.filter(v => {
+      if (v.segments && v.segments.length > 0) {
+        return v.segments.some(seg => selectedTimeCursor >= seg.master_start && selectedTimeCursor <= seg.master_end);
+      }
+      return selectedTimeCursor >= v.master_start_time && selectedTimeCursor <= v.master_end_time;
+    });
+  }, [graphData, selectedTimeCursor]);
 
   // Helper to calculate top & height in px
   const getPositionStyles = (startTime: number, duration: number) => {
@@ -179,15 +190,40 @@ export default function SyncVisualizerPage() {
     return { top: `${top}px`, height: `${height}px` };
   };
 
+  // Handle timeline click to select horizontal time line
+  const handleTimelineClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!timelineRef.current) return;
+    const rect = timelineRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const clickedSec = Math.max(0, Math.min(totalDuration, (clickY / canvasHeight) * totalDuration));
+    setSelectedTimeCursor(clickedSec);
+  };
+
   const handleSelectVideo = (video: SyncGraphVideoNode, seekToMasterTime?: number) => {
     setSelectedVideo(video);
     if (seekToMasterTime !== undefined) {
-      const localTime = Math.max(0, Math.floor(seekToMasterTime - video.sync_offset));
-      setPlayerSeekTime(localTime);
+      setSelectedTimeCursor(seekToMasterTime);
     } else {
-      setPlayerSeekTime(0);
+      setSelectedTimeCursor(video.master_start_time);
     }
   };
+
+  // Calculate local player seek time for selected video
+  const playerLocalSeekTime = useMemo(() => {
+    if (!selectedVideo) return 0;
+    
+    // If video has split segments, find matching segment offset
+    if (selectedVideo.segments && selectedVideo.segments.length > 0) {
+      const activeSeg = selectedVideo.segments.find(
+        seg => selectedTimeCursor >= seg.master_start && selectedTimeCursor <= seg.master_end
+      );
+      if (activeSeg) {
+        return Math.max(0, Math.floor(selectedTimeCursor - activeSeg.sync_offset));
+      }
+    }
+    
+    return Math.max(0, Math.floor(selectedTimeCursor - selectedVideo.sync_offset));
+  }, [selectedVideo, selectedTimeCursor]);
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
@@ -200,7 +236,7 @@ export default function SyncVisualizerPage() {
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5">
               <GitBranch className="w-3.5 h-3.5" /> Sync Timeline Canvas
             </span>
-            <span className="text-gray-400 text-xs font-mono">상위 풀캠 (좌측) ➔ 하위 직캠 (우측) • 얇은 바 타임라인</span>
+            <span className="text-gray-400 text-xs font-mono">가로 타임 커서 선택 ➔ 우측 동시 겹치는 다각도 영상 리스트업</span>
           </div>
           <h1 className="text-2xl font-black text-white tracking-tight">
             TWICE Concert Multi-Track Timeline
@@ -357,34 +393,35 @@ export default function SyncVisualizerPage() {
         </div>
       )}
 
-      {/* ================= SIMPLIFIED DUAL-VIEW: Left Thin-Bar Canvas (8 Cols) + Right Pinned Player (4 Cols) ================= */}
+      {/* ================= DUAL-VIEW: Left Canvas (7 Cols) + Right Synchronized Multi-Angle Inspector (5 Cols) ================= */}
       {!loading && !error && graphData && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
-          {/* ================= LEFT MULTI-TRACK THIN-BAR CANVAS (8 COLS) ================= */}
-          <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md overflow-x-auto">
+          {/* ================= LEFT MULTI-TRACK THIN-BAR CANVAS (7 COLS) ================= */}
+          <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md overflow-x-auto">
             
             {/* Track Column Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
-              <div className="flex items-center gap-6">
-                <div className="w-16 text-gray-500 font-bold">시간</div>
-                <div className="text-purple-400 font-bold flex items-center gap-1.5">
-                  <Sparkles className="w-3 h-3" /> 상위 캠 (마스터 & 풀캠 {parentTracks.length}개)
+              <div className="flex items-center gap-4">
+                <div className="w-14 text-gray-500 font-bold">시간</div>
+                <div className="text-purple-400 font-bold flex items-center gap-1">
+                  <Sparkles className="w-3 h-3" /> 상위 캠 ({parentTracks.length})
                 </div>
               </div>
-              <div className="text-pink-400 font-bold flex items-center gap-1.5 pr-4">
-                <GitBranch className="w-3 h-3" /> 하위 직캠 (개별 & 솔로 {childTracks.length}개)
+              <div className="text-pink-400 font-bold flex items-center gap-1 pr-4">
+                <GitBranch className="w-3 h-3" /> 하위 직캠 ({childTracks.length})
               </div>
             </div>
 
-            {/* Continuous Vertical Canvas Container */}
+            {/* Continuous Vertical Canvas Container with Interactive Horizontal Line Selection */}
             <div 
               ref={timelineRef}
+              onClick={handleTimelineClick}
               style={{ height: `${canvasHeight}px` }} 
-              className="relative w-full mt-4 flex gap-4"
+              className="relative w-full mt-4 flex gap-3 cursor-crosshair select-none"
             >
               {/* 1. Left Time Scale Axis (Every 15 minutes) */}
-              <div className="w-16 relative h-full flex-shrink-0 border-r border-slate-800/80">
+              <div className="w-14 relative h-full flex-shrink-0 border-r border-slate-800/80">
                 {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
                   const sec = gIdx * 900;
                   const topPx = (sec / totalDuration) * canvasHeight;
@@ -403,7 +440,7 @@ export default function SyncVisualizerPage() {
               </div>
 
               {/* 2. Parent Tracks (상위 캠: Thin Vertical Bars Side-by-Side) */}
-              <div className="flex items-start gap-2.5 relative h-full flex-shrink-0 border-r border-slate-800/80 pr-4">
+              <div className="flex items-start gap-2 relative h-full flex-shrink-0 border-r border-slate-800/80 pr-3">
                 {parentTracks.map((pCam) => {
                   const isSelected = selectedVideo?.id === pCam.id;
                   const isHovered = hoveredVideo?.id === pCam.id;
@@ -413,18 +450,21 @@ export default function SyncVisualizerPage() {
                   return (
                     <div 
                       key={pCam.id}
-                      className="relative w-6 sm:w-8 h-full flex flex-col items-center group cursor-pointer"
-                      onClick={() => handleSelectVideo(pCam)}
+                      className="relative w-5 sm:w-6 h-full flex flex-col items-center group cursor-pointer"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectVideo(pCam);
+                      }}
                       onMouseEnter={() => setHoveredVideo(pCam)}
                       onMouseLeave={() => setHoveredVideo(null)}
                     >
                       {/* Track Header Label */}
-                      <div className="text-[9px] font-mono font-black text-gray-400 truncate w-full text-center mb-1">
+                      <div className="text-[8px] font-mono font-bold text-gray-400 truncate w-full text-center mb-1">
                         {isMaster ? '🏆' : `#${pCam.id}`}
                       </div>
 
                       {/* Thin Bar Body */}
-                      <div className="relative w-2.5 sm:w-3.5 h-full bg-slate-950/60 rounded-full overflow-hidden border border-slate-800">
+                      <div className="relative w-2 sm:w-2.5 h-full bg-slate-950/60 rounded-full overflow-hidden border border-slate-800">
                         {hasSegments ? (
                           // Split Bar: Discontinuous segmented blocks (띄엄띄엄)
                           pCam.segments.map((seg, sIdx) => {
@@ -492,7 +532,6 @@ export default function SyncVisualizerPage() {
                     const isHovered = hoveredVideo?.id === cCam.id;
                     const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
                     
-                    // Distribute across lanes horizontally based on index mod
                     const laneLeft = (cIdx % 10) * 9.5;
 
                     return (
@@ -504,7 +543,10 @@ export default function SyncVisualizerPage() {
                           left: `${laneLeft}%`,
                           width: '8%'
                         }}
-                        onClick={() => handleSelectVideo(cCam)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleSelectVideo(cCam);
+                        }}
                         onMouseEnter={() => setHoveredVideo(cCam)}
                         onMouseLeave={() => setHoveredVideo(null)}
                         className={`absolute rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
@@ -516,8 +558,7 @@ export default function SyncVisualizerPage() {
                         }`}
                         title={`#${cCam.id} ${cCam.title} [${formatTime(cCam.master_start_time)} ~ ${formatTime(cCam.master_end_time)}]`}
                       >
-                        {/* Member/Short Tag */}
-                        <span className="text-[8px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
+                        <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
                           {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
                         </span>
                       </div>
@@ -526,43 +567,57 @@ export default function SyncVisualizerPage() {
                 </div>
               </div>
 
+              {/* 4. Interactive Horizontal Time Scrubber Line (선택된 타임라인 가로선) */}
+              <div
+                style={{ top: `${(selectedTimeCursor / totalDuration) * canvasHeight}px` }}
+                className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
+              >
+                <div className="w-full border-t-2 border-twice-magenta shadow-[0_0_12px_rgba(255,94,153,0.8)]" />
+                <span className="absolute left-2 -top-3.5 bg-twice-magenta text-white px-2 py-0.5 rounded-full text-[10px] font-mono font-black shadow-lg">
+                  ⏱️ {formatTime(selectedTimeCursor)}
+                </span>
+              </div>
+
             </div>
           </div>
 
-          {/* ================= RIGHT DEDICATED PLAYER & INSPECTOR (4 COLS) ================= */}
-          <div className="lg:col-span-4 lg:sticky lg:top-4 space-y-4">
+          {/* ================= RIGHT SYNCHRONIZED MULTI-ANGLE INSPECTOR (5 COLS) ================= */}
+          <div className="lg:col-span-5 lg:sticky lg:top-4 space-y-4">
+            
+            {/* Main Player Card */}
             {selectedVideo ? (
-              <div className="bg-slate-900/95 border-2 border-twice-magenta/40 rounded-3xl p-5 shadow-2xl backdrop-blur-md space-y-4">
+              <div className="bg-slate-900/95 border-2 border-twice-magenta/40 rounded-3xl p-4 sm:p-5 shadow-2xl backdrop-blur-md space-y-3">
                 
-                {/* Panel Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+                {/* Header */}
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
                   <div className="flex items-center gap-2">
                     <span className="p-1.5 rounded-lg bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30">
                       <Volume2 className="w-4 h-4" />
                     </span>
                     <div>
                       <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                        Video Inspector
+                        Primary Player (Video #{selectedVideo.id})
                       </h3>
                       <span className="text-[10px] font-mono text-twice-apricot">
-                        Video #{selectedVideo.id} • Offset: +{selectedVideo.sync_offset.toFixed(1)}s
+                        커서 시점: {formatTime(selectedTimeCursor)} • 오프셋: +{selectedVideo.sync_offset.toFixed(1)}s
                       </span>
                     </div>
                   </div>
 
                   <Link
-                    to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
+                    to={`/video/${selectedVideo.id}?t=${playerLocalSeekTime}`}
                     className="p-1.5 text-xs font-bold text-gray-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg flex items-center gap-1 border border-slate-700"
-                    title="360° 대형 플레이어로 열기"
+                    title="360° 멀티앵글 플레이어로 열기"
                   >
                     <Maximize2 className="w-3.5 h-3.5" />
                   </Link>
                 </div>
 
-                {/* Embedded YouTube Player pinned on the right */}
+                {/* Embedded YouTube Player */}
                 <div className="aspect-video w-full rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-black">
                   <iframe
-                    src={`https://www.youtube.com/embed/${selectedVideo.youtube_id}?start=${playerSeekTime}&autoplay=1`}
+                    key={`${selectedVideo.id}-${playerLocalSeekTime}`}
+                    src={`https://www.youtube.com/embed/${selectedVideo.youtube_id}?start=${playerLocalSeekTime}&autoplay=1`}
                     title={selectedVideo.title}
                     className="w-full h-full"
                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -575,73 +630,108 @@ export default function SyncVisualizerPage() {
                   <h4 className="text-xs sm:text-sm font-bold text-white line-clamp-2">
                     {selectedVideo.title}
                   </h4>
-                  <div className="flex items-center gap-2 text-[11px] font-mono text-gray-400 mt-1">
+                  <div className="flex items-center justify-between text-[11px] font-mono text-gray-400 mt-1">
                     <span>타임라인: {formatTime(selectedVideo.master_start_time)} ~ {formatTime(selectedVideo.master_end_time)}</span>
+                    <span className="text-twice-apricot font-bold">재생 시점: {formatTime(playerLocalSeekTime)}</span>
                   </div>
                 </div>
 
-                {/* Metadata */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase">Duration</span>
-                    <div className="text-xs font-mono font-black text-white mt-0.5">
-                      {formatDuration(selectedVideo.duration)}
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/80 p-2 rounded-xl border border-slate-700">
-                    <span className="text-[9px] font-bold text-gray-400 uppercase">Sync Offset</span>
-                    <div className="text-xs font-mono font-black text-twice-apricot mt-0.5">
-                      +{selectedVideo.sync_offset.toFixed(2)}s
-                    </div>
-                  </div>
-                </div>
-
-                {/* Health Diagnostic Badge */}
-                <div className={`p-2.5 rounded-xl border text-xs ${
-                  selectedVideo.status === 'verified' || selectedVideo.status === 'master'
-                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
-                    : selectedVideo.status === 'segmented'
-                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-300'
-                    : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-                }`}>
-                  <div className="text-[9px] font-bold uppercase tracking-wider">진단 상태</div>
-                  <div className="font-bold text-xs mt-0.5">{selectedVideo.status_reason}</div>
-                </div>
-
-                {/* If Split Segments exist (e.g. Video 63) */}
-                {selectedVideo.segments && selectedVideo.segments.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                      <Split className="w-3 h-3" /> 분할 구간 Split Bar ({selectedVideo.segments.length}개)
-                    </div>
-                    <div className="space-y-1 max-h-32 overflow-y-auto pr-1">
-                      {selectedVideo.segments.map((seg, sIdx) => (
-                        <button
-                          key={sIdx}
-                          onClick={() => setPlayerSeekTime(Math.max(0, Math.floor(seg.video_start)))}
-                          className="w-full text-left p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700 text-[10px] font-mono flex items-center justify-between transition-all"
-                        >
-                          <span className="text-white font-bold">{seg.label || `Part ${sIdx + 1}`}</span>
-                          <span className="text-twice-apricot">+{seg.sync_offset.toFixed(1)}s</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Open in Main Player */}
+                {/* Action Link */}
                 <Link
-                  to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
+                  to={`/video/${selectedVideo.id}?t=${playerLocalSeekTime}`}
                   className="w-full py-2 bg-twice-magenta hover:bg-twice-magenta/80 text-white rounded-xl text-xs font-black flex items-center justify-center gap-1.5 shadow-lg transition-all"
                 >
-                  <Play className="w-3 h-3 fill-current" /> 360° 대형 플레이어로 보기
+                  <Play className="w-3 h-3 fill-current" /> 360° 대형 멀티뷰로 동시 재생
                 </Link>
               </div>
             ) : (
-              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center text-gray-500 font-mono text-xs">
-                왼쪽 타임라인에서 바를 클릭하면 여기에 실시간 검증 플레이어가 표시됩니다.
+              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-6 text-center text-gray-500 font-mono text-xs">
+                타임라인을 클릭하여 시점을 선택하세요.
               </div>
             )}
+
+            {/* Overlapping Videos Multi-Angle List (동시 겹치는 영상 목록) */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-5 shadow-xl backdrop-blur-md space-y-3">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-1.5 text-xs font-black text-white">
+                  <Layers className="w-4 h-4 text-twice-apricot" />
+                  <span>동시 촬영된 다각도 영상 ({overlappingVideos.length}개)</span>
+                </div>
+                <span className="text-[10px] font-mono text-gray-400">
+                  ⏱️ {formatTime(selectedTimeCursor)}
+                </span>
+              </div>
+
+              {overlappingVideos.length === 0 ? (
+                <div className="py-6 text-center text-gray-500 font-mono text-xs">
+                  이 시점에 겹치는 영상이 없습니다.
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-[380px] overflow-y-auto pr-1">
+                  {overlappingVideos.map((v) => {
+                    const isSelected = selectedVideo?.id === v.id;
+                    const isDrift = v.status === 'uncalibrated' || v.status === 'drift_warning';
+                    
+                    // Local seek for this specific angle
+                    let vLocalSeek = Math.max(0, Math.floor(selectedTimeCursor - v.sync_offset));
+                    if (v.segments && v.segments.length > 0) {
+                      const seg = v.segments.find(s => selectedTimeCursor >= s.master_start && selectedTimeCursor <= s.master_end);
+                      if (seg) vLocalSeek = Math.max(0, Math.floor(selectedTimeCursor - seg.sync_offset));
+                    }
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => setSelectedVideo(v)}
+                        className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-center gap-3 ${
+                          isSelected
+                            ? 'bg-twice-magenta/20 border-twice-magenta text-white shadow-md ring-1 ring-twice-magenta/40'
+                            : 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-gray-300'
+                        }`}
+                      >
+                        {/* Thumbnail */}
+                        <div className="w-16 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0 relative">
+                          <img
+                            src={`https://img.youtube.com/vi/${v.youtube_id}/mqdefault.jpg`}
+                            alt={v.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[8px] font-mono font-bold text-white px-1 rounded">
+                            {formatTime(vLocalSeek)}
+                          </span>
+                        </div>
+
+                        {/* Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-black text-white truncate max-w-[140px]">
+                              {v.members && v.members.length > 0 ? (
+                                <span className="text-twice-apricot">{v.members.join(', ')}</span>
+                              ) : (
+                                <span>#{v.id}</span>
+                              )}
+                            </span>
+                            {isDrift ? (
+                              <span className="text-[8px] font-bold text-rose-400 bg-rose-950 px-1 rounded border border-rose-500/30">
+                                🔴 오차
+                              </span>
+                            ) : (
+                              <span className="text-[8px] font-bold text-emerald-400 bg-emerald-950 px-1 rounded border border-emerald-500/30">
+                                🟢 싱크
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-gray-400 truncate mt-0.5">
+                            {v.title}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
 
         </div>
