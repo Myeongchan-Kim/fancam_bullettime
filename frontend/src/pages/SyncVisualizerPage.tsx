@@ -151,7 +151,8 @@ export default function SyncVisualizerPage() {
         if (!matchTitle && !matchSong && !matchMember) return;
       }
 
-      if (v.is_master || v.duration >= 600 || (v.segments && v.segments.length > 1)) {
+      // True Full Cams only (Master or duration >= 1 hour / 3600s)
+      if (v.is_master || v.duration >= 3600) {
         parents.push(v);
       } else {
         children.push(v);
@@ -554,11 +555,41 @@ export default function SyncVisualizerPage() {
 
                       {/* Stacked videos in this lane */}
                       {laneVideos.map((cCam) => {
-                        const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
                         const isSelected = selectedVideo?.id === cCam.id;
                         const isHovered = hoveredVideo?.id === cCam.id;
                         const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
+                        const hasSegments = cCam.segments && cCam.segments.length > 0;
 
+                        if (hasSegments) {
+                          return cCam.segments.map((seg, sIdx) => {
+                            const segDur = seg.video_end - seg.video_start;
+                            const pos = getPositionStyles(seg.master_start, segDur);
+                            return (
+                              <div
+                                key={`${cCam.id}-seg-${sIdx}`}
+                                style={{ top: pos.top, height: pos.height }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectVideo(cCam, seg.master_start);
+                                }}
+                                onMouseEnter={() => setHoveredVideo(cCam)}
+                                onMouseLeave={() => setHoveredVideo(null)}
+                                className={`absolute inset-x-0.5 rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
+                                  isSelected || isHovered
+                                    ? 'bg-amber-400 ring-2 ring-twice-apricot shadow-lg shadow-amber-500/50 z-20'
+                                    : 'bg-amber-600/80 border-amber-500/80 hover:bg-amber-500'
+                                }`}
+                                title={`#${cCam.id} (${seg.label || `Cut ${sIdx+1}`}) ${cCam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}]`}
+                              >
+                                <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
+                                  {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
+                                </span>
+                              </div>
+                            );
+                          });
+                        }
+
+                        const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
                         return (
                           <div
                             key={cCam.id}
