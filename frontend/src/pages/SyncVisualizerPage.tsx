@@ -1543,10 +1543,9 @@ export default function SyncVisualizerPage() {
                             onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
                             disabled={isLoadingCalibrator}
                             className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all disabled:opacity-50"
-                            title={videoB.segments && videoB.segments.length > 0 ? "구간별 다중 타임라인 캘리브레이터 열기" : "수동 정밀 캘리브레이터 모달 열기"}
+                            title="구간 SPLIT 캘리브레이터 열기"
                           >
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            {videoB.segments && videoB.segments.length > 0 ? 'Split 구간 캘리브레이터' : '수동 캘리브레이터'}
+                            <ShieldCheck className="w-3.5 h-3.5" /> 구간 SPLIT 캘리브레이터
                           </button>
                           <button
                             onClick={() => handleTriggerAiSync(videoB)}
