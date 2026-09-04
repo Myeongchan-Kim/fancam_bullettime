@@ -123,14 +123,12 @@ export default function SyncVisualizerPage() {
     return Math.max(900, (totalDuration / 100) * scaleFactor);
   }, [totalDuration, scaleFactor]);
 
-  // Simple Two-Tier Hierarchy:
-  // 1. Parent Tracks (상위 캠: Master, Full Cams, Multi-Song/Split Cams)
-  // 2. Child Tracks (하위 직캠: Solo stages & individual fancams)
-  const { parentTracks, childTracks } = useMemo(() => {
+  // Greedy Interval Scheduling: Pack non-overlapping videos into compact lanes
+  const { parentTracks, childLanes } = useMemo(() => {
     const parents: SyncGraphVideoNode[] = [];
     const children: SyncGraphVideoNode[] = [];
 
-    if (!graphData || !graphData.videos) return { parentTracks: parents, childTracks: children };
+    if (!graphData || !graphData.videos) return { parentTracks: parents, childLanes: [] };
 
     graphData.videos.forEach(v => {
       // Filter check
@@ -166,9 +164,29 @@ export default function SyncVisualizerPage() {
       return (b.duration || 0) - (a.duration || 0);
     });
 
+    // Sort children by start time and pack into minimum parallel lanes
     children.sort((a, b) => a.master_start_time - b.master_start_time);
 
-    return { parentTracks: parents, childTracks: children };
+    const lanes: { lastEnd: number; items: SyncGraphVideoNode[] }[] = [];
+    for (const c of children) {
+      let placed = false;
+      for (const lane of lanes) {
+        if (lane.lastEnd <= c.master_start_time + 1) {
+          lane.items.push(c);
+          lane.lastEnd = c.master_end_time;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        lanes.push({ lastEnd: c.master_end_time, items: [c] });
+      }
+    }
+
+    return { 
+      parentTracks: parents, 
+      childLanes: lanes.map(l => l.items) 
+    };
   }, [graphData, statusFilter, memberFilter, searchQuery]);
 
   // Calculate videos overlapping with selected horizontal time line
@@ -409,7 +427,7 @@ export default function SyncVisualizerPage() {
                 </div>
               </div>
               <div className="text-pink-400 font-bold flex items-center gap-1 pr-4">
-                <GitBranch className="w-3 h-3" /> 하위 직캠 ({childTracks.length})
+                <GitBranch className="w-3 h-3" /> 하위 직캠 ({childLanes.reduce((acc, l) => acc + l.length, 0)}개 • {childLanes.length} 레인)
               </div>
             </div>
 
@@ -524,46 +542,53 @@ export default function SyncVisualizerPage() {
                   );
                 })}
 
-                {/* Sub-grid of individual fancams */}
-                <div className="relative w-full h-full">
-                  {childTracks.map((cCam, cIdx) => {
-                    const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
-                    const isSelected = selectedVideo?.id === cCam.id;
-                    const isHovered = hoveredVideo?.id === cCam.id;
-                    const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
-                    
-                    const laneLeft = (cIdx % 10) * 9.5;
+                {/* Packed Parallel Child Lanes (하위 직캠 레인: 이전 영상이 끝나면 같은 레인 아래에 다음 영상 배치) */}
+                <div className="relative w-full h-full flex items-start gap-2">
+                  {childLanes.map((laneVideos, lIdx) => (
+                    <div 
+                      key={lIdx} 
+                      className="relative w-4 sm:w-5 h-full flex-shrink-0"
+                    >
+                      {/* Lane background vertical line */}
+                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-slate-800/50 pointer-events-none" />
 
-                    return (
-                      <div
-                        key={cCam.id}
-                        style={{ 
-                          top: pos.top, 
-                          height: pos.height,
-                          left: `${laneLeft}%`,
-                          width: '8%'
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectVideo(cCam);
-                        }}
-                        onMouseEnter={() => setHoveredVideo(cCam)}
-                        onMouseLeave={() => setHoveredVideo(null)}
-                        className={`absolute rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
-                          isSelected || isHovered
-                            ? 'bg-twice-magenta ring-2 ring-twice-apricot shadow-lg shadow-twice-magenta/50 z-20'
-                            : isDrift
-                            ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
-                            : 'bg-twice-magenta/60 border-twice-magenta/80 hover:bg-twice-magenta'
-                        }`}
-                        title={`#${cCam.id} ${cCam.title} [${formatTime(cCam.master_start_time)} ~ ${formatTime(cCam.master_end_time)}]`}
-                      >
-                        <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                          {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
-                        </span>
-                      </div>
-                    );
-                  })}
+                      {/* Stacked videos in this lane */}
+                      {laneVideos.map((cCam) => {
+                        const pos = getPositionStyles(cCam.master_start_time, cCam.duration);
+                        const isSelected = selectedVideo?.id === cCam.id;
+                        const isHovered = hoveredVideo?.id === cCam.id;
+                        const isDrift = cCam.status === 'uncalibrated' || cCam.status === 'drift_warning';
+
+                        return (
+                          <div
+                            key={cCam.id}
+                            style={{ 
+                              top: pos.top, 
+                              height: pos.height
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectVideo(cCam);
+                            }}
+                            onMouseEnter={() => setHoveredVideo(cCam)}
+                            onMouseLeave={() => setHoveredVideo(null)}
+                            className={`absolute inset-x-0.5 rounded-full border transition-all cursor-pointer flex items-center justify-center group ${
+                              isSelected || isHovered
+                                ? 'bg-twice-magenta ring-2 ring-twice-apricot shadow-lg shadow-twice-magenta/50 z-20'
+                                : isDrift
+                                ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
+                                : 'bg-pink-600/70 border-pink-500/80 hover:bg-twice-magenta'
+                            }`}
+                            title={`#${cCam.id} ${cCam.title} [${formatTime(cCam.master_start_time)} ~ ${formatTime(cCam.master_end_time)}]`}
+                          >
+                            <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
+                              {cCam.members?.[0]?.slice(0, 2) || `#${cCam.id}`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
                 </div>
               </div>
 
