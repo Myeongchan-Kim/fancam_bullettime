@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import YouTube, { YouTubePlayer } from 'react-youtube';
 import { 
   GitBranch, AlertTriangle, CheckCircle2, Split, 
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
@@ -36,6 +37,13 @@ export default function SyncVisualizerPage() {
   const [videoB, setVideoB] = useState<SyncGraphVideoNode | null>(null);
   const [activeDeckSlot, setActiveDeckSlot] = useState<'A' | 'B'>('B');
   const [hoveredVideo, setHoveredVideo] = useState<SyncGraphVideoNode | null>(null);
+
+  // YouTube Player instances for bidirectional native seek sync
+  const [playerA, setPlayerA] = useState<YouTubePlayer | null>(null);
+  const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
+  const lastTimeRefA = useRef<number>(0);
+  const lastTimeRefB = useRef<number>(0);
+  const isSyncingFromPlayerRef = useRef<boolean>(false);
 
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
@@ -401,33 +409,156 @@ export default function SyncVisualizerPage() {
   const seekTimeA = calculateLocalSeekTime(videoA, selectedTimeCursor);
   const seekTimeB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
 
-  // Handle seek on Deck A scrubber -> Updates master cursor and syncs Deck B
-  const handleSeekDeckA = (timeA: number) => {
-    if (!videoA) return;
-    let masterTime = timeA + (videoA.sync_offset || 0);
-    if (videoA.segments && videoA.segments.length > 0) {
-      const seg = videoA.segments.find(s => timeA >= (s.video_start || 0) && timeA <= (s.video_end || videoA.duration || 300));
+  // Helper to calculate master concert time from a local video time
+  const calculateMasterTimeFromLocal = (video: SyncGraphVideoNode | null, localTime: number, delta: number = 0) => {
+    if (!video) return 0;
+    if (video.segments && video.segments.length > 0) {
+      const seg = video.segments.find(s => localTime >= (s.video_start || 0) && localTime <= (s.video_end || video.duration || 300));
       if (seg) {
-        masterTime = timeA + seg.sync_offset;
+        return Math.max(0, Math.min(totalDuration, localTime + seg.sync_offset + delta));
       }
     }
-    masterTime = Math.max(0, Math.min(totalDuration, masterTime));
-    setSelectedTimeCursor(masterTime);
+    return Math.max(0, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
   };
 
-  // Handle seek on Deck B scrubber (Calculated using current adjusted sync offset: videoB.sync_offset + fineTuneDelta)
-  const handleSeekDeckB = (timeB: number) => {
-    if (!videoB) return;
-    let masterTime = timeB + (videoB.sync_offset || 0) + fineTuneDelta;
-    if (videoB.segments && videoB.segments.length > 0) {
-      const seg = videoB.segments.find(s => timeB >= (s.video_start || 0) && timeB <= (s.video_end || videoB.duration || 300));
-      if (seg) {
-        masterTime = timeB + seg.sync_offset + fineTuneDelta;
+  // 1. External cursor change (timeline click) -> Sync both players
+  useEffect(() => {
+    if (isSyncingFromPlayerRef.current) return;
+    const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+    const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+    try {
+      if (playerA && Math.abs(playerA.getCurrentTime() - targetA) > 0.6) {
+        playerA.seekTo(targetA, true);
       }
-    }
-    masterTime = Math.max(0, Math.min(totalDuration, masterTime));
-    setSelectedTimeCursor(masterTime);
-  };
+    } catch (e) {}
+    try {
+      if (playerB && Math.abs(playerB.getCurrentTime() - targetB) > 0.6) {
+        playerB.seekTo(targetB, true);
+      }
+    } catch (e) {}
+  }, [selectedTimeCursor, videoA, videoB]);
+
+  // 2. Instant visual feedback when fineTuneDelta changes
+  useEffect(() => {
+    if (!playerB || !videoB) return;
+    const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+    try {
+      playerB.seekTo(targetB, true);
+    } catch (e) {}
+  }, [fineTuneDelta]);
+
+  // 3. Audio Source Management
+  useEffect(() => {
+    try {
+      if (audioSource === 'DECK_A') {
+        playerA?.unMute();
+        playerB?.mute();
+      } else if (audioSource === 'DECK_B') {
+        playerB?.unMute();
+        playerA?.mute();
+      } else {
+        playerA?.mute();
+        playerB?.mute();
+      }
+    } catch (e) {}
+  }, [audioSource, playerA, playerB]);
+
+  // 4. Bidirectional Native YouTube Playback & Seek Sync Loop
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!playerA && !playerB) return;
+
+      try {
+        const stateA = playerA?.getPlayerState?.() ?? -1;
+        const stateB = playerB?.getPlayerState?.() ?? -1;
+        const timeA = playerA?.getCurrentTime?.() ?? 0;
+        const timeB = playerB?.getCurrentTime?.() ?? 0;
+
+        // --- Deck A is actively playing ---
+        if (stateA === 1 && videoA) {
+          isSyncingFromPlayerRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
+          setSelectedTimeCursor(masterTime);
+
+          if (playerB && videoB) {
+            const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+            const durB = videoB.duration || 300;
+            if (expB >= 0 && expB <= durB) {
+              if (stateB !== 1 && stateB !== 3) {
+                playerB.seekTo(expB, true);
+                playerB.playVideo();
+              } else if (Math.abs(timeB - expB) > 0.4) {
+                playerB.seekTo(expB, true);
+              }
+            } else if (stateB === 1) {
+              playerB.pauseVideo();
+            }
+          }
+          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
+
+        // --- Deck B is actively playing ---
+        if (stateB === 1 && videoB && stateA !== 1) {
+          isSyncingFromPlayerRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
+          setSelectedTimeCursor(masterTime);
+
+          if (playerA && videoA) {
+            const expA = calculateLocalSeekTime(videoA, masterTime);
+            const durA = videoA.duration || 300;
+            if (expA >= 0 && expA <= durA) {
+              if (stateA !== 1 && stateA !== 3) {
+                playerA.seekTo(expA, true);
+                playerA.playVideo();
+              } else if (Math.abs(timeA - expA) > 0.4) {
+                playerA.seekTo(expA, true);
+              }
+            } else if (stateA === 1) {
+              playerA.pauseVideo();
+            }
+          }
+          setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
+
+        // --- Both paused: Detect dragging/scrubbing inside YouTube's native progress bar ---
+        if (stateA !== 1 && stateB !== 1) {
+          // Deck A native seek
+          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.2) {
+            isSyncingFromPlayerRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
+            setSelectedTimeCursor(masterTime);
+            if (playerB && videoB) {
+              const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+              playerB.seekTo(expB, true);
+            }
+            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          }
+          // Deck B native seek
+          else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.2) {
+            isSyncingFromPlayerRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
+            setSelectedTimeCursor(masterTime);
+            if (playerA && videoA) {
+              const expA = calculateLocalSeekTime(videoA, masterTime);
+              playerA.seekTo(expA, true);
+            }
+            setTimeout(() => { isSyncingFromPlayerRef.current = false; }, 50);
+          }
+        }
+
+        lastTimeRefA.current = timeA;
+        lastTimeRefB.current = timeB;
+      } catch (e) {}
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration]);
 
   return (
     <div className="space-y-6 pb-20">
@@ -961,15 +1092,29 @@ export default function SyncVisualizerPage() {
                     </div>
                   </div>
 
-                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg">
+                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
                     {videoA && (
-                      <iframe
-                        key={`deckA-${videoA.id}-${seekTimeA}`}
-                        src={`https://www.youtube.com/embed/${videoA.youtube_id}?enablejsapi=1&start=${seekTimeA}&autoplay=1&mute=${audioSource === 'DECK_A' ? '0' : '1'}`}
-                        title={videoA.title}
+                      <YouTube
+                        key={`deckA-${videoA.id}`}
+                        videoId={videoA.youtube_id}
                         className="w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
+                        opts={{
+                          width: '100%',
+                          height: '100%',
+                          playerVars: {
+                            autoplay: 1,
+                            controls: 1,
+                            mute: audioSource === 'DECK_A' ? 0 : 1,
+                            playsinline: 1,
+                            start: seekTimeA
+                          }
+                        }}
+                        onReady={(e) => {
+                          setPlayerA(e.target);
+                          if (audioSource === 'DECK_A') e.target.unMute();
+                          else e.target.mute();
+                          e.target.seekTo(seekTimeA, true);
+                        }}
                       />
                     )}
                   </div>
@@ -977,28 +1122,6 @@ export default function SyncVisualizerPage() {
                   <p className="text-[11px] text-gray-300 truncate font-semibold">
                     <span className="text-sky-400 font-mono font-bold mr-1">#{videoA?.id}</span> {videoA?.title}
                   </p>
-
-                  {/* Deck A Interactive Seek Bar */}
-                  {videoA && (
-                    <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-gray-400">
-                        <span className="text-sky-300 font-bold flex items-center gap-1">
-                          <MoveHorizontal className="w-3 h-3" /> Deck A 탐색
-                        </span>
-                        <span>{formatTime(seekTimeA)} / {formatTime(videoA.duration || 0)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={videoA.duration || 300}
-                        step={1}
-                        value={seekTimeA}
-                        onChange={(e) => handleSeekDeckA(parseFloat(e.target.value))}
-                        className="w-full accent-sky-400 bg-slate-800 h-1.5 rounded-lg cursor-pointer"
-                        title="Deck A 재생바 이동 시 타임라인 가로선과 Deck B 영상이 조정된 싱크로 연동 이동합니다."
-                      />
-                    </div>
-                  )}
                 </div>
 
                 {/* Right Deck: Video B (타겟 캠 / 비교 대상 2 with In-Place Calibrator) */}
@@ -1043,44 +1166,36 @@ export default function SyncVisualizerPage() {
                     </div>
                   </div>
 
-                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg">
+                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
                     {videoB && (
-                      <iframe
-                        key={`deckB-${videoB.id}-${seekTimeB}`}
-                        src={`https://www.youtube.com/embed/${videoB.youtube_id}?enablejsapi=1&start=${seekTimeB}&autoplay=1&mute=${audioSource === 'DECK_B' ? '0' : '1'}`}
-                        title={videoB.title}
+                      <YouTube
+                        key={`deckB-${videoB.id}`}
+                        videoId={videoB.youtube_id}
                         className="w-full h-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
+                        opts={{
+                          width: '100%',
+                          height: '100%',
+                          playerVars: {
+                            autoplay: 1,
+                            controls: 1,
+                            mute: audioSource === 'DECK_B' ? 0 : 1,
+                            playsinline: 1,
+                            start: seekTimeB
+                          }
+                        }}
+                        onReady={(e) => {
+                          setPlayerB(e.target);
+                          if (audioSource === 'DECK_B') e.target.unMute();
+                          else e.target.mute();
+                          e.target.seekTo(seekTimeB, true);
+                        }}
                       />
                     )}
                   </div>
 
                   <p className="text-[11px] text-gray-300 truncate font-semibold">
-                    {videoB?.title}
+                    <span className="text-twice-magenta font-mono font-bold mr-1">#{videoB?.id}</span> {videoB?.title}
                   </p>
-
-                  {/* Deck B Interactive Seek Bar */}
-                  {videoB && (
-                    <div className="bg-slate-950/80 p-2 rounded-xl border border-slate-800 space-y-1">
-                      <div className="flex items-center justify-between text-[10px] font-mono text-gray-400">
-                        <span className="text-twice-magenta font-bold flex items-center gap-1">
-                          <MoveHorizontal className="w-3 h-3" /> Deck B 탐색 (조정 싱크 적용)
-                        </span>
-                        <span>{formatTime(seekTimeB)} / {formatTime(videoB.duration || 0)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={0}
-                        max={videoB.duration || 300}
-                        step={1}
-                        value={seekTimeB}
-                        onChange={(e) => handleSeekDeckB(parseFloat(e.target.value))}
-                        className="w-full accent-twice-magenta bg-slate-800 h-1.5 rounded-lg cursor-pointer"
-                        title="Deck B 재생바 이동 시 타임라인 가로선과 Deck A 영상이 조정된 싱크로 연동 이동합니다."
-                      />
-                    </div>
-                  )}
 
                   {/* In-Place Target Offset Calibrator Pad for Deck B */}
                   {videoB && !videoB.is_master && (
