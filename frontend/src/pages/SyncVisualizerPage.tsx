@@ -1025,7 +1025,7 @@ export default function SyncVisualizerPage() {
                             }`}
                           >
                             <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                             </span>
                           </div>
                         );
