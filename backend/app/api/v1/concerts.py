@@ -68,9 +68,12 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         Video.is_unavailable == False
     ).order_by(Video.sync_offset.asc()).all()
     
-    master_video = next((v for v in videos if v.sync_offset == 0.0 and v.duration and v.duration > 3600), None)
-    if not master_video:
-        master_video = next((v for v in videos if v.duration and v.duration > 3600), None)
+    # The Master Video is the video with the longest total concert duration (>= 7200s, e.g. Video 1094 with 10998s)
+    long_videos = [v for v in videos if v.duration and v.duration > 3600]
+    if long_videos:
+        master_video = max(long_videos, key=lambda v: v.duration)
+    else:
+        master_video = videos[0] if videos else None
         
     setlist_items = []
     sorted_setlist = sorted(concert.setlist, key=lambda x: x.display_order if x.display_order is not None else 999)
@@ -97,26 +100,40 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         offset = v.sync_offset or 0.0
         
         segs = []
-        if v.sync_segments:
-            for seg in v.sync_segments:
-                segs.append({
-                    "id": seg.id,
-                    "video_start": seg.video_start_time,
-                    "video_end": seg.video_end_time,
-                    "master_start": seg.master_start_time,
-                    "master_end": seg.master_end_time,
-                    "sync_offset": seg.sync_offset,
-                    "label": seg.label,
-                    "is_verified": seg.is_verified
-                })
+        # For master video, treat as a single continuous 0 ~ duration spine without split segments
+        if is_master:
+            segs = []
+            master_start = 0.0
+            master_end = dur
+        elif v.sync_segments:
+            # If segments are just 15s calibration probes on a short fancam (<600s), ignore them and treat as continuous video
+            raw_segs = v.sync_segments
+            if dur < 600 and all((seg.video_end_time - seg.video_start_time) <= 30 for seg in raw_segs):
+                segs = []
+            else:
+                for seg in raw_segs:
+                    segs.append({
+                        "id": seg.id,
+                        "video_start": seg.video_start_time,
+                        "video_end": seg.video_end_time,
+                        "master_start": seg.master_start_time,
+                        "master_end": seg.master_end_time,
+                        "sync_offset": seg.sync_offset,
+                        "label": seg.label,
+                        "is_verified": seg.is_verified
+                    })
                 
-        if segs:
-            master_start = min(s["master_start"] for s in segs)
-            master_end = max(s["master_end"] for s in segs)
-        else:
-            master_start = offset
-            master_end = offset + dur
+        if not is_master:
+            if segs:
+                master_start = min(s["master_start"] for s in segs)
+                master_end = max(s["master_end"] for s in segs)
+            else:
+                master_start = offset
+                master_end = offset + dur
             
+        calib_count = v.calibration_count or 0
+        calib_status = v.calibration_status or ("uncalibrated" if calib_count == 0 and not is_master else "verified")
+        
         status = "verified"
         status_reason = "Verified audio/visual sync"
         if is_master:
@@ -125,9 +142,12 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         elif segs:
             status = "segmented"
             status_reason = f"Split into {len(segs)} segments"
-        elif offset == 0.0 and dur < 3600:
+        elif calib_count == 0 or calib_status == "uncalibrated":
             status = "uncalibrated"
-            status_reason = "Zero offset (Needs Calibration)"
+            status_reason = "미보정 영상 (Calibration Count: 0)"
+        elif calib_status == "ai_calibrated":
+            status = "ai_calibrated"
+            status_reason = f"AI 자동 보정 ({v.calibration_method or 'AI'})"
         else:
             if v.songs:
                 matching_setlists = [s for s in setlist_items if s["song_id"] in [sg.id for sg in v.songs]]
@@ -151,6 +171,12 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
             "is_master": is_master,
             "status": status,
             "status_reason": status_reason,
+            "calibration_count": calib_count,
+            "calibration_status": calib_status,
+            "calibrated_at": v.calibrated_at.isoformat() if v.calibrated_at else None,
+            "calibration_method": v.calibration_method,
+            "view_count": v.view_count or 0,
+            "like_count": v.like_count or 0,
             "segments": segs,
             "songs": [{"id": s.id, "name": s.name, "is_solo": s.is_solo, "member_name": s.member_name} for s in v.songs] if v.songs else []
         })

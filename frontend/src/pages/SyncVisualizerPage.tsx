@@ -1,13 +1,18 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import YouTube, { YouTubePlayer } from 'react-youtube';
 import { 
-  GitBranch, Play, AlertTriangle, CheckCircle2, Split, 
-  Search, RefreshCw, Music, 
-  Calendar, Layers, Sparkles, AlertCircle,
-  X, User, ChevronDown, Volume2, Maximize2
+  GitBranch, AlertTriangle, CheckCircle2, Split, 
+  Search, RefreshCw, Calendar, Sparkles, AlertCircle,
+  X, Volume2, Maximize2, ChevronDown, Layers,
+  Sliders, LayoutGrid, Columns, Square, Save, RotateCcw,
+  ShieldCheck, MoveHorizontal, ArrowLeftRight
 } from 'lucide-react';
+import axios from 'axios';
 import { API_BASE_URL } from '../constants';
-import { Concert, SyncGraphData, SyncGraphVideoNode, SyncGraphSetlistItem } from '../types';
+import { Concert, SyncGraphData, SyncGraphVideoNode, Video } from '../types';
+import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
+import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
 
 export default function SyncVisualizerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -20,46 +25,94 @@ export default function SyncVisualizerPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<'all' | 'needs_fix' | 'verified' | 'segmented' | 'solos'>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'uncalibrated' | 'ai' | 'verified' | 'segmented' | 'solos'>('all');
   const [memberFilter, setMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  // Active / Selected Video & Song for Dedicated Right Player Panel
-  const [selectedVideo, setSelectedVideo] = useState<SyncGraphVideoNode | null>(null);
-  const [activeSong, setActiveSong] = useState<SyncGraphSetlistItem | null>(null);
-  const [playerSeekTime, setPlayerSeekTime] = useState<number>(0);
+  // Horizontal Scrubber Time Cursor (in Master seconds)
+  const [selectedTimeCursor, setSelectedTimeCursor] = useState<number>(0);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(!!localStorage.getItem('admin_key'));
+  
+  // Dual Deck Pairwise System: Deck A (Left) & Deck B (Right)
+  const [videoA, setVideoA] = useState<SyncGraphVideoNode | null>(null);
+  const [videoB, setVideoB] = useState<SyncGraphVideoNode | null>(null);
+  const [activeDeckSlot, setActiveDeckSlot] = useState<'A' | 'B'>('B');
+  const [hoveredVideo, setHoveredVideo] = useState<SyncGraphVideoNode | null>(null);
+
+  // YouTube Player instances for bidirectional native seek sync
+  const [playerA, setPlayerA] = useState<YouTubePlayer | null>(null);
+  const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
+  const lastTimeRefA = useRef<number>(0);
+  const lastTimeRefB = useRef<number>(0);
+  const lastSeekTimeARef = useRef<number>(0);
+  const lastSeekTimeBRef = useRef<number>(0);
+  const isPlaybackTickRef = useRef<boolean>(false);
+  const isDraggingTimelineRef = useRef<boolean>(false);
+  const timelineRef = useRef<HTMLDivElement>(null);
+
+  // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
+  const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
+
+  // Audio source for multi-angle playback ('DECK_A' | 'DECK_B' | 'MUTE')
+  const [audioSource, setAudioSource] = useState<'DECK_A' | 'DECK_B' | 'MUTE'>('DECK_B');
+
+  // In-Place Offset Fine-Tuning State (applied to Deck B)
+  const [fineTuneDelta, setFineTuneDelta] = useState<number>(0);
+  const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
+  const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  // Full Calibrator Modals
+  const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
+  const [showSegmentModal, setShowSegmentModal] = useState<boolean>(false);
+  const [calibratorVideo, setCalibratorVideo] = useState<Video | null>(null);
+  const [allVideosForModal, setAllVideosForModal] = useState<Video[]>([]);
 
   // Timeline zoom/scale (px per 100 seconds)
-  const [scaleFactor, setScaleFactor] = useState<number>(25);
-  const timelineRef = useRef<HTMLDivElement>(null);
+  const [scaleFactor, setScaleFactor] = useState<number>(18);
+
+  // Lane geometry constants (in px) - compact & sleek
+  const TIME_AXIS_WIDTH = 48;
+  const LANE_WIDTH = 13;
+  const LANE_GAP = 5;
 
   // 1. Fetch Concerts list
   useEffect(() => {
-    fetch(`${API_BASE_URL}/api/concerts`)
-      .then(res => res.json())
+    fetch(`${API_BASE_URL}/concerts`)
+      .then(res => {
+        if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+        return res.json();
+      })
       .then((data: Concert[]) => {
-        setConcerts(data);
-        if (data.length > 0 && !selectedConcertId) {
-          setSelectedConcertId(data[0].id);
+        if (Array.isArray(data)) {
+          setConcerts(data);
+          if (data.length > 0 && !selectedConcertId) {
+            setSelectedConcertId(data[0].id);
+          }
         }
       })
-      .catch(err => console.error('Failed to load concerts', err));
+      .catch(err => {
+        console.error('Failed to load concerts', err);
+        setConcerts([]);
+      });
   }, []);
 
   // 2. Fetch Sync Graph Data
   const loadSyncGraph = (concertId: number) => {
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE_URL}/api/concerts/${concertId}/sync-graph`)
+    fetch(`${API_BASE_URL}/concerts/${concertId}/sync-graph`)
       .then(res => {
         if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
         return res.json();
       })
       .then((data: SyncGraphData) => {
         setGraphData(data);
-        if (data.videos.length > 0 && !selectedVideo) {
+        if (data.videos && data.videos.length > 0) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
-          setSelectedVideo(master);
+          const second = data.videos.find(v => !v.is_master) || data.videos[1] || master;
+          setVideoA(master);
+          setVideoB(second);
+          setSelectedTimeCursor(second.master_start_time || master.master_start_time || 0);
         }
         setLoading(false);
       })
@@ -77,6 +130,21 @@ export default function SyncVisualizerPage() {
     }
   }, [selectedConcertId]);
 
+  // Reset delta when Deck B video changes
+  useEffect(() => {
+    setFineTuneDelta(0);
+    setSaveSuccessMsg(null);
+  }, [videoB?.id]);
+
+  // Swap Deck A and Deck B
+  const handleSwapDecks = () => {
+    const temp = videoA;
+    setVideoA(videoB);
+    setVideoB(temp);
+    setFineTuneDelta(0);
+    setSaveSuccessMsg(null);
+  };
+
   // Format seconds to HH:MM:SS
   const formatTime = (seconds: number) => {
     const s = Math.max(0, Math.floor(seconds));
@@ -89,20 +157,16 @@ export default function SyncVisualizerPage() {
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const formatDuration = (seconds: number) => {
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    return `${m}m ${s}s`;
-  };
-
   // Health stats
   const stats = useMemo(() => {
-    if (!graphData) return { total: 0, verified: 0, segmented: 0, needsFix: 0 };
+    if (!graphData || !graphData.videos) return { total: 0, verified: 0, segmented: 0, uncalibrated: 0, ai: 0, solos: 0 };
     const total = graphData.videos.length;
-    const verified = graphData.videos.filter(v => v.status === 'verified' || v.status === 'master').length;
+    const verified = graphData.videos.filter(v => (v.status === 'verified' || v.status === 'master') && ((v.calibration_count || 0) > 0 || v.is_master)).length;
     const segmented = graphData.videos.filter(v => v.status === 'segmented').length;
-    const needsFix = graphData.videos.filter(v => v.status === 'uncalibrated' || v.status === 'drift_warning').length;
-    return { total, verified, segmented, needsFix };
+    const uncalibrated = graphData.videos.filter(v => !v.is_master && ((v.calibration_count || 0) === 0 || v.status === 'uncalibrated')).length;
+    const ai = graphData.videos.filter(v => v.status === 'ai_calibrated').length;
+    const solos = graphData.videos.filter(v => v.songs.some(s => s.is_solo)).length;
+    return { total, verified, segmented, uncalibrated, ai, solos };
   }, [graphData]);
 
   // Total Timeline Duration
@@ -112,27 +176,22 @@ export default function SyncVisualizerPage() {
   }, [graphData]);
 
   const canvasHeight = useMemo(() => {
-    return (totalDuration / 100) * scaleFactor;
+    return Math.max(900, (totalDuration / 100) * scaleFactor);
   }, [totalDuration, scaleFactor]);
 
-  // Group videos into Hierarchy Track Columns:
-  // Col 1: Master (Spine)
-  // Col 2: Full Cams (duration >= 3600 or segments > 2)
-  // Col 3: Act / Medley Cams (600 <= duration < 3600)
-  // Col 4: Individual & Solo Fancams (duration < 600)
-  const tracks = useMemo(() => {
-    const res: {
-      master: SyncGraphVideoNode | null;
-      fulls: SyncGraphVideoNode[];
-      acts: SyncGraphVideoNode[];
-      solos: SyncGraphVideoNode[];
-    } = { master: null, fulls: [], acts: [], solos: [] };
+  // Unified Multi-Track Lane Packing:
+  // Sort strictly by master_start_time ascending to achieve maximum left-compaction (왼쪽 밀착)
+  const { lanes, allVisibleVideos } = useMemo(() => {
+    if (!graphData || !graphData.videos) return { lanes: [], allVisibleVideos: [] };
 
-    if (!graphData) return res;
+    const visible: SyncGraphVideoNode[] = [];
+    let masterNode: SyncGraphVideoNode | null = null;
+    const nonMaster: SyncGraphVideoNode[] = [];
 
     graphData.videos.forEach(v => {
       // Filter check
-      if (statusFilter === 'needs_fix' && v.status !== 'uncalibrated' && v.status !== 'drift_warning') return;
+      if (statusFilter === 'uncalibrated' && (v.is_master || ((v.calibration_count || 0) > 0 && v.status !== 'uncalibrated'))) return;
+      if (statusFilter === 'ai' && v.status !== 'ai_calibrated') return;
       if (statusFilter === 'verified' && v.status !== 'verified' && v.status !== 'master') return;
       if (statusFilter === 'segmented' && v.status !== 'segmented') return;
       if (statusFilter === 'solos' && !v.songs.some(s => s.is_solo)) return;
@@ -151,56 +210,466 @@ export default function SyncVisualizerPage() {
         if (!matchTitle && !matchSong && !matchMember) return;
       }
 
-      if (v.is_master || (v.duration >= 7200 && !res.master)) {
-        res.master = v;
-      } else if (v.duration >= 3600 || (v.segments && v.segments.length > 2)) {
-        res.fulls.push(v);
-      } else if (v.duration >= 600 || (v.songs && v.songs.length >= 2)) {
-        res.acts.push(v);
+      visible.push(v);
+      if (v.is_master) {
+        masterNode = v;
       } else {
-        res.solos.push(v);
+        nonMaster.push(v);
       }
     });
 
-    return res;
-  }, [graphData, statusFilter, memberFilter, searchQuery]);
+    // Sort strictly by master_start_time ascending to achieve maximum left-compaction (왼쪽 밀착)
+    nonMaster.sort((a, b) => a.master_start_time - b.master_start_time);
+
+    const packedLanes: { lastEnd: number; items: SyncGraphVideoNode[] }[] = [];
+
+    // Lane 0 is dedicated to Master Video
+    if (masterNode) {
+      packedLanes.push({ lastEnd: totalDuration, items: [masterNode] });
+    }
+
+    // Pack non-master videos into parallel lanes (reusing leftmost available lane)
+    for (const v of nonMaster) {
+      const vStart = v.master_start_time;
+      const vEnd = v.master_end_time;
+      let placed = false;
+
+      // Try placing in leftmost existing lane after Lane 0
+      const startIdx = masterNode ? 1 : 0;
+      for (let i = startIdx; i < packedLanes.length; i++) {
+        const lane = packedLanes[i];
+        if (lane.lastEnd <= vStart + 1) {
+          lane.items.push(v);
+          lane.lastEnd = vEnd;
+          placed = true;
+          break;
+        }
+      }
+
+      if (!placed) {
+        packedLanes.push({ lastEnd: vEnd, items: [v] });
+      }
+    }
+
+    return { 
+      lanes: packedLanes.map(l => l.items),
+      allVisibleVideos: visible
+    };
+  }, [graphData, statusFilter, memberFilter, searchQuery, totalDuration]);
+
+  // Total width of packed timeline canvas
+  const totalCanvasWidth = useMemo(() => {
+    return TIME_AXIS_WIDTH + 16 + (lanes.length * (LANE_WIDTH + LANE_GAP));
+  }, [lanes.length]);
+
+  // Calculate videos overlapping with selected horizontal time line
+  const overlappingVideos = useMemo(() => {
+    if (!graphData || !graphData.videos) return [];
+    
+    return graphData.videos.filter(v => {
+      if (v.segments && v.segments.length > 0) {
+        return v.segments.some(seg => selectedTimeCursor >= seg.master_start && selectedTimeCursor <= seg.master_end);
+      }
+      return selectedTimeCursor >= v.master_start_time && selectedTimeCursor <= v.master_end_time;
+    });
+  }, [graphData, selectedTimeCursor]);
 
   // Helper to calculate top & height in px
   const getPositionStyles = (startTime: number, duration: number) => {
     const top = (startTime / totalDuration) * canvasHeight;
-    const height = Math.max(28, (duration / totalDuration) * canvasHeight);
+    const height = Math.max(14, (duration / totalDuration) * canvasHeight);
     return { top: `${top}px`, height: `${height}px` };
   };
 
+  // Helper to calculate exact X pixel position for a lane
+  const getLaneX = (laneIdx: number) => {
+    return TIME_AXIS_WIDTH + 8 + laneIdx * (LANE_WIDTH + LANE_GAP);
+  };
+
+  // Calculate local player seek time for any video
+  const calculateLocalSeekTime = (video: SyncGraphVideoNode | null, currentCursor: number, delta: number = 0) => {
+    if (!video) return 0;
+    
+    if (video.segments && video.segments.length > 0) {
+      const activeSeg = video.segments.find(
+        seg => currentCursor >= seg.master_start && currentCursor <= seg.master_end
+      );
+      if (activeSeg) {
+        return Math.max(0, Math.floor(currentCursor - (activeSeg.sync_offset + delta)));
+      }
+    }
+    
+    return Math.max(0, Math.floor(currentCursor - (video.sync_offset + delta)));
+  };
+
+  // User Timeline Seeking (Click & Drag)
+  const seekToMasterTimeline = (masterSec: number) => {
+    const clamped = Math.max(0, Math.min(totalDuration, masterSec));
+    isPlaybackTickRef.current = false;
+    setSelectedTimeCursor(clamped);
+
+    const targetA = calculateLocalSeekTime(videoA, clamped);
+    const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
+    try {
+      playerA?.seekTo?.(targetA, true);
+    } catch (e) {}
+    try {
+      playerB?.seekTo?.(targetB, true);
+    } catch (e) {}
+  };
+
+  const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
+    if (!timelineRef.current) return;
+    const rect = timelineRef.current.getBoundingClientRect();
+    const clickY = e.clientY - rect.top;
+    const clickedSec = (clickY / canvasHeight) * totalDuration;
+    seekToMasterTimeline(clickedSec);
+  };
+
+  const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    isDraggingTimelineRef.current = true;
+    updateCursorFromMouseEvent(e);
+  };
+
+  useEffect(() => {
+    const handleGlobalMouseMove = (e: MouseEvent) => {
+      if (!isDraggingTimelineRef.current) return;
+      updateCursorFromMouseEvent(e);
+    };
+    const handleGlobalMouseUp = () => {
+      isDraggingTimelineRef.current = false;
+    };
+
+    window.addEventListener('mousemove', handleGlobalMouseMove);
+    window.addEventListener('mouseup', handleGlobalMouseUp);
+    return () => {
+      window.removeEventListener('mousemove', handleGlobalMouseMove);
+      window.removeEventListener('mouseup', handleGlobalMouseUp);
+    };
+  }, [totalDuration, canvasHeight, videoA, videoB, fineTuneDelta, playerA, playerB]);
+
   const handleSelectVideo = (video: SyncGraphVideoNode, seekToMasterTime?: number) => {
-    setSelectedVideo(video);
-    if (seekToMasterTime !== undefined) {
-      const localTime = Math.max(0, Math.floor(seekToMasterTime - video.sync_offset));
-      setPlayerSeekTime(localTime);
+    if (activeDeckSlot === 'A') {
+      setVideoA(video);
     } else {
-      setPlayerSeekTime(0);
+      setVideoB(video);
+    }
+
+    if (seekToMasterTime !== undefined) {
+      seekToMasterTimeline(seekToMasterTime);
+    } else {
+      seekToMasterTimeline(video.master_start_time);
+    }
+  };
+
+  // Nudge delta helper
+  const nudge = (amount: number) => {
+    setFineTuneDelta(d => Number((d + amount).toFixed(2)));
+  };
+
+  // Keyboard Shortcuts for Nudge (ArrowLeft / ArrowRight)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if user is typing in input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
+      if (!videoB || videoB.is_master) return;
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        let step = 0.5;
+        if (e.ctrlKey && e.shiftKey) {
+          step = 0.05;
+        } else if (e.shiftKey) {
+          step = 0.1;
+        }
+        nudge(dir * step);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [videoB]);
+
+  // In-Place Offset Save Handler for Deck B
+  const handleSaveFineTuneOffset = async () => {
+    if (!videoB || videoB.is_master) return;
+    setIsSavingOffset(true);
+    setSaveSuccessMsg(null);
+    try {
+      let adminKey = localStorage.getItem('admin_key') || '';
+      if (!adminKey) {
+        const inputKey = window.prompt('관리자 권한이 필요합니다. Admin Key를 입력해주세요:');
+        if (!inputKey) {
+          setIsSavingOffset(false);
+          return;
+        }
+        adminKey = inputKey.trim();
+        localStorage.setItem('admin_key', adminKey);
+        setIsAdminMode(true);
+      }
+      
+      const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(3));
+      
+      await axios.patch(
+        `${API_BASE_URL}/videos/${videoB.id}`,
+        { 
+          sync_offset: newOffset,
+          calibration_method: 'manual_studio',
+          calibration_status: 'manually_verified'
+        },
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 검증 카운트 증가)`);
+      setFineTuneDelta(0);
+      loadSyncGraph(selectedConcertId);
+      setTimeout(() => setSaveSuccessMsg(null), 3000);
+    } catch (err: any) {
+      console.error('Failed to save offset', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요:');
+        if (retryKey) {
+          localStorage.setItem('admin_key', retryKey.trim());
+          setIsAdminMode(true);
+          handleSaveFineTuneOffset();
+          return;
+        }
+      }
+      alert(`저장 실패: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsSavingOffset(false);
+    }
+  };
+
+  // Open Full Calibrator Modal
+  const handleOpenCalibrator = async (video: SyncGraphVideoNode, isSegment: boolean = false) => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/videos/${video.id}/full`);
+      if (!res.ok) throw new Error('Failed to fetch full video details');
+      const data = await res.json();
+      setCalibratorVideo(data);
+
+      const allRes = await fetch(`${API_BASE_URL}/videos?concert_id=${selectedConcertId}&limit=100`);
+      if (allRes.ok) {
+        const allData = await allRes.json();
+        setAllVideosForModal(allData.videos || []);
+      }
+
+      if (isSegment) {
+        setShowSegmentModal(true);
+      } else {
+        setShowPairwiseModal(true);
+      }
+    } catch (err: any) {
+      console.error('Failed to open calibrator', err);
+      alert(`캘리브레이터 로드 실패: ${err.message}`);
     }
   };
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
+  // Static player options to prevent iframe re-creation/blinking
+  const playerOpts = useMemo(() => ({
+    width: '100%',
+    height: '100%',
+    playerVars: {
+      autoplay: 0,
+      controls: 1,
+      mute: 1,
+      playsinline: 1,
+      enablejsapi: 1,
+      rel: 0
+    }
+  }), []);
+
+  // Current effective offset for Deck B
+  const effectiveOffsetB = videoB 
+    ? Number((videoB.sync_offset + fineTuneDelta).toFixed(2))
+    : 0;
+
+  const seekTimeA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+  const seekTimeB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+
+  // Helper to calculate master concert time from a local video time
+  const calculateMasterTimeFromLocal = (video: SyncGraphVideoNode | null, localTime: number, delta: number = 0) => {
+    if (!video) return 0;
+    if (video.segments && video.segments.length > 0) {
+      const seg = video.segments.find(s => localTime >= (s.video_start || 0) && localTime <= (s.video_end || video.duration || 300));
+      if (seg) {
+        return Math.max(0, Math.min(totalDuration, localTime + seg.sync_offset + delta));
+      }
+    }
+    return Math.max(0, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
+  };
+
+  // 1. External cursor change (e.g. clicking on timeline canvas or paused seeking) -> Sync players
+  useEffect(() => {
+    if (isPlaybackTickRef.current || isDraggingTimelineRef.current) return;
+    try {
+      const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+      const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+
+      // Only seek players that are NOT currently playing (state !== 1) to eliminate stutter during playback
+      if (playerA && typeof playerA.seekTo === 'function' && stateA !== 1) {
+        const targetA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+        playerA.seekTo(targetA, true);
+      }
+      if (playerB && typeof playerB.seekTo === 'function' && stateB !== 1) {
+        const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+        playerB.seekTo(targetB, true);
+      }
+    } catch (e) {}
+  }, [selectedTimeCursor, videoA?.id, videoB?.id]);
+
+  // 2. Instant visual feedback when fineTuneDelta changes
+  useEffect(() => {
+    if (!playerB || !videoB) return;
+    const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+    try {
+      playerB.seekTo(targetB, true);
+    } catch (e) {}
+  }, [fineTuneDelta]);
+
+  // 3. Audio Source Management
+  useEffect(() => {
+    try {
+      if (audioSource === 'DECK_A') {
+        playerA?.unMute();
+        playerB?.mute();
+      } else if (audioSource === 'DECK_B') {
+        playerB?.unMute();
+        playerA?.mute();
+      } else {
+        playerA?.mute();
+        playerB?.mute();
+      }
+    } catch (e) {}
+  }, [audioSource, playerA, playerB]);
+
+  // 4. Stable Pairwise Sync Loop (Adopting PairwiseTimelineCalibratorModal algorithm)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!playerA && !playerB) return;
+      if (isDraggingTimelineRef.current) return;
+
+      try {
+        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+        const timeA = typeof playerA?.getCurrentTime === 'function' ? playerA.getCurrentTime() : 0;
+        const timeB = typeof playerB?.getCurrentTime === 'function' ? playerB.getCurrentTime() : 0;
+
+        // --- Deck A is actively playing ---
+        if (stateA === 1 && videoA) {
+          isPlaybackTickRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
+          
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
+          }
+
+          if (playerB && videoB) {
+            const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+            const durB = videoB.duration || 300;
+            if (expB >= 0 && expB <= durB) {
+              if (stateB !== 1 && stateB !== 3) {
+                // Deck B is paused/cued, start playing from target sync position
+                playerB.seekTo(expB, true);
+                playerB.playVideo();
+                lastSeekTimeBRef.current = Date.now();
+              } else if (stateB === 1 && Math.abs(timeB - expB) > 0.9 && (Date.now() - lastSeekTimeBRef.current > 2000)) {
+                // Correct significant drift only after 2s stabilization grace period
+                playerB.seekTo(expB, true);
+                lastSeekTimeBRef.current = Date.now();
+              }
+            } else if (stateB === 1) {
+              playerB.pauseVideo();
+            }
+          }
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
+
+        // --- Deck B is actively playing ---
+        if (stateB === 1 && videoB && stateA !== 1) {
+          isPlaybackTickRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
+          
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
+          }
+
+          if (playerA && videoA) {
+            const expA = calculateLocalSeekTime(videoA, masterTime);
+            const durA = videoA.duration || 300;
+            if (expA >= 0 && expA <= durA) {
+              if (stateA !== 1 && stateA !== 3) {
+                playerA.seekTo(expA, true);
+                playerA.playVideo();
+                lastSeekTimeARef.current = Date.now();
+              } else if (stateA === 1 && Math.abs(timeA - expA) > 0.9 && (Date.now() - lastSeekTimeARef.current > 2000)) {
+                playerA.seekTo(expA, true);
+                lastSeekTimeARef.current = Date.now();
+              }
+            } else if (stateA === 1) {
+              playerA.pauseVideo();
+            }
+          }
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
+
+        // --- Both paused: Detect user seeking on native YouTube seekbar ---
+        if (stateA !== 1 && stateB !== 1) {
+          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
+            isPlaybackTickRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoA, timeA);
+            setSelectedTimeCursor(masterTime);
+            if (playerB && videoB) {
+              const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+              playerB.seekTo(expB, true);
+            }
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
+            isPlaybackTickRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, fineTuneDelta);
+            setSelectedTimeCursor(masterTime);
+            if (playerA && videoA) {
+              const expA = calculateLocalSeekTime(videoA, masterTime);
+              playerA.seekTo(expA, true);
+            }
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          }
+        }
+
+        lastTimeRefA.current = timeA;
+        lastTimeRefB.current = timeB;
+      } catch (e) {}
+    }, 250);
+
+    return () => clearInterval(interval);
+  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor]);
+
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-6 rounded-2xl shadow-xl backdrop-blur-sm">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl backdrop-blur-sm">
         <div>
           <div className="flex items-center gap-2 mb-1">
             <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Vertical Multi-Track DAW
+              <GitBranch className="w-3.5 h-3.5" /> Unified Multi-Track Sync & Calibration Studio
             </span>
-            <span className="text-gray-400 text-xs font-mono">Hierarchical Timeline Visualizer & Pinned Player</span>
+            <span className="text-gray-400 text-xs font-mono">1:1 타임라인 동기화 • 실시간 자유 듀얼 캘리브레이션 데크</span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-            TWICE Concert Multi-Track Sync Canvas
+          <h1 className="text-2xl font-black text-white tracking-tight">
+            TWICE Concert Multi-Track Timeline & Calibration
           </h1>
-          <p className="text-gray-400 text-xs sm:text-sm mt-1">
-            상위 계층(마스터 &gt; 풀캠 &gt; 액트)이 왼쪽에 연속 세로 바로 배치되며, 오른쪽으로 갈라져 나오는 개별 직캠을 클릭하면 우측 분리 플레이어에서 즉시 재생/검증합니다.
-          </p>
         </div>
 
         {/* Concert Selector */}
@@ -210,7 +679,7 @@ export default function SyncVisualizerPage() {
             <select
               value={selectedConcertId}
               onChange={(e) => setSelectedConcertId(parseInt(e.target.value, 10))}
-              className="bg-slate-800 text-white pl-9 pr-8 py-2.5 rounded-xl border border-slate-700 text-sm font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
+              className="bg-slate-800 text-white pl-9 pr-8 py-2 rounded-xl border border-slate-700 text-xs font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
             >
               {concerts.map(c => (
                 <option key={c.id} value={c.id}>
@@ -222,110 +691,132 @@ export default function SyncVisualizerPage() {
           </div>
           <button 
             onClick={() => loadSyncGraph(selectedConcertId)}
-            className="p-2.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
+            className="p-2 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
             title="Refresh Sync Data"
           >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
+          </button>
+          <button 
+            onClick={() => {
+              if (isAdminMode) {
+                if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
+                  localStorage.removeItem('admin_key');
+                  setIsAdminMode(false);
+                }
+              } else {
+                const key = window.prompt('Admin Key를 입력해주세요:');
+                if (key) {
+                  localStorage.setItem('admin_key', key.trim());
+                  setIsAdminMode(true);
+                }
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+              isAdminMode 
+                ? 'bg-indigo-600/90 hover:bg-indigo-500 border-indigo-400 text-white' 
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-gray-400 hover:text-white'
+            }`}
+            title={isAdminMode ? 'Admin 로그인 됨 (클릭하여 로그아웃)' : 'Admin Key 입력'}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>{isAdminMode ? 'Admin' : 'Login'}</span>
           </button>
         </div>
       </div>
 
-      {/* Health Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {/* Status Filter Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
         <button
           onClick={() => setStatusFilter('all')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold transition-all ${
             statusFilter === 'all' 
-              ? 'bg-slate-800/90 border-slate-600 shadow-lg ring-1 ring-white/20' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-slate-800 text-white border-slate-600 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-white'
           }`}
         >
-          <div className="flex items-center justify-between text-gray-400 text-xs font-bold uppercase tracking-wider">
-            <span>Total Videos</span>
-            <Layers className="w-4 h-4 text-blue-400" />
-          </div>
-          <div className="text-2xl font-black text-white mt-2">{stats.total}</div>
-          <div className="text-[11px] text-gray-400 mt-1 font-mono">전체 등록 직캠</div>
+          전체 ({stats.total})
         </button>
-
+        <button
+          onClick={() => setStatusFilter('uncalibrated')}
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+            statusFilter === 'uncalibrated' 
+              ? 'bg-amber-950/70 text-amber-300 border-amber-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
+          }`}
+        >
+          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> ⚠️ 미보정 ({stats.uncalibrated})
+        </button>
+        <button
+          onClick={() => setStatusFilter('ai')}
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+            statusFilter === 'ai' 
+              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-emerald-400'
+          }`}
+        >
+          <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> 🤖 AI 보정 ({stats.ai})
+        </button>
         <button
           onClick={() => setStatusFilter('verified')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'verified' 
-              ? 'bg-emerald-950/40 border-emerald-500/50 shadow-lg ring-1 ring-emerald-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-purple-950/70 text-purple-300 border-purple-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-purple-400'
           }`}
         >
-          <div className="flex items-center justify-between text-emerald-400 text-xs font-bold uppercase tracking-wider">
-            <span>Verified Sync</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-          </div>
-          <div className="text-2xl font-black text-emerald-300 mt-2">{stats.verified}</div>
-          <div className="text-[11px] text-emerald-500/80 mt-1 font-mono">🟢 정밀 오차 &lt; 0.5s</div>
+          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" /> ✅ 검증 완료 ({stats.verified})
         </button>
-
         <button
           onClick={() => setStatusFilter('segmented')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
             statusFilter === 'segmented' 
-              ? 'bg-amber-950/40 border-amber-500/50 shadow-lg ring-1 ring-amber-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+              ? 'bg-sky-950/70 text-sky-300 border-sky-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-sky-400'
           }`}
         >
-          <div className="flex items-center justify-between text-amber-400 text-xs font-bold uppercase tracking-wider">
-            <span>Split Segments</span>
-            <Split className="w-4 h-4 text-amber-400" />
-          </div>
-          <div className="text-2xl font-black text-amber-300 mt-2">{stats.segmented}</div>
-          <div className="text-[11px] text-amber-500/80 mt-1 font-mono">🟡 편집 컷 분할 관리</div>
+          <Split className="w-3.5 h-3.5 text-sky-400" /> 분할 Split ({stats.segmented})
         </button>
-
         <button
-          onClick={() => setStatusFilter('needs_fix')}
-          className={`p-4 rounded-xl border transition-all text-left flex flex-col justify-between ${
-            statusFilter === 'needs_fix' 
-              ? 'bg-rose-950/40 border-rose-500/50 shadow-lg ring-1 ring-rose-500/30' 
-              : 'bg-slate-900/50 border-slate-800 hover:bg-slate-850'
+          onClick={() => setStatusFilter('solos')}
+          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+            statusFilter === 'solos' 
+              ? 'bg-pink-950/70 text-pink-300 border-pink-500/60 shadow-sm' 
+              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-pink-400'
           }`}
         >
-          <div className="flex items-center justify-between text-rose-400 text-xs font-bold uppercase tracking-wider">
-            <span>Needs Attention</span>
-            <AlertTriangle className="w-4 h-4 text-rose-400" />
-          </div>
-          <div className="text-2xl font-black text-rose-300 mt-2">{stats.needsFix}</div>
-          <div className="text-[11px] text-rose-500/80 mt-1 font-mono">🔴 드리프트/미보정 경고</div>
+          솔로곡 ({stats.solos})
         </button>
       </div>
 
       {/* Filter Toolbar & Zoom Scale Slider */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-4 rounded-xl backdrop-blur-sm">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+      <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl backdrop-blur-sm">
+        <div className="relative flex-1 min-w-[180px] max-w-xs">
+          <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="영상 제목, 곡명, 멤버 검색..."
+            placeholder="영상 제목, 곡명 검색..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-800 text-white pl-9 pr-4 py-2 rounded-lg text-sm border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"
+            className="w-full bg-slate-800 text-white pl-8 pr-3 py-1.5 rounded-lg text-xs border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery('')}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3" />
             </button>
           )}
         </div>
 
         {/* Member Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 max-w-full">
+        <div className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full">
           <button
             onClick={() => setMemberFilter('all')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
               memberFilter === 'all'
                 ? 'bg-twice-magenta text-white shadow-md'
-                : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-750'
+                : 'bg-slate-800 text-gray-400 hover:text-white'
             }`}
           >
             전체 멤버
@@ -334,10 +825,10 @@ export default function SyncVisualizerPage() {
             <button
               key={member}
               onClick={() => setMemberFilter(member)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
                 memberFilter === member
-                  ? 'bg-twice-apricot text-slate-950 shadow-md font-black'
-                  : 'bg-slate-800 text-gray-400 hover:text-white hover:bg-slate-750'
+                  ? 'bg-twice-apricot text-slate-950 font-black shadow-md'
+                  : 'bg-slate-800 text-gray-400 hover:text-white'
               }`}
             >
               {member}
@@ -346,396 +837,909 @@ export default function SyncVisualizerPage() {
         </div>
 
         {/* Zoom Scale Controller */}
-        <div className="flex items-center gap-2 bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 text-xs text-gray-300 font-mono">
-          <span>Scale:</span>
+        <div className="flex items-center gap-2 bg-slate-800 px-3 py-1 rounded-xl border border-slate-700 text-xs text-gray-300 font-mono">
+          <span className="text-[10px]">Scale:</span>
           <input 
             type="range" 
-            min="15" 
-            max="60" 
+            min="10" 
+            max="40" 
             value={scaleFactor} 
             onChange={(e) => setScaleFactor(parseInt(e.target.value, 10))}
-            className="w-20 accent-twice-magenta cursor-pointer"
+            className="w-16 accent-twice-magenta cursor-pointer"
           />
-          <span className="w-8 text-right text-twice-apricot font-bold">{scaleFactor}px</span>
+          <span className="w-6 text-right text-twice-apricot font-bold text-[10px]">{scaleFactor}</span>
         </div>
       </div>
 
       {/* Loading & Error */}
       {loading && (
         <div className="flex flex-col items-center justify-center py-24 text-center">
-          <RefreshCw className="w-10 h-10 text-twice-magenta animate-spin mb-4" />
-          <h3 className="text-lg font-bold text-white">멀티트랙 캔버스 로딩 중...</h3>
-          <p className="text-gray-400 text-xs mt-1">마스터 척추 및 풀캠 트랙 세그먼트를 렌더링하고 있습니다.</p>
+          <RefreshCw className="w-8 h-8 text-twice-magenta animate-spin mb-3" />
+          <h3 className="text-sm font-bold text-white">타임라인 캔버스 로딩 중...</h3>
         </div>
       )}
 
       {error && !loading && (
-        <div className="bg-rose-950/30 border border-rose-500/40 p-6 rounded-2xl text-center">
-          <AlertCircle className="w-8 h-8 text-rose-400 mx-auto mb-2" />
-          <h3 className="text-base font-bold text-rose-200">데이터를 불러오지 못했습니다</h3>
+        <div className="bg-rose-950/30 border border-rose-500/40 p-5 rounded-2xl text-center">
+          <AlertCircle className="w-6 h-6 text-rose-400 mx-auto mb-2" />
+          <h3 className="text-sm font-bold text-rose-200">데이터를 불러오지 못했습니다</h3>
           <p className="text-rose-400 text-xs mt-1">{error}</p>
         </div>
       )}
 
-      {/* ================= MAIN DUAL VIEW: Left Multi-Track Canvas (8 Cols) + Right Sticky Player (4 Cols) ================= */}
+      {/* ================= DUAL-VIEW: Left Compact Timeline (4 Cols) + Right Multi-Angle Calibration Studio (8 Cols) ================= */}
       {!loading && !error && graphData && (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           
-          {/* ================= LEFT MULTI-TRACK CANVAS (8 COLS) ================= */}
-          <div className="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-3xl p-4 sm:p-6 shadow-2xl backdrop-blur-md overflow-x-auto">
+          {/* ================= LEFT COMPACT MULTI-TRACK CANVAS (4 COLS) ================= */}
+          <div className="lg:col-span-4 xl:col-span-3 bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-4 pb-6 shadow-2xl backdrop-blur-md overflow-x-auto overflow-y-hidden">
             
-            {/* Multi-Track Header Legend */}
-            <div className="grid grid-cols-12 gap-2 pb-4 border-b border-slate-850 text-[11px] font-mono text-gray-400 sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
-              <div className="col-span-3 font-bold text-white flex items-center gap-1.5">
-                <Music className="w-3.5 h-3.5 text-twice-magenta" /> ⏱️ 타임라인 곡
+            {/* Unified Track Header */}
+            <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
+              <div className="flex items-center gap-2">
+                <span className="w-12 text-gray-500 font-bold text-[10px]">시간</span>
+                <span className="text-purple-400 font-bold flex items-center gap-1 text-[11px]">
+                  <Sparkles className="w-3 h-3" /> 타임라인 ({lanes.length}T)
+                </span>
               </div>
-              <div className="col-span-2 font-bold text-purple-400 flex items-center gap-1">
-                <Sparkles className="w-3 h-3" /> L0: 마스터
-              </div>
-              <div className="col-span-2 font-bold text-blue-400 flex items-center gap-1">
-                <Layers className="w-3 h-3" /> L1: 풀캠
-              </div>
-              <div className="col-span-2 font-bold text-amber-400 flex items-center gap-1">
-                <Split className="w-3 h-3" /> L2: 액트/메들리
-              </div>
-              <div className="col-span-3 font-bold text-pink-400 flex items-center gap-1">
-                <User className="w-3 h-3" /> L3: 개별 직캠
-              </div>
+              <span className="text-gray-500 text-[9px] font-mono">{allVisibleVideos.length}개</span>
             </div>
 
-            {/* Continuous Vertical Canvas Container */}
+            {/* Continuous Vertical Canvas Container with SVG Background Sync Connection Lines */}
             <div 
               ref={timelineRef}
-              style={{ height: `${canvasHeight}px` }} 
-              className="relative w-full mt-4 grid grid-cols-12 gap-2"
+              onMouseDown={handleTimelineMouseDown}
+              style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
+              className="relative mt-3 mb-2 flex cursor-crosshair select-none"
             >
-              {/* Background Time Grid Lines (Every 10 minutes) */}
-              {Array.from({ length: Math.ceil(totalDuration / 600) }).map((_, gIdx) => {
-                const sec = gIdx * 600;
-                const topPx = (sec / totalDuration) * canvasHeight;
-                return (
-                  <div
-                    key={gIdx}
-                    style={{ top: `${topPx}px` }}
-                    className="absolute left-0 right-0 border-t border-slate-850/60 pointer-events-none flex items-center"
-                  >
-                    <span className="text-[9px] font-mono text-slate-600 pl-1 -mt-3.5">
-                      {formatTime(sec)}
-                    </span>
-                  </div>
-                );
-              })}
+              {/* 1. Left Time Scale Axis (Every 15 minutes) */}
+              <div 
+                style={{ width: `${TIME_AXIS_WIDTH}px` }}
+                className="relative h-full flex-shrink-0 border-r border-slate-800/80"
+              >
+                {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
+                  const sec = gIdx * 900;
+                  const topPx = (sec / totalDuration) * canvasHeight;
+                  return (
+                    <div
+                      key={gIdx}
+                      style={{ top: `${topPx}px` }}
+                      className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none"
+                    >
+                      <span className="text-[9px] font-mono text-gray-500 -mt-2">
+                        {formatTime(sec)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
 
-              {/* ---------- COL 1 (Col-span 3): Setlist Song Milestone Indicators ---------- */}
-              <div className="col-span-3 relative h-full border-r border-slate-800/80 pr-2">
-                {graphData.setlist.map((song) => {
-                  const pos = getPositionStyles(song.start_time, song.end_time - song.start_time);
-                  const isCurActive = activeSong?.id === song.id;
+              {/* 2. Background SVG for 1:1 Timeline Sync Connection Lines (회색 연결선) */}
+              <svg 
+                className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
+                style={{ height: `${canvasHeight}px` }}
+              >
+                {lanes.slice(1).flatMap((laneVideos, lIdx) => {
+                  const targetLaneIdx = lIdx + 1;
+                  const targetX = getLaneX(targetLaneIdx) + LANE_WIDTH / 2;
+                  const masterX = getLaneX(0) + LANE_WIDTH / 2;
+
+                  return laneVideos.flatMap((v) => {
+                    const isHovered = hoveredVideo?.id === v.id;
+                    const isSelectedA = videoA?.id === v.id;
+                    const isSelectedB = videoB?.id === v.id;
+                    const isHighlighted = isHovered || isSelectedA || isSelectedB;
+
+                    // If video has split segments, draw connection for each segment
+                    if (v.segments && v.segments.length > 0) {
+                      return v.segments.map((seg, sIdx) => {
+                        const y = (seg.master_start / totalDuration) * canvasHeight;
+                        return (
+                          <line
+                            key={`sync-seg-${v.id}-${sIdx}`}
+                            x1={masterX}
+                            y1={y}
+                            x2={targetX}
+                            y2={y}
+                            stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
+                            strokeWidth={isHighlighted ? 2 : 1}
+                            strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                            className="transition-all duration-150"
+                          />
+                        );
+                      });
+                    }
+
+                    // Continuous video sync connection line from Master Spine (Lane 0) to this video's lane
+                    const y = (v.master_start_time / totalDuration) * canvasHeight;
+                    return (
+                      <line
+                        key={`sync-${v.id}`}
+                        x1={masterX}
+                        y1={y}
+                        x2={targetX}
+                        y2={y}
+                        stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
+                        strokeWidth={isHighlighted ? 2 : 1}
+                        strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                        className="transition-all duration-150"
+                      />
+                    );
+                  });
+                })}
+              </svg>
+
+              {/* 3. Unified Parallel Lanes System */}
+              <div className="relative h-full flex items-start pl-2 gap-[6px] z-10">
+                {lanes.map((laneVideos, lIdx) => {
+                  const isMasterLane = lIdx === 0 && laneVideos.some(v => v.is_master);
 
                   return (
                     <div
-                      key={song.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => {
-                        setActiveSong(song);
-                        if (selectedVideo) {
-                          handleSelectVideo(selectedVideo, song.start_time);
+                      key={lIdx}
+                      style={{ width: `${LANE_WIDTH}px` }}
+                      className="relative h-full flex flex-col items-center flex-shrink-0 group"
+                    >
+                      {/* Lane Header Label */}
+                      <div className="text-[8px] font-mono font-bold text-gray-500 truncate w-full text-center mb-1 pointer-events-none">
+                        {isMasterLane ? '🏆' : `T${lIdx}`}
+                      </div>
+
+                      {/* Lane Background Vertical Rail Guide */}
+                      <div className="absolute inset-y-0 left-1/2 -translate-x-1/2 w-px bg-slate-800/40 pointer-events-none" />
+
+                      {/* Stacked Thin Bars in this Lane */}
+                      {laneVideos.map((cam) => {
+                        const isDeckA = videoA?.id === cam.id;
+                        const isDeckB = videoB?.id === cam.id;
+                        const isHovered = hoveredVideo?.id === cam.id;
+                        const isMaster = cam.is_master;
+                        const isUncalibrated = !isMaster && ((cam.calibration_count || 0) === 0 || cam.status === 'uncalibrated');
+                        const isAI = cam.status === 'ai_calibrated';
+                        const isDrift = cam.status === 'drift_warning';
+                        const hasSegments = cam.segments && cam.segments.length > 0;
+
+                        if (hasSegments) {
+                          // Split Video Bar (Discontinuous Segments with cut gaps)
+                          return cam.segments.map((seg, sIdx) => {
+                            const segDur = seg.video_end - seg.video_start;
+                            const pos = getPositionStyles(seg.master_start, segDur);
+                            return (
+                              <div
+                                key={`${cam.id}-seg-${sIdx}`}
+                                style={{ top: pos.top, height: pos.height }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectVideo(cam, seg.master_start);
+                                }}
+                                onMouseEnter={() => setHoveredVideo(cam)}
+                                onMouseLeave={() => setHoveredVideo(null)}
+                                className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                                  isDeckB
+                                    ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-magenta shadow-lg shadow-amber-500/50 z-20'
+                                    : isDeckA
+                                    ? 'bg-sky-400 border-sky-300 ring-2 ring-sky-400 shadow-lg shadow-sky-500/50 z-20'
+                                    : isHovered
+                                    ? 'bg-amber-400 border-amber-300 ring-1 ring-twice-apricot z-15'
+                                    : 'bg-amber-600/80 border-amber-500/80 hover:bg-amber-500'
+                                }`}
+                                title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}] - 세그먼트`}
+                              >
+                                <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
+                                  {isDeckA ? 'A' : isDeckB ? 'B' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                                </span>
+                              </div>
+                            );
+                          });
                         }
-                      }}
-                      className={`absolute left-0 right-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isCurActive
-                          ? 'bg-twice-magenta/20 border-twice-magenta text-white shadow-lg ring-1 ring-twice-magenta/40'
-                          : 'bg-slate-850/80 border-slate-800 hover:border-slate-700 hover:bg-slate-800 text-gray-300'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1">
-                        <span className="text-[10px] font-bold text-twice-apricot font-mono">
-                          {formatTime(song.start_time)}
-                        </span>
-                        {song.is_solo && (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-pink-950 text-pink-400 border border-pink-500/30">
-                            Solo
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-xs font-black truncate leading-tight mt-0.5">
-                        {song.name}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
 
-              {/* ---------- COL 2 (Col-span 2): Master Spine (Video 1094) ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.master && (
-                  <div
-                    style={getPositionStyles(0, totalDuration)}
-                    onClick={() => handleSelectVideo(tracks.master!)}
-                    className={`absolute inset-x-1 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between p-2.5 overflow-hidden shadow-lg ${
-                      selectedVideo?.id === tracks.master.id
-                        ? 'bg-purple-900/30 border-purple-400 ring-2 ring-purple-500/50 shadow-purple-900/40'
-                        : 'bg-purple-950/20 border-purple-500/30 hover:border-purple-500/60'
-                    }`}
-                  >
-                    <div className="flex items-center gap-1 text-[10px] font-black text-purple-300 uppercase tracking-widest">
-                      <Sparkles className="w-3 h-3 text-twice-magenta" /> Master
-                    </div>
-                    <div className="rotate-90 origin-left text-xs font-bold text-purple-200 whitespace-nowrap opacity-70 ml-2">
-                      🏆 1094 Master (00:00:00 ~ {formatTime(totalDuration)})
-                    </div>
-                    <div className="text-[10px] font-mono text-purple-300 font-bold">
-                      {formatDuration(totalDuration)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* ---------- COL 3 (Col-span 2): Full Cam Rails (Discontinuous in Split cuts) ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.fulls.map((fCam) => {
-                  const isSelected = selectedVideo?.id === fCam.id;
-                  const hasSegments = fCam.segments && fCam.segments.length > 0;
-
-                  if (hasSegments) {
-                    return fCam.segments.map((seg, sIdx) => {
-                      const segDur = seg.video_end - seg.video_start;
-                      const pos = getPositionStyles(seg.master_start, segDur);
-                      return (
-                        <div
-                          key={`${fCam.id}-seg-${sIdx}`}
-                          style={{ top: pos.top, height: pos.height }}
-                          onClick={() => handleSelectVideo(fCam, seg.master_start)}
-                          className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-md ${
-                            isSelected
-                              ? 'bg-amber-900/40 border-amber-400 ring-2 ring-amber-500/50 shadow-amber-900/30'
-                              : 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400 hover:bg-amber-950/50'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between text-[9px] font-bold text-amber-300">
-                            <span>#{fCam.id} {seg.label || `Part ${sIdx + 1}`}</span>
-                            <span className="font-mono">+{seg.sync_offset.toFixed(1)}s</span>
+                        // Continuous Single Bar
+                        const pos = getPositionStyles(cam.master_start_time, cam.duration);
+                        return (
+                          <div
+                            key={cam.id}
+                            style={{ top: pos.top, height: pos.height }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectVideo(cam);
+                            }}
+                            onMouseEnter={() => setHoveredVideo(cam)}
+                            onMouseLeave={() => setHoveredVideo(null)}
+                            className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                              isDeckB
+                                ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-magenta shadow-lg shadow-twice-magenta/50 z-20'
+                                : isDeckA
+                                ? 'bg-sky-400 border-sky-200 ring-2 ring-sky-400 shadow-lg shadow-sky-500/50 z-20'
+                                : isMaster
+                                ? 'bg-gradient-to-b from-purple-500 to-twice-magenta border-purple-400'
+                                : isHovered
+                                ? 'bg-twice-magenta/80 border-pink-300 ring-1 ring-twice-apricot z-15'
+                                : isUncalibrated
+                                ? 'bg-slate-800 border-2 border-dashed border-amber-400/90 text-amber-300 hover:bg-amber-950/80 shadow-sm shadow-amber-950/50'
+                                : isAI
+                                ? 'bg-emerald-600/70 border-emerald-400 hover:bg-emerald-500'
+                                : isDrift
+                                ? 'bg-rose-500/80 border-rose-400 hover:bg-rose-400'
+                                : cam.duration >= 3600
+                                ? 'bg-cyan-500/80 border-cyan-400 hover:bg-cyan-400'
+                                : 'bg-pink-600/70 border-pink-500/80 hover:bg-twice-magenta'
+                            }`}
+                            title={`#${cam.id} ${cam.title} [${formatTime(cam.master_start_time)} ~ ${formatTime(cam.master_end_time)}] - ${
+                              isUncalibrated 
+                                ? '⚠️ 미보정 영상 (Count: 0)' 
+                                : isAI 
+                                ? `🤖 AI 자동보정 (${cam.calibration_count || 1}회)` 
+                                : `✅ 검증완료 (${cam.calibration_count || 1}회)`
+                            }`}
+                          >
+                            <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
+                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                            </span>
                           </div>
-                          <div className="text-[9px] font-mono text-amber-400 truncate">
-                            {formatTime(seg.master_start)} ~ {formatTime(seg.master_end)}
-                          </div>
-                        </div>
-                      );
-                    });
-                  }
-
-                  const pos = getPositionStyles(fCam.master_start_time, fCam.duration);
-                  return (
-                    <div
-                      key={fCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(fCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2.5 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-md ${
-                        isSelected
-                          ? 'bg-blue-900/40 border-blue-400 ring-2 ring-blue-500/50 shadow-blue-900/30'
-                          : 'bg-blue-950/30 border-blue-500/40 hover:border-blue-400 hover:bg-blue-950/50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[10px] font-bold text-blue-300">
-                        <span>📹 #{fCam.id} Full Cam</span>
-                        <span className="font-mono">{formatDuration(fCam.duration)}</span>
-                      </div>
-                      <div className="text-[10px] font-mono text-blue-400">
-                        {formatTime(fCam.master_start_time)} ~ {formatTime(fCam.master_end_time)}
-                      </div>
+                        );
+                      })}
                     </div>
                   );
                 })}
               </div>
 
-              {/* ---------- COL 4 (Col-span 2): Act / Medley Cam Tracks ---------- */}
-              <div className="col-span-2 relative h-full border-r border-slate-800/80 px-1">
-                {tracks.acts.map((aCam) => {
-                  const pos = getPositionStyles(aCam.master_start_time, aCam.duration);
-                  const isSelected = selectedVideo?.id === aCam.id;
-                  return (
-                    <div
-                      key={aCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(aCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isSelected
-                          ? 'bg-amber-900/40 border-amber-400 ring-2 ring-amber-500/50 shadow-amber-900/30 z-10'
-                          : 'bg-amber-950/30 border-amber-500/40 hover:border-amber-400 text-amber-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between text-[9px] font-bold">
-                        <span className="truncate">🎬 #{aCam.id}</span>
-                        <span className="font-mono">{formatDuration(aCam.duration)}</span>
-                      </div>
-                      <div className="text-[9px] font-mono text-amber-300 truncate">
-                        {formatTime(aCam.master_start_time)} ~ {formatTime(aCam.master_end_time)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* ---------- COL 5 (Col-span 3): Individual & Solo Fancams Track ---------- */}
-              <div className="col-span-3 relative h-full pl-1">
-                {tracks.solos.map((vCam) => {
-                  const pos = getPositionStyles(vCam.master_start_time, vCam.duration);
-                  const isSelected = selectedVideo?.id === vCam.id;
-                  const isDrift = vCam.status === 'uncalibrated' || vCam.status === 'drift_warning';
-
-                  return (
-                    <div
-                      key={vCam.id}
-                      style={{ top: pos.top, height: pos.height }}
-                      onClick={() => handleSelectVideo(vCam)}
-                      className={`absolute inset-x-1 rounded-xl p-2 border transition-all cursor-pointer flex flex-col justify-between overflow-hidden shadow-sm ${
-                        isSelected
-                          ? 'bg-pink-900/40 border-pink-400 ring-2 ring-pink-500/50 shadow-pink-900/30 z-10'
-                          : isDrift
-                          ? 'bg-rose-950/40 border-rose-500/50 hover:bg-rose-950/60 text-rose-200'
-                          : 'bg-slate-800/80 border-slate-700 hover:border-slate-500 hover:bg-slate-750 text-gray-200'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-1 text-[10px] font-bold">
-                        <span className="truncate max-w-[120px]">{vCam.title}</span>
-                        {isDrift ? (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-rose-950 text-rose-400 border border-rose-500/40">
-                            🔴 Drift
-                          </span>
-                        ) : (
-                          <span className="text-[8px] font-black uppercase px-1 rounded bg-emerald-950 text-emerald-400 border border-emerald-500/40">
-                            🟢 OK
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center justify-between text-[9px] font-mono text-twice-apricot mt-0.5">
-                        <span>{formatTime(vCam.master_start_time)} ~ {formatTime(vCam.master_end_time)}</span>
-                        <span>{formatDuration(vCam.duration)}</span>
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* 4. Interactive Horizontal Time Scrubber Line (선택된 타임라인 가로선) */}
+              <div
+                style={{ top: `${(selectedTimeCursor / totalDuration) * canvasHeight}px` }}
+                className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
+              >
+                <div className="w-full border-t-2 border-twice-magenta shadow-[0_0_12px_rgba(255,94,153,0.8)]" />
+                <span className="absolute left-2 -top-3 bg-twice-magenta text-white px-1.5 py-0.5 rounded-full text-[9px] font-mono font-black shadow-lg">
+                  ⏱️ {formatTime(selectedTimeCursor)}
+                </span>
               </div>
 
             </div>
           </div>
 
-          {/* ================= RIGHT DEDICATED PLAYER & INSPECTOR PANEL (4 COLS) ================= */}
-          <div className="lg:col-span-4 lg:sticky lg:top-4 space-y-4">
-            {selectedVideo ? (
-              <div className="bg-slate-900/95 border-2 border-twice-magenta/40 rounded-3xl p-5 shadow-2xl backdrop-blur-md space-y-4">
-                
-                {/* Panel Header */}
-                <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                  <div className="flex items-center gap-2">
-                    <span className="p-1.5 rounded-lg bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30">
-                      <Volume2 className="w-4 h-4" />
-                    </span>
-                    <div>
-                      <h3 className="text-xs font-black text-white uppercase tracking-wider">
-                        Dedicated Video Inspector
-                      </h3>
-                      <span className="text-[10px] font-mono text-twice-apricot">
-                        Video #{selectedVideo.id} • Offset: +{selectedVideo.sync_offset.toFixed(1)}s
-                      </span>
-                    </div>
-                  </div>
-
-                  <Link
-                    to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
-                    className="p-1.5 text-xs font-bold text-gray-300 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg flex items-center gap-1 border border-slate-700"
-                    title="360° 멀티앵글 플레이어로 열기"
+          {/* ================= RIGHT MULTI-ANGLE DECK & CALIBRATION STUDIO (8 COLS) ================= */}
+          <div className="lg:col-span-8 xl:col-span-9 lg:sticky lg:top-4 space-y-4">
+            
+            {/* Top Studio Control Bar */}
+            <div className="bg-slate-900/95 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xl backdrop-blur-md flex flex-wrap items-center justify-between gap-3">
+              
+              {/* Left Group: Mode Switcher & Deck Slot Target Selector */}
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-1.5 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+                  <button
+                    onClick={() => setPlayerMode('DUAL')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      playerMode === 'DUAL'
+                        ? 'bg-twice-magenta text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="자유 2개 영상 1:1 비교 & 캘리브레이션"
                   >
-                    <Maximize2 className="w-3.5 h-3.5" />
-                  </Link>
+                    <Columns className="w-3.5 h-3.5" /> 2-Cam 듀얼 싱크
+                  </button>
+                  <button
+                    onClick={() => setPlayerMode('QUAD')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      playerMode === 'QUAD'
+                        ? 'bg-twice-magenta text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="동시 촬영된 최대 4개 앵글 동시 재생 벽"
+                  >
+                    <LayoutGrid className="w-3.5 h-3.5" /> 4-Cam 멀티뷰 벽
+                  </button>
+                  <button
+                    onClick={() => setPlayerMode('SINGLE')}
+                    className={`px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-all ${
+                      playerMode === 'SINGLE'
+                        ? 'bg-twice-magenta text-white shadow-md'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                    title="선택된 영상 단독 풀스크린 뷰"
+                  >
+                    <Square className="w-3.5 h-3.5" /> 단독 포커스
+                  </button>
                 </div>
 
-                {/* Embedded YouTube Player pinned on the right */}
-                <div className="aspect-video w-full rounded-2xl overflow-hidden border border-slate-800 shadow-xl bg-black">
-                  <iframe
-                    src={`https://www.youtube.com/embed/${selectedVideo.youtube_id}?start=${playerSeekTime}&autoplay=1`}
-                    title={selectedVideo.title}
-                    className="w-full h-full"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                    allowFullScreen
-                  />
-                </div>
-
-                {/* Video Info */}
-                <div>
-                  <h4 className="text-sm font-bold text-white line-clamp-2">
-                    {selectedVideo.title}
-                  </h4>
-                  <div className="flex items-center gap-2 text-xs font-mono text-gray-400 mt-1">
-                    <span>마스터 타임라인: {formatTime(selectedVideo.master_start_time)} ~ {formatTime(selectedVideo.master_end_time)}</span>
-                  </div>
-                </div>
-
-                {/* Metadata & Diagnostics */}
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">Duration</span>
-                    <div className="text-sm font-mono font-black text-white mt-0.5">
-                      {formatDuration(selectedVideo.duration)}
-                    </div>
-                  </div>
-                  <div className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700">
-                    <span className="text-[10px] font-bold text-gray-400 uppercase">Sync Offset</span>
-                    <div className="text-sm font-mono font-black text-twice-apricot mt-0.5">
-                      +{selectedVideo.sync_offset.toFixed(2)}s
-                    </div>
-                  </div>
-                </div>
-
-                {/* Health Diagnostic Badge */}
-                <div className={`p-3 rounded-xl border text-xs ${
-                  selectedVideo.status === 'verified' || selectedVideo.status === 'master'
-                    ? 'bg-emerald-950/30 border-emerald-500/40 text-emerald-300'
-                    : selectedVideo.status === 'segmented'
-                    ? 'bg-amber-950/30 border-amber-500/40 text-amber-300'
-                    : 'bg-rose-950/30 border-rose-500/40 text-rose-300'
-                }`}>
-                  <div className="text-[10px] font-bold uppercase tracking-wider">진단 상태</div>
-                  <div className="font-bold mt-0.5">{selectedVideo.status_reason}</div>
-                </div>
-
-                {/* If Split Segments exist */}
-                {selectedVideo.segments && selectedVideo.segments.length > 0 && (
-                  <div className="space-y-1.5 pt-2 border-t border-slate-800">
-                    <div className="text-[10px] font-bold text-amber-400 uppercase tracking-wider flex items-center gap-1">
-                      <Split className="w-3 h-3" /> 세그먼트 분할 구간 ({selectedVideo.segments.length}개)
-                    </div>
-                    <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
-                      {selectedVideo.segments.map((seg, sIdx) => (
-                        <button
-                          key={sIdx}
-                          onClick={() => setPlayerSeekTime(Math.max(0, Math.floor(seg.video_start)))}
-                          className="w-full text-left p-1.5 rounded-lg bg-slate-800/80 hover:bg-slate-750 border border-slate-700 text-[10px] font-mono flex items-center justify-between transition-all"
-                        >
-                          <span className="text-white font-bold">{seg.label || `Part ${sIdx + 1}`}</span>
-                          <span className="text-twice-apricot">Offset: +{seg.sync_offset.toFixed(1)}s</span>
-                        </button>
-                      ))}
-                    </div>
+                {/* Deck Target Selector (클릭 시 어느 데크에 넣을지) */}
+                {playerMode === 'DUAL' && (
+                  <div className="flex items-center gap-1 bg-slate-950/80 p-1 rounded-xl border border-slate-800 text-xs font-bold">
+                    <span className="text-gray-500 text-[10px] px-1.5 font-mono">클릭 대상:</span>
+                    <button
+                      onClick={() => setActiveDeckSlot('A')}
+                      className={`px-2 py-1 rounded-lg text-[11px] transition-all flex items-center gap-1 ${
+                        activeDeckSlot === 'A'
+                          ? 'bg-sky-500 text-white shadow'
+                          : 'text-gray-400 hover:text-sky-300'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-sky-300" /> Deck A (좌측)
+                    </button>
+                    <button
+                      onClick={() => setActiveDeckSlot('B')}
+                      className={`px-2 py-1 rounded-lg text-[11px] transition-all flex items-center gap-1 ${
+                        activeDeckSlot === 'B'
+                          ? 'bg-twice-magenta text-white shadow'
+                          : 'text-gray-400 hover:text-pink-300'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-twice-apricot" /> Deck B (우측)
+                    </button>
+                    <button
+                      onClick={handleSwapDecks}
+                      className="p-1 hover:bg-slate-800 text-gray-300 hover:text-white rounded transition-all ml-0.5"
+                      title="Deck A ↔ B 좌우 영상 맞바꾸기"
+                    >
+                      <ArrowLeftRight className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 )}
-
-                {/* Open in Main Player */}
-                <Link
-                  to={`/video/${selectedVideo.id}?t=${playerSeekTime}`}
-                  className="w-full py-2.5 bg-twice-magenta hover:bg-twice-magenta/80 text-white rounded-xl text-xs font-black flex items-center justify-center gap-2 shadow-lg transition-all"
-                >
-                  <Play className="w-3.5 h-3.5 fill-current" /> 360° 대형 플레이어로 보기
-                </Link>
               </div>
-            ) : (
-              <div className="bg-slate-900/80 border border-slate-800 rounded-3xl p-8 text-center text-gray-500 font-mono text-xs">
-                왼쪽 타임라인에서 영상을 클릭하면 여기에 실시간 검증 플레이어가 표시됩니다.
+
+              {/* Right Group: Audio & Time Indicator */}
+              <div className="flex items-center gap-3 text-xs font-mono">
+                <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1.5 rounded-xl border border-slate-700">
+                  <Volume2 className="w-3.5 h-3.5 text-twice-apricot" />
+                  <span className="text-gray-400 text-[11px]">오디오:</span>
+                  <select
+                    value={audioSource}
+                    onChange={(e) => setAudioSource(e.target.value as any)}
+                    className="bg-transparent text-white text-[11px] font-bold focus:outline-none cursor-pointer"
+                  >
+                    <option value="DECK_B" className="bg-slate-900">Deck B (우측) 소리</option>
+                    <option value="DECK_A" className="bg-slate-900">Deck A (좌측) 소리</option>
+                    <option value="MUTE" className="bg-slate-900">음소거</option>
+                  </select>
+                </div>
+
+                <div className="bg-twice-magenta/10 border border-twice-magenta/30 px-3 py-1.5 rounded-xl text-twice-magenta font-black">
+                  ⏱️ {formatTime(selectedTimeCursor)}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Main Multi-Video Player Grid */}
+            {playerMode === 'DUAL' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                
+                {/* Left Deck: Video A (기준 캠 / 비교 대상 1) */}
+                <div className={`bg-slate-900/95 rounded-2xl p-3 sm:p-4 shadow-xl space-y-2 transition-all border-2 ${
+                  activeDeckSlot === 'A' ? 'border-sky-500/70 ring-2 ring-sky-500/30' : 'border-sky-500/30'
+                }`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                      <span className="w-5 h-5 rounded-full bg-sky-500/20 text-sky-300 flex items-center justify-center text-[11px] font-mono font-black border border-sky-400/30 flex-shrink-0">
+                        A
+                      </span>
+                      {/* Direct Dropdown Video Selector for Deck A */}
+                      <select
+                        value={videoA?.id || ''}
+                        onChange={(e) => {
+                          const targetId = parseInt(e.target.value, 10);
+                          const found = graphData?.videos?.find(v => v.id === targetId);
+                          if (found) setVideoA(found);
+                        }}
+                        className="bg-slate-800 text-sky-300 px-2 py-1 rounded-lg border border-sky-500/30 text-xs font-bold focus:outline-none focus:border-sky-400 w-full max-w-[260px] truncate cursor-pointer hover:bg-slate-750"
+                      >
+                        {graphData?.videos?.map(v => (
+                          <option key={`opt-a-${v.id}`} value={v.id} className="bg-slate-900 text-white">
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400 font-mono text-[10px]">
+                        재생: {formatTime(seekTimeA)}
+                      </span>
+                      <button
+                        onClick={() => setActiveDeckSlot('A')}
+                        className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold transition-all ${
+                          activeDeckSlot === 'A' ? 'bg-sky-500 text-white shadow' : 'bg-slate-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {activeDeckSlot === 'A' ? '● 좌측(A) 활성' : 'A 선택'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
+                    {videoA && (
+                      <YouTube
+                        key={`deckA-${videoA.id}`}
+                        videoId={videoA.youtube_id}
+                        className="w-full h-full"
+                        opts={playerOpts}
+                        onReady={(e) => {
+                          setPlayerA(e.target);
+                          const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+                          e.target.seekTo(startA, true);
+                          if (audioSource === 'DECK_A') e.target.unMute();
+                          else e.target.mute();
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-gray-300 truncate font-semibold">
+                    <span className="text-sky-400 font-mono font-bold mr-1">#{videoA?.id}</span> {videoA?.title}
+                  </p>
+                </div>
+
+                {/* Right Deck: Video B (타겟 캠 / 비교 대상 2 with In-Place Calibrator) */}
+                <div className={`bg-slate-900/95 rounded-2xl p-3 sm:p-4 shadow-xl space-y-2 transition-all border-2 ${
+                  activeDeckSlot === 'B' ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/40'
+                }`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs font-bold">
+                    <div className="flex items-center gap-1.5 flex-1 min-w-[160px]">
+                      <span className="w-5 h-5 rounded-full bg-twice-magenta/20 text-twice-magenta flex items-center justify-center text-[11px] font-mono font-black border border-twice-magenta/30 flex-shrink-0">
+                        B
+                      </span>
+                      {/* Direct Dropdown Video Selector for Deck B */}
+                      <select
+                        value={videoB?.id || ''}
+                        onChange={(e) => {
+                          const targetId = parseInt(e.target.value, 10);
+                          const found = graphData?.videos?.find(v => v.id === targetId);
+                          if (found) setVideoB(found);
+                        }}
+                        className="bg-slate-800 text-twice-magenta px-2 py-1 rounded-lg border border-twice-magenta/30 text-xs font-bold focus:outline-none focus:border-twice-magenta w-full max-w-[260px] truncate cursor-pointer hover:bg-slate-750"
+                      >
+                        {graphData?.videos?.map(v => (
+                          <option key={`opt-b-${v.id}`} value={v.id} className="bg-slate-900 text-white">
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.title}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <span className="text-twice-apricot font-mono text-[10px]">
+                        재생: {formatTime(seekTimeB)}
+                      </span>
+                      <button
+                        onClick={() => setActiveDeckSlot('B')}
+                        className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold transition-all ${
+                          activeDeckSlot === 'B' ? 'bg-twice-magenta text-white shadow' : 'bg-slate-800 text-gray-400 hover:text-white'
+                        }`}
+                      >
+                        {activeDeckSlot === 'B' ? '● 우측(B) 활성' : 'B 선택'}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
+                    {videoB && (
+                      <YouTube
+                        key={`deckB-${videoB.id}`}
+                        videoId={videoB.youtube_id}
+                        className="w-full h-full"
+                        opts={playerOpts}
+                        onReady={(e) => {
+                          setPlayerB(e.target);
+                          const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+                          e.target.seekTo(startB, true);
+                          if (audioSource === 'DECK_B') e.target.unMute();
+                          else e.target.mute();
+                        }}
+                      />
+                    )}
+                  </div>
+
+                  <p className="text-[11px] text-gray-300 truncate font-semibold">
+                    <span className="text-twice-magenta font-mono font-bold mr-1">#{videoB?.id}</span> {videoB?.title}
+                  </p>
+
+                  {/* In-Place Target Offset Calibrator Pad for Deck B */}
+                  {videoB && !videoB.is_master && (
+                    <div className="mt-3 pt-3 border-t border-slate-800 space-y-3">
+                      
+                      {/* Calibrator Header & Offset / Delta Badge */}
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <Sliders className="w-3.5 h-3.5 text-twice-magenta" />
+                          <span className="text-xs font-black text-gray-200 uppercase tracking-wide">
+                            Deck B 싱크 캘리브레이터
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2 font-mono">
+                          {fineTuneDelta !== 0 && (
+                            <button
+                              onClick={() => setFineTuneDelta(0)}
+                              className="text-[10px] font-bold text-gray-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded border border-slate-700 transition-all flex items-center gap-1"
+                              title="원래 오프셋으로 되돌리기"
+                            >
+                              <RotateCcw className="w-2.5 h-2.5" /> 초기화
+                            </button>
+                          )}
+                          <div className="flex items-center gap-2 bg-slate-950 px-2.5 py-1 rounded-xl border border-slate-800 shadow-inner text-[11px]">
+                            <span className="text-gray-400">
+                              Delta: <strong className={fineTuneDelta > 0 ? 'text-emerald-400' : fineTuneDelta < 0 ? 'text-rose-400' : 'text-gray-400'}>
+                                {fineTuneDelta > 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s
+                              </strong>
+                            </span>
+                            <div className="h-3 w-px bg-slate-800" />
+                            <span className="font-black text-white">
+                              +{effectiveOffsetB.toFixed(2)}s
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Smooth Scrubber Range Slider (빠른 이동) */}
+                      <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800/80 space-y-1">
+                        <div className="flex justify-between items-center text-[9px] text-gray-400 font-mono">
+                          <span>-30s</span>
+                          <span className="text-twice-magenta font-bold flex items-center gap-1">
+                            <MoveHorizontal className="w-2.5 h-2.5 animate-pulse" /> 슬라이더로 빠른 오프셋 이동 (0.05s)
+                          </span>
+                          <span>+30s</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={Math.max(0, (videoB.sync_offset || 0) - 30)}
+                          max={(videoB.sync_offset || 0) + 30}
+                          step={0.05}
+                          value={effectiveOffsetB}
+                          onChange={(e) => {
+                            const newOff = parseFloat(e.target.value);
+                            setFineTuneDelta(Number((newOff - videoB.sync_offset).toFixed(2)));
+                          }}
+                          className="w-full accent-twice-magenta bg-slate-800 rounded-lg h-1.5 cursor-pointer transition-all hover:bg-slate-700"
+                        />
+                      </div>
+
+                      {/* Step Nudge Buttons Grid (0.05s, 0.1s, 0.5s, 1.0s) */}
+                      <div className="grid grid-cols-4 sm:grid-cols-8 gap-1 font-mono text-[11px]">
+                        <button 
+                          onClick={() => nudge(-1.0)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          -1.0s
+                        </button>
+                        <button 
+                          onClick={() => nudge(-0.5)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          -0.50s
+                        </button>
+                        <button 
+                          onClick={() => nudge(-0.1)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          -0.10s
+                        </button>
+                        <button 
+                          onClick={() => nudge(-0.05)} 
+                          className="py-1.5 bg-slate-800/90 hover:bg-slate-700 text-twice-magenta border border-twice-magenta/40 font-black rounded-lg transition-all active:scale-95 shadow-sm"
+                        >
+                          -0.05s
+                        </button>
+                        <button 
+                          onClick={() => nudge(+0.05)} 
+                          className="py-1.5 bg-slate-800/90 hover:bg-slate-700 text-twice-magenta border border-twice-magenta/40 font-black rounded-lg transition-all active:scale-95 shadow-sm"
+                        >
+                          +0.05s
+                        </button>
+                        <button 
+                          onClick={() => nudge(+0.1)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          +0.10s
+                        </button>
+                        <button 
+                          onClick={() => nudge(+0.5)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          +0.50s
+                        </button>
+                        <button 
+                          onClick={() => nudge(+1.0)} 
+                          className="py-1.5 bg-slate-800 hover:bg-slate-700 text-gray-200 font-black rounded-lg transition-all active:scale-95 shadow-sm border border-slate-700/80"
+                        >
+                          +1.0s
+                        </button>
+                      </div>
+
+                      {/* Keyboard shortcuts hints & Action Buttons */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+                        <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
+                          <span>💡 단축키:</span>
+                          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded border border-slate-700 text-[9px]">←</kbd>
+                          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded border border-slate-700 text-[9px]">→</kbd> (0.5s)
+                          <span className="text-gray-600">│</span>
+                          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> + 방향키 (0.1s)
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {fineTuneDelta !== 0 && (
+                            <button
+                              onClick={handleSaveFineTuneOffset}
+                              disabled={isSavingOffset}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 text-xs transition-all"
+                            >
+                              <Save className="w-3.5 h-3.5" /> 오프셋 영구 저장
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
+                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
+                            title="정밀 오디오 파형 캘리브레이터 열기"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" /> 정밀 캘리브레이터
+                          </button>
+                        </div>
+                      </div>
+
+                      {saveSuccessMsg && (
+                        <div className="p-2 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 text-[11px] rounded-xl text-center font-bold animate-fade-in">
+                          {saveSuccessMsg}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+
               </div>
             )}
+
+            {/* 4-Cam Multi-View Wall */}
+            {playerMode === 'QUAD' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                {overlappingVideos.slice(0, 4).map((v, idx) => {
+                  const isSelectedA = videoA?.id === v.id;
+                  const isSelectedB = videoB?.id === v.id;
+                  const vSeek = calculateLocalSeekTime(v, selectedTimeCursor);
+
+                  return (
+                    <div
+                      key={v.id}
+                      onClick={() => {
+                        if (activeDeckSlot === 'A') setVideoA(v);
+                        else setVideoB(v);
+                      }}
+                      className={`p-2.5 rounded-2xl border transition-all cursor-pointer space-y-1.5 ${
+                        isSelectedB
+                          ? 'bg-slate-900 border-twice-magenta shadow-xl ring-2 ring-twice-magenta/40'
+                          : isSelectedA
+                          ? 'bg-slate-900 border-sky-400 shadow-xl ring-2 ring-sky-400/40'
+                          : 'bg-slate-900/80 border-slate-800 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between text-[11px] font-bold">
+                        <span className="flex items-center gap-1.5 truncate max-w-[240px] text-white">
+                          <span className="w-4 h-4 rounded-full bg-slate-800 text-twice-apricot flex items-center justify-center text-[9px] font-mono">
+                            {idx + 1}
+                          </span>
+                          <span className="text-purple-400 font-mono font-bold">#{v.id}</span>
+                          <span className="truncate">{v.title}</span>
+                        </span>
+                        <span className="text-gray-400 font-mono text-[9px]">
+                          {formatTime(vSeek)}
+                        </span>
+                      </div>
+
+                      <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800">
+                        <iframe
+                          key={`quad-${v.id}-${vSeek}`}
+                          src={`https://www.youtube.com/embed/${v.youtube_id}?start=${vSeek}&autoplay=1&mute=${(audioSource === 'DECK_B' && isSelectedB) || (audioSource === 'DECK_A' && isSelectedA) ? '0' : '1'}`}
+                          title={v.title}
+                          className="w-full h-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+
+                      <p className="text-[10px] text-gray-400 truncate">
+                        {v.members && v.members.length > 0 && (
+                          <span className="text-twice-apricot mr-1.5 font-semibold">[{v.members.join(', ')}]</span>
+                        )}
+                        {v.title}
+                      </p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Single Cinema Player */}
+            {playerMode === 'SINGLE' && (videoB || videoA) && (
+              <div className="bg-slate-900/95 border border-slate-800 rounded-3xl p-5 shadow-2xl space-y-3">
+                {(() => {
+                  const target = videoB || videoA!;
+                  const tSeek = calculateLocalSeekTime(target, selectedTimeCursor);
+                  return (
+                    <>
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white line-clamp-1">
+                          <span className="text-twice-magenta font-mono font-bold mr-1.5">#{target.id}</span>
+                          {target.title}
+                        </h3>
+                        <Link
+                          to={`/video/${target.id}?t=${tSeek}`}
+                          className="p-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 rounded-lg flex items-center gap-1 text-xs"
+                        >
+                          <Maximize2 className="w-3.5 h-3.5" /> 360° 멀티뷰
+                        </Link>
+                      </div>
+
+                      <div className="aspect-video w-full rounded-2xl overflow-hidden bg-black border border-slate-800 shadow-2xl">
+                        <iframe
+                          key={`single-${target.id}-${tSeek}`}
+                          src={`https://www.youtube.com/embed/${target.youtube_id}?start=${tSeek}&autoplay=1`}
+                          title={target.title}
+                          className="w-full h-full"
+                          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                          allowFullScreen
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+
+            {/* Overlapping Videos Multi-Angle List (동시 촬영된 다각도 영상 목록) */}
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-3.5 sm:p-4 shadow-xl backdrop-blur-md space-y-2.5">
+              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                <div className="flex items-center gap-1.5 text-xs font-black text-white">
+                  <Layers className="w-4 h-4 text-twice-apricot" />
+                  <span>동시 촬영된 다각도 직캠 ({overlappingVideos.length}개)</span>
+                </div>
+                <span className="text-[10px] font-mono text-gray-400">
+                  ⏱️ 타임라인 시점: {formatTime(selectedTimeCursor)}
+                </span>
+              </div>
+
+              {overlappingVideos.length === 0 ? (
+                <div className="py-4 text-center text-gray-500 font-mono text-xs">
+                  이 시점에 동시 촬영된 영상이 없습니다.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[320px] overflow-y-auto pr-1">
+                  {overlappingVideos.map((v) => {
+                    const isDeckA = videoA?.id === v.id;
+                    const isDeckB = videoB?.id === v.id;
+                    const isUncalibrated = !v.is_master && ((v.calibration_count || 0) === 0 || v.status === 'uncalibrated');
+                    const isAI = v.status === 'ai_calibrated';
+                    const isDrift = v.status === 'drift_warning';
+                    const vSeek = calculateLocalSeekTime(v, selectedTimeCursor);
+
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => {
+                          if (activeDeckSlot === 'A') setVideoA(v);
+                          else setVideoB(v);
+                        }}
+                        className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center gap-2.5 ${
+                          isDeckB
+                            ? 'bg-twice-magenta/20 border-twice-magenta text-white shadow-md ring-1 ring-twice-magenta/40'
+                            : isDeckA
+                            ? 'bg-sky-500/20 border-sky-400 text-white shadow-md ring-1 ring-sky-400/40'
+                            : isUncalibrated
+                            ? 'bg-slate-800/80 border-dashed border-amber-500/50 hover:bg-slate-800 text-gray-300'
+                            : 'bg-slate-800/70 border-slate-700/80 hover:bg-slate-800 hover:border-slate-600 text-gray-300'
+                        }`}
+                      >
+                        {/* Thumbnail */}
+                        <div className="w-16 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0 relative">
+                          <img
+                            src={`https://img.youtube.com/vi/${v.youtube_id}/mqdefault.jpg`}
+                            alt={v.title}
+                            className="w-full h-full object-cover"
+                          />
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-[7px] font-mono font-bold text-white px-1 rounded">
+                            {formatTime(vSeek)}
+                          </span>
+                        </div>
+
+                        {/* Details */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <span className="text-[10px] font-black text-white truncate max-w-[120px] flex items-center gap-1">
+                              <span className="text-purple-400 font-mono">#{v.id}</span>
+                              <span className="truncate">{v.title}</span>
+                            </span>
+                            
+                            {/* Deck Assign Badges */}
+                            <div className="flex items-center gap-1 font-mono flex-shrink-0">
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVideoA(v);
+                                }}
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-black transition-all ${
+                                  isDeckA 
+                                    ? 'bg-sky-500 text-white shadow ring-1 ring-white' 
+                                    : 'bg-slate-800 hover:bg-sky-500/30 text-sky-300 border border-sky-500/30'
+                                }`}
+                                title="Deck A (좌측 레퍼런스)로 지정"
+                              >
+                                Deck A
+                              </button>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setVideoB(v);
+                                }}
+                                className={`text-[9px] px-1.5 py-0.5 rounded font-black transition-all ${
+                                  isDeckB 
+                                    ? 'bg-twice-magenta text-white shadow ring-1 ring-white' 
+                                    : 'bg-slate-800 hover:bg-twice-magenta/30 text-twice-magenta border border-twice-magenta/30'
+                                }`}
+                                title="Deck B (우측 타겟 직캠)로 지정"
+                              >
+                                Deck B
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center justify-between gap-1 mt-0.5 text-[9px]">
+                            <p className="text-gray-400 truncate flex-1">
+                              {v.members && v.members.length > 0 && (
+                                <span className="text-twice-apricot mr-1 font-semibold">[{v.members.join(', ')}]</span>
+                              )}
+                              {v.title}
+                            </p>
+                            {isUncalibrated ? (
+                              <span className="text-[7px] font-bold text-amber-300 bg-amber-950/80 px-1 rounded border border-amber-500/50 flex-shrink-0">
+                                ⚠️ 미보정
+                              </span>
+                            ) : isAI ? (
+                              <span className="text-[7px] font-bold text-emerald-300 bg-emerald-950/80 px-1 rounded border border-emerald-500/50 flex-shrink-0">
+                                🤖 AI({v.calibration_count || 1})
+                              </span>
+                            ) : isDrift ? (
+                              <span className="text-[7px] font-bold text-rose-400 bg-rose-950/80 px-1 rounded border border-rose-500/50 flex-shrink-0">
+                                🔴 오차
+                              </span>
+                            ) : (
+                              <span className="text-[7px] font-bold text-purple-300 bg-purple-950/80 px-1 rounded border border-purple-500/50 flex-shrink-0">
+                                ✅ 검증({v.calibration_count || 1})
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
           </div>
 
         </div>
+      )}
+
+      {/* ================= FULL MODALS INTEGRATION ================= */}
+      {showPairwiseModal && calibratorVideo && (
+        <PairwiseTimelineCalibratorModal
+          currentVideo={calibratorVideo}
+          allConcertVideos={allVideosForModal}
+          onClose={() => setShowPairwiseModal(false)}
+          onSaved={() => {
+            setShowPairwiseModal(false);
+            loadSyncGraph(selectedConcertId);
+          }}
+        />
+      )}
+
+      {showSegmentModal && calibratorVideo && (
+        <SegmentTimelineCalibratorModal
+          video={calibratorVideo}
+          allConcertVideos={allVideosForModal}
+          onClose={() => setShowSegmentModal(false)}
+          onSaveSuccess={() => {
+            setShowSegmentModal(false);
+            loadSyncGraph(selectedConcertId);
+          }}
+        />
       )}
 
     </div>

@@ -53,6 +53,15 @@ class VideoBase(BaseModel):
     duration: float
     is_shorts: bool = False
     is_unavailable: bool = False
+    
+    # Calibration & Metrics Tracking
+    calibration_count: Optional[int] = 0
+    calibration_status: Optional[str] = "uncalibrated"
+    calibrated_at: Optional[datetime] = None
+    calibration_method: Optional[str] = None
+    view_count: Optional[int] = 0
+    like_count: Optional[int] = 0
+    
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
@@ -101,6 +110,8 @@ class VideoUpdate(BaseModel):
     sync_offset: Optional[float] = None
     duration: Optional[float] = None
     is_shorts: Optional[bool] = None
+    calibration_method: Optional[str] = None
+    calibration_status: Optional[str] = None
 
 class ContributionCreate(BaseModel):
     video_id: Optional[int] = None

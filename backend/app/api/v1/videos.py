@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, and_, String
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from ...models.models import Video, Song, Concert, ConcertSetlist, Contribution, VideoSyncSegment
-from ...schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination, VideoSyncSegmentBase, VideoSyncSegmentCreate
+from app.models.models import Video, Song, Concert, ConcertSetlist, Contribution, VideoSyncSegment
+from app.schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination, VideoSyncSegmentBase, VideoSyncSegmentCreate
+from app.services.calibration import record_video_calibration
 from ...db import get_db
 from .utils import ensure_list, verify_admin
 
@@ -186,6 +187,12 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
     if "song_ids" in update_data:
         song_ids = update_data.pop("song_ids")
         db_video.songs = db.query(Song).filter(Song.id.in_(song_ids)).all() if song_ids is not None else []
+
+    if "sync_offset" in update_data:
+        new_offset = update_data.pop("sync_offset")
+        method = update_data.pop("calibration_method", "manual_studio")
+        status = update_data.pop("calibration_status", "manually_verified")
+        record_video_calibration(db, db_video, sync_offset=new_offset, method=method, status=status, commit=False)
 
     for key, value in update_data.items():
         setattr(db_video, key, value)

@@ -59,6 +59,12 @@ export interface Video {
   sync_offset: number;
   duration: number;
   is_shorts: boolean;
+  calibration_count?: number;
+  calibration_status?: string;
+  calibrated_at?: string | null;
+  calibration_method?: string | null;
+  view_count?: number;
+  like_count?: number;
   created_at: string;
   songs?: Song[];
   concert?: Concert;
@@ -102,8 +108,14 @@ export interface SyncGraphVideoNode {
   members: string[];
   angle?: string;
   is_master: boolean;
-  status: 'master' | 'verified' | 'segmented' | 'uncalibrated' | 'drift_warning';
+  status: 'master' | 'verified' | 'segmented' | 'uncalibrated' | 'ai_calibrated' | 'drift_warning';
   status_reason: string;
+  calibration_count?: number;
+  calibration_status?: string;
+  calibrated_at?: string | null;
+  calibration_method?: string | null;
+  view_count?: number;
+  like_count?: number;
   segments: {
     id: number;
     video_start: number;

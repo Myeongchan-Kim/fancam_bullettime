@@ -70,8 +70,9 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
         if contrib.suggested_members is not None: video.members = contrib.suggested_members
         if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
         if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
-        if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
-        if contrib.suggested_sync_offset is not None: video.sync_offset = contrib.suggested_sync_offset
+        if contrib.suggested_sync_offset is not None:
+            from app.services.calibration import record_video_calibration
+            record_video_calibration(db, video, sync_offset=contrib.suggested_sync_offset, method="user_contribution", status="manually_verified", commit=False)
         if contrib.suggested_duration is not None: video.duration = contrib.suggested_duration
         if contrib.suggested_is_shorts is not None: video.is_shorts = contrib.suggested_is_shorts
     
