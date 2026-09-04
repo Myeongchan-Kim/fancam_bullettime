@@ -31,6 +31,7 @@ export default function SyncVisualizerPage() {
 
   // Horizontal Scrubber Time Cursor (in Master seconds)
   const [selectedTimeCursor, setSelectedTimeCursor] = useState<number>(0);
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(!!localStorage.getItem('admin_key'));
   
   // Dual Deck Pairwise System: Deck A (Left) & Deck B (Right)
   const [videoA, setVideoA] = useState<SyncGraphVideoNode | null>(null);
@@ -396,8 +397,19 @@ export default function SyncVisualizerPage() {
     setIsSavingOffset(true);
     setSaveSuccessMsg(null);
     try {
+      let adminKey = localStorage.getItem('admin_key') || '';
+      if (!adminKey) {
+        const inputKey = window.prompt('관리자 권한이 필요합니다. Admin Key를 입력해주세요:');
+        if (!inputKey) {
+          setIsSavingOffset(false);
+          return;
+        }
+        adminKey = inputKey.trim();
+        localStorage.setItem('admin_key', adminKey);
+        setIsAdminMode(true);
+      }
+      
       const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(3));
-      const adminKey = localStorage.getItem('admin_key') || '';
       
       await axios.patch(
         `${API_BASE_URL}/videos/${videoB.id}`,
@@ -406,7 +418,7 @@ export default function SyncVisualizerPage() {
           calibration_method: 'manual_studio',
           calibration_status: 'manually_verified'
         },
-        { headers: adminKey ? { 'x-admin-key': adminKey } : {} }
+        { headers: { 'x-admin-key': adminKey } }
       );
 
       setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 검증 카운트 증가)`);
@@ -415,6 +427,17 @@ export default function SyncVisualizerPage() {
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (err: any) {
       console.error('Failed to save offset', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요:');
+        if (retryKey) {
+          localStorage.setItem('admin_key', retryKey.trim());
+          setIsAdminMode(true);
+          handleSaveFineTuneOffset();
+          return;
+        }
+      }
       alert(`저장 실패: ${err?.response?.data?.detail || err.message}`);
     } finally {
       setIsSavingOffset(false);
@@ -672,6 +695,31 @@ export default function SyncVisualizerPage() {
             title="Refresh Sync Data"
           >
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
+          </button>
+          <button 
+            onClick={() => {
+              if (isAdminMode) {
+                if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
+                  localStorage.removeItem('admin_key');
+                  setIsAdminMode(false);
+                }
+              } else {
+                const key = window.prompt('Admin Key를 입력해주세요:');
+                if (key) {
+                  localStorage.setItem('admin_key', key.trim());
+                  setIsAdminMode(true);
+                }
+              }
+            }}
+            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+              isAdminMode 
+                ? 'bg-indigo-600/90 hover:bg-indigo-500 border-indigo-400 text-white' 
+                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-gray-400 hover:text-white'
+            }`}
+            title={isAdminMode ? 'Admin 로그인 됨 (클릭하여 로그아웃)' : 'Admin Key 입력'}
+          >
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>{isAdminMode ? 'Admin' : 'Login'}</span>
           </button>
         </div>
       </div>
