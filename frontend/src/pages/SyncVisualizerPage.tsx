@@ -908,11 +908,11 @@ export default function SyncVisualizerPage() {
                           const found = graphData?.videos?.find(v => v.id === targetId);
                           if (found) setVideoA(found);
                         }}
-                        className="bg-slate-800 text-sky-300 px-2 py-1 rounded-lg border border-sky-500/30 text-xs font-bold focus:outline-none focus:border-sky-400 w-full max-w-[220px] truncate cursor-pointer hover:bg-slate-750"
+                        className="bg-slate-800 text-sky-300 px-2 py-1 rounded-lg border border-sky-500/30 text-xs font-bold focus:outline-none focus:border-sky-400 w-full max-w-[260px] truncate cursor-pointer hover:bg-slate-750"
                       >
                         {graphData?.videos?.map(v => (
                           <option key={`opt-a-${v.id}`} value={v.id} className="bg-slate-900 text-white">
-                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.members?.join(', ') || v.title.slice(0, 20)}
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.title}
                           </option>
                         ))}
                       </select>
@@ -947,7 +947,7 @@ export default function SyncVisualizerPage() {
                   </div>
 
                   <p className="text-[11px] text-gray-300 truncate font-semibold">
-                    {videoA?.title}
+                    <span className="text-sky-400 font-mono font-bold mr-1">#{videoA?.id}</span> {videoA?.title}
                   </p>
                 </div>
 
@@ -968,11 +968,11 @@ export default function SyncVisualizerPage() {
                           const found = graphData?.videos?.find(v => v.id === targetId);
                           if (found) setVideoB(found);
                         }}
-                        className="bg-slate-800 text-twice-magenta px-2 py-1 rounded-lg border border-twice-magenta/30 text-xs font-bold focus:outline-none focus:border-twice-magenta w-full max-w-[220px] truncate cursor-pointer hover:bg-slate-750"
+                        className="bg-slate-800 text-twice-magenta px-2 py-1 rounded-lg border border-twice-magenta/30 text-xs font-bold focus:outline-none focus:border-twice-magenta w-full max-w-[260px] truncate cursor-pointer hover:bg-slate-750"
                       >
                         {graphData?.videos?.map(v => (
                           <option key={`opt-b-${v.id}`} value={v.id} className="bg-slate-900 text-white">
-                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.members?.join(', ') || v.title.slice(0, 20)}
+                            {v.is_master ? '🏆 [마스터] ' : ''}#{v.id} {v.title}
                           </option>
                         ))}
                       </select>
@@ -1189,11 +1189,12 @@ export default function SyncVisualizerPage() {
                       }`}
                     >
                       <div className="flex items-center justify-between text-[11px] font-bold">
-                        <span className="flex items-center gap-1 truncate max-w-[200px] text-white">
+                        <span className="flex items-center gap-1.5 truncate max-w-[240px] text-white">
                           <span className="w-4 h-4 rounded-full bg-slate-800 text-twice-apricot flex items-center justify-center text-[9px] font-mono">
                             {idx + 1}
                           </span>
-                          {v.members?.join(', ') || `#${v.id}`}
+                          <span className="text-purple-400 font-mono font-bold">#{v.id}</span>
+                          <span className="truncate">{v.title}</span>
                         </span>
                         <span className="text-gray-400 font-mono text-[9px]">
                           {formatTime(vSeek)}
@@ -1212,6 +1213,9 @@ export default function SyncVisualizerPage() {
                       </div>
 
                       <p className="text-[10px] text-gray-400 truncate">
+                        {v.members && v.members.length > 0 && (
+                          <span className="text-twice-apricot mr-1.5 font-semibold">[{v.members.join(', ')}]</span>
+                        )}
                         {v.title}
                       </p>
                     </div>
@@ -1230,6 +1234,7 @@ export default function SyncVisualizerPage() {
                     <>
                       <div className="flex items-center justify-between">
                         <h3 className="text-sm font-bold text-white line-clamp-1">
+                          <span className="text-twice-magenta font-mono font-bold mr-1.5">#{target.id}</span>
                           {target.title}
                         </h3>
                         <Link
@@ -1273,7 +1278,7 @@ export default function SyncVisualizerPage() {
                   이 시점에 동시 촬영된 영상이 없습니다.
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[300px] overflow-y-auto pr-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5 max-h-[320px] overflow-y-auto pr-1">
                   {overlappingVideos.map((v) => {
                     const isDeckA = videoA?.id === v.id;
                     const isDeckB = videoB?.id === v.id;
@@ -1296,7 +1301,7 @@ export default function SyncVisualizerPage() {
                         }`}
                       >
                         {/* Thumbnail */}
-                        <div className="w-14 h-9 rounded-lg overflow-hidden bg-black flex-shrink-0 relative">
+                        <div className="w-16 h-10 rounded-lg overflow-hidden bg-black flex-shrink-0 relative">
                           <img
                             src={`https://img.youtube.com/vi/${v.youtube_id}/mqdefault.jpg`}
                             alt={v.title}
@@ -1310,16 +1315,13 @@ export default function SyncVisualizerPage() {
                         {/* Details */}
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
-                            <span className="text-[10px] font-black text-white truncate max-w-[90px]">
-                              {v.members && v.members.length > 0 ? (
-                                <span className="text-twice-apricot">{v.members.join(', ')}</span>
-                              ) : (
-                                <span>#{v.id}</span>
-                              )}
+                            <span className="text-[10px] font-black text-white truncate max-w-[120px] flex items-center gap-1">
+                              <span className="text-purple-400 font-mono">#{v.id}</span>
+                              <span className="truncate">{v.title}</span>
                             </span>
                             
                             {/* Deck Assign Badges */}
-                            <div className="flex items-center gap-1 font-mono">
+                            <div className="flex items-center gap-1 font-mono flex-shrink-0">
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1351,8 +1353,11 @@ export default function SyncVisualizerPage() {
                             </div>
                           </div>
 
-                          <div className="flex items-center justify-between gap-1 mt-0.5">
-                            <p className="text-[9px] text-gray-400 truncate flex-1">
+                          <div className="flex items-center justify-between gap-1 mt-0.5 text-[9px]">
+                            <p className="text-gray-400 truncate flex-1">
+                              {v.members && v.members.length > 0 && (
+                                <span className="text-twice-apricot mr-1 font-semibold">[{v.members.join(', ')}]</span>
+                              )}
                               {v.title}
                             </p>
                             {isDrift ? (
