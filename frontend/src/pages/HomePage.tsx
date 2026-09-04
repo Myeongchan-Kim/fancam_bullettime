@@ -252,55 +252,7 @@ const HomePage = () => {
       {showNewVideoModal && <NewVideoSuggestionModal songs={songs} concerts={concerts} onClose={() => setShowNewVideoModal(false)} />}
       {showAdminModal && <AdminPendingContributionsModal adminKey={adminKey} songs={songs} concerts={concerts} onClose={() => { setShowAdminModal(false); fetchVideos(0, false); }} />}
 
-      {/* Huge Interactive Map Section with Sidebar Lists */}
-      <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
-
-        <div className="w-full max-w-[95rem] px-10 flex items-center justify-center overflow-visible">
-          {/* Center Map */}
-          <div className="flex-1 flex justify-center overflow-visible">
-            <StageMap 
-              angle="Unknown" 
-              videos={mappedVideos} 
-              sizeClass="w-full max-w-[45rem]"
-            />
-          </div>
-        </div>
-        {/* Setlist Range Slider at the bottom of Hero */}
-        <div className="w-full mt-10 mb-20">
-          <SetlistSlider 
-            songs={songs} 
-            concerts={concerts}
-            selectedConcert={selectedConcert}
-            onConcertChange={(val) => {
-              setSearchParams(prev => {
-                if (val) {
-                  prev.set('concert', val);
-                  // 🛡️ 콘서트 변경 시 필터 범위 초기화 (레이스 컨디션 및 범위 오류 방지)
-                  prev.set('start', '1');
-                  prev.delete('end'); 
-                } else {
-                  prev.delete('concert');
-                  prev.set('start', '1');
-                  prev.delete('end');
-                }
-                return prev;
-              }, { replace: true });
-            }}
-            startOrder={startOrder} 
-            endOrder={endOrder} 
-            onChange={(s, e) => {
-              setSearchParams(prev => {
-                prev.set('start', s.toString());
-                prev.set('end', e.toString());
-                return prev;
-              }, { replace: true });
-            }} 
-          />
-        </div>
-      </section>
-
-      {/* Featured Multi-Angle Section */}
+      {/* Featured Multi-Angle Section (Top of Page) */}
       {(!searchQuery && !selectedConcert) && (
         <section className="space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-700">
           <div className="flex items-center justify-between border-b border-slate-800 pb-3">
@@ -380,8 +332,57 @@ const HomePage = () => {
                 </div>
               </Link>
             ))}
-          </div>        </section>
+          </div>
+        </section>
       )}
+
+      {/* Huge Interactive Map Section with Sidebar Lists & Concert/Setlist Selector */}
+      <section className="flex flex-col items-center justify-center py-10 bg-slate-900/30 rounded-[3rem] border border-slate-800/50 shadow-2xl relative overflow-visible text-white">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-full h-full bg-[radial-gradient(circle_at_center,_var(--color-twice-magenta)_0%,_transparent_70%)] opacity-[0.03] pointer-events-none"></div>
+
+        <div className="w-full max-w-[95rem] px-10 flex items-center justify-center overflow-visible">
+          {/* Center Map */}
+          <div className="flex-1 flex justify-center overflow-visible">
+            <StageMap 
+              angle="Unknown" 
+              videos={mappedVideos} 
+              sizeClass="w-full max-w-[45rem]"
+            />
+          </div>
+        </div>
+        {/* Setlist Range Slider at the bottom of Map */}
+        <div className="w-full mt-10 mb-20">
+          <SetlistSlider 
+            songs={songs} 
+            concerts={concerts}
+            selectedConcert={selectedConcert}
+            onConcertChange={(val) => {
+              setSearchParams(prev => {
+                if (val) {
+                  prev.set('concert', val);
+                  // 🛡️ 콘서트 변경 시 필터 범위 초기화 (레이스 컨디션 및 범위 오류 방지)
+                  prev.set('start', '1');
+                  prev.delete('end'); 
+                } else {
+                  prev.delete('concert');
+                  prev.set('start', '1');
+                  prev.delete('end');
+                }
+                return prev;
+              }, { replace: true });
+            }}
+            startOrder={startOrder} 
+            endOrder={endOrder} 
+            onChange={(s, e) => {
+              setSearchParams(prev => {
+                prev.set('start', s.toString());
+                prev.set('end', e.toString());
+                return prev;
+              }, { replace: true });
+            }} 
+          />
+        </div>
+      </section>
 
       {/* Video Grid Section */}
       <div className="space-y-6">
