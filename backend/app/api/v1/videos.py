@@ -367,4 +367,54 @@ def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/videos/{video_id}/ai-sync")
+def trigger_video_ai_sync(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """
+    2-Stage Multi-Modal Precision Sync (Gemini Vision 1st Stage + 3-Point Audio 2nd Stage)
+    """
+    from scripts.precision_sync_calibrator import calibrate_video_2stage_visual_and_audio
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    master_video = db.query(Video).filter(
+        Video.concert_id == video.concert_id,
+        Video.duration > 3600
+    ).first()
+    if not master_video:
+        raise HTTPException(status_code=400, detail="Master full concert video not found for this concert")
+        
+    prev_offset = video.sync_offset or 0.0
+    try:
+        success = calibrate_video_2stage_visual_and_audio(db, video, master_video)
+        if not success:
+            raise HTTPException(status_code=400, detail="AI Precision Sync failed to lock offset with sufficient confidence")
+            
+        db.refresh(video)
+        return {
+            "status": "success",
+            "video_id": video.id,
+            "previous_offset": prev_offset,
+            "new_offset": video.sync_offset,
+            "delta": round(video.sync_offset - prev_offset, 2),
+            "calibration_count": video.calibration_count,
+            "calibration_status": video.calibration_status,
+            "calibration_method": video.calibration_method,
+            "calibrated_at": video.calibrated_at.isoformat() if video.calibrated_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"AI sync failed for video {video_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI Sync 실행 중 오류: {str(e)} (Vercel Serverless 환경에서는 로컬 백엔드 또는 워커 컨테이너가 필요할 수 있습니다.)"
+        )
+
+
 

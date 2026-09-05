@@ -226,7 +226,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
             </div>
             <div>
               <h2 className="text-lg font-black text-white flex items-center gap-2 tracking-tight">
-                구간별 마스터 타임라인 동기화 (Piecewise Sync Manager)
+                구간 SPLIT 캘리브레이터 (Piecewise Sync Manager)
               </h2>
               <p className="text-xs text-gray-400 truncate max-w-xl">
                 [{video.id}] {video.title} ({formatTime(video.duration)})

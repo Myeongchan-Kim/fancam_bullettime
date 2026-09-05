@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import { 
   GitBranch, AlertTriangle, CheckCircle2, Split, 
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
-  X, Volume2, Maximize2, ChevronDown, Layers,
+  X, Maximize2, ChevronDown, Layers,
   Sliders, LayoutGrid, Columns, Square, Save, RotateCcw,
   ShieldCheck, MoveHorizontal, ArrowLeftRight
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import { API_BASE_URL } from '../constants';
 import { Concert, SyncGraphData, SyncGraphVideoNode, Video } from '../types';
 import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
+import { useGlobalAudio } from '../context/AudioContext';
 
 export default function SyncVisualizerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,20 +51,28 @@ export default function SyncVisualizerPage() {
   const isDraggingTimelineRef = useRef<boolean>(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  // Global exclusive audio management
+  const { isMuted, activeAudioSource, setActiveAudioSource } = useGlobalAudio();
+
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
-
-  // Audio source for multi-angle playback ('DECK_A' | 'DECK_B' | 'MUTE')
-  const [audioSource, setAudioSource] = useState<'DECK_A' | 'DECK_B' | 'MUTE'>('DECK_B');
 
   // In-Place Offset Fine-Tuning State (applied to Deck B)
   const [fineTuneDelta, setFineTuneDelta] = useState<number>(0);
   const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // AI 2-Stage Multi-Modal Precision Sync Modal State
+  const [isAiSyncModalOpen, setIsAiSyncModalOpen] = useState<boolean>(false);
+  const [isAiSyncing, setIsAiSyncing] = useState<boolean>(false);
+  const [aiSyncResult, setAiSyncResult] = useState<any>(null);
+  const [aiSyncError, setAiSyncError] = useState<string | null>(null);
+  const [aiSyncTargetVideo, setAiSyncTargetVideo] = useState<SyncGraphVideoNode | null>(null);
+
   // Full Calibrator Modals
   const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
   const [showSegmentModal, setShowSegmentModal] = useState<boolean>(false);
+  const [isLoadingCalibrator, setIsLoadingCalibrator] = useState<boolean>(false);
   const [calibratorVideo, setCalibratorVideo] = useState<Video | null>(null);
   const [allVideosForModal, setAllVideosForModal] = useState<Video[]>([]);
 
@@ -109,7 +118,10 @@ export default function SyncVisualizerPage() {
         setGraphData(data);
         if (data.videos && data.videos.length > 0) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
-          const second = data.videos.find(v => !v.is_master) || data.videos[1] || master;
+          const targetVideoId = parseInt(searchParams.get('video_id') || '0', 10);
+          const targetVideo = targetVideoId ? data.videos.find(v => v.id === targetVideoId) : null;
+          const second = targetVideo || data.videos.find(v => !v.is_master) || data.videos[1] || master;
+          
           setVideoA(master);
           setVideoB(second);
           setSelectedTimeCursor(second.master_start_time || master.master_start_time || 0);
@@ -125,7 +137,10 @@ export default function SyncVisualizerPage() {
 
   useEffect(() => {
     if (selectedConcertId) {
-      setSearchParams({ concert_id: selectedConcertId.toString() });
+      const currentVideoId = searchParams.get('video_id');
+      const params: any = { concert_id: selectedConcertId.toString() };
+      if (currentVideoId) params.video_id = currentVideoId;
+      setSearchParams(params);
       loadSyncGraph(selectedConcertId);
     }
   }, [selectedConcertId]);
@@ -444,15 +459,65 @@ export default function SyncVisualizerPage() {
     }
   };
 
+  // AI 2-Stage Multi-Modal Precision Sync Trigger Handler
+  const handleTriggerAiSync = async (targetVideo: SyncGraphVideoNode | null) => {
+    if (!targetVideo || targetVideo.is_master) return;
+    setAiSyncTargetVideo(targetVideo);
+    setIsAiSyncModalOpen(true);
+    setIsAiSyncing(true);
+    setAiSyncResult(null);
+    setAiSyncError(null);
+
+    try {
+      let adminKey = localStorage.getItem('admin_key') || '';
+      if (!adminKey) {
+        const inputKey = window.prompt('AI 2-Stage 정밀 싱크를 실행하려면 Admin Key가 필요합니다:');
+        if (!inputKey) {
+          setIsAiSyncModalOpen(false);
+          setIsAiSyncing(false);
+          return;
+        }
+        adminKey = inputKey.trim();
+        localStorage.setItem('admin_key', adminKey);
+        setIsAdminMode(true);
+      }
+
+      const res = await axios.post(
+        `${API_BASE_URL}/videos/${targetVideo.id}/ai-sync`,
+        {},
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      setAiSyncResult(res.data);
+      setFineTuneDelta(0);
+      await loadSyncGraph(selectedConcertId);
+    } catch (err: any) {
+      console.error('AI Sync failed', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
+      } else {
+        setAiSyncError(err?.response?.data?.detail || err?.message || 'AI 정밀 싱크 실행 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setIsAiSyncing(false);
+    }
+  };
+
   // Open Full Calibrator Modal
   const handleOpenCalibrator = async (video: SyncGraphVideoNode, isSegment: boolean = false) => {
+    setIsLoadingCalibrator(true);
     try {
-      const res = await fetch(`${API_BASE_URL}/videos/${video.id}/full`);
+      const [res, allRes] = await Promise.all([
+        fetch(`${API_BASE_URL}/videos/${video.id}/full`),
+        fetch(`${API_BASE_URL}/videos?concert_id=${selectedConcertId}&limit=100`)
+      ]);
+
       if (!res.ok) throw new Error('Failed to fetch full video details');
       const data = await res.json();
       setCalibratorVideo(data);
 
-      const allRes = await fetch(`${API_BASE_URL}/videos?concert_id=${selectedConcertId}&limit=100`);
       if (allRes.ok) {
         const allData = await allRes.json();
         setAllVideosForModal(allData.videos || []);
@@ -466,6 +531,8 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('Failed to open calibrator', err);
       alert(`캘리브레이터 로드 실패: ${err.message}`);
+    } finally {
+      setIsLoadingCalibrator(false);
     }
   };
 
@@ -533,21 +600,27 @@ export default function SyncVisualizerPage() {
     } catch (e) {}
   }, [fineTuneDelta]);
 
-  // 3. Audio Source Management
+  // 3. Audio Source Management (Global exclusive audio: strictly at most ONE unmuted, or ALL muted)
   useEffect(() => {
     try {
-      if (audioSource === 'DECK_A') {
-        playerA?.unMute();
-        playerB?.mute();
-      } else if (audioSource === 'DECK_B') {
-        playerB?.unMute();
+      if (isMuted) {
         playerA?.mute();
+        playerB?.mute();
       } else {
-        playerA?.mute();
-        playerB?.mute();
+        if (activeAudioSource === 'DECK_A') {
+          playerA?.unMute();
+          playerB?.mute();
+        } else if (activeAudioSource === 'DECK_B') {
+          playerB?.unMute();
+          playerA?.mute();
+        } else {
+          // If activeAudioSource is something else, default to Deck B
+          playerB?.unMute();
+          playerA?.mute();
+        }
       }
     } catch (e) {}
-  }, [audioSource, playerA, playerB]);
+  }, [isMuted, activeAudioSource, playerA, playerB]);
 
   // 4. Stable Pairwise Sync Loop (Adopting PairwiseTimelineCalibratorModal algorithm)
   useEffect(() => {
@@ -697,7 +770,7 @@ export default function SyncVisualizerPage() {
             <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
           </button>
           <button 
-            onClick={() => {
+            onClick={async () => {
               if (isAdminMode) {
                 if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
                   localStorage.removeItem('admin_key');
@@ -706,8 +779,19 @@ export default function SyncVisualizerPage() {
               } else {
                 const key = window.prompt('Admin Key를 입력해주세요:');
                 if (key) {
-                  localStorage.setItem('admin_key', key.trim());
-                  setIsAdminMode(true);
+                  const trimmed = key.trim();
+                  try {
+                    await axios.post(
+                      `${API_BASE_URL}/admin/verify`,
+                      {},
+                      { headers: { 'x-admin-key': trimmed } }
+                    );
+                    localStorage.setItem('admin_key', trimmed);
+                    setIsAdminMode(true);
+                    alert('Admin 인증에 성공했습니다!');
+                  } catch (err) {
+                    alert('Admin Key가 올바르지 않습니다.');
+                  }
                 }
               }
             }}
@@ -1072,8 +1156,12 @@ export default function SyncVisualizerPage() {
                                 : `✅ 검증완료 (${cam.calibration_count || 1}회)`
                             }`}
                           >
-                            <span className="text-[7px] font-mono font-black text-white px-0.5 truncate pointer-events-none">
-                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                            <span className={`font-mono font-black text-white pointer-events-none select-none ${
+                              isDeckA || isDeckB || isMaster || isUncalibrated
+                                ? 'text-[8px]'
+                                : 'text-[7.5px] rotate-90 whitespace-nowrap tracking-tighter'
+                            }`}>
+                              {isDeckA ? 'A' : isDeckB ? 'B' : isMaster ? 'M' : isUncalibrated ? '⚠️' : `#${cam.id}`}
                             </span>
                           </div>
                         );
@@ -1179,16 +1267,14 @@ export default function SyncVisualizerPage() {
               {/* Right Group: Audio & Time Indicator */}
               <div className="flex items-center gap-3 text-xs font-mono">
                 <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1.5 rounded-xl border border-slate-700">
-                  <Volume2 className="w-3.5 h-3.5 text-twice-apricot" />
-                  <span className="text-gray-400 text-[11px]">오디오:</span>
+                  <span className="text-gray-400 text-[11px]">오디오 출력:</span>
                   <select
-                    value={audioSource}
-                    onChange={(e) => setAudioSource(e.target.value as any)}
-                    className="bg-transparent text-white text-[11px] font-bold focus:outline-none cursor-pointer"
+                    value={activeAudioSource === 'DECK_A' ? 'DECK_A' : 'DECK_B'}
+                    onChange={(e) => setActiveAudioSource(e.target.value)}
+                    className="bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer text-twice-apricot"
                   >
-                    <option value="DECK_B" className="bg-slate-900">Deck B (우측) 소리</option>
-                    <option value="DECK_A" className="bg-slate-900">Deck A (좌측) 소리</option>
-                    <option value="MUTE" className="bg-slate-900">음소거</option>
+                    <option value="DECK_B" className="bg-slate-900 text-white">Deck B (우측) 단일 소리</option>
+                    <option value="DECK_A" className="bg-slate-900 text-white">Deck A (좌측) 단일 소리</option>
                   </select>
                 </div>
 
@@ -1256,7 +1342,7 @@ export default function SyncVisualizerPage() {
                           setPlayerA(e.target);
                           const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
                           e.target.seekTo(startA, true);
-                          if (audioSource === 'DECK_A') e.target.unMute();
+                          if (!isMuted && activeAudioSource === 'DECK_A') e.target.unMute();
                           else e.target.mute();
                         }}
                       />
@@ -1321,7 +1407,7 @@ export default function SyncVisualizerPage() {
                           setPlayerB(e.target);
                           const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
                           e.target.seekTo(startB, true);
-                          if (audioSource === 'DECK_B') e.target.unMute();
+                          if (!isMuted && activeAudioSource === 'DECK_B') e.target.unMute();
                           else e.target.mute();
                         }}
                       />
@@ -1466,10 +1552,19 @@ export default function SyncVisualizerPage() {
                           )}
                           <button
                             onClick={() => handleOpenCalibrator(videoB, videoB.segments && videoB.segments.length > 0)}
-                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all"
-                            title="정밀 오디오 파형 캘리브레이터 열기"
+                            disabled={isLoadingCalibrator}
+                            className="px-3 py-1.5 bg-twice-magenta/20 hover:bg-twice-magenta/30 text-twice-magenta rounded-xl border border-twice-magenta/40 flex items-center gap-1.5 font-bold text-xs transition-all disabled:opacity-50"
+                            title="구간 SPLIT 캘리브레이터 열기"
                           >
-                            <ShieldCheck className="w-3.5 h-3.5" /> 정밀 캘리브레이터
+                            <ShieldCheck className="w-3.5 h-3.5" /> 구간 SPLIT 캘리브레이터
+                          </button>
+                          <button
+                            onClick={() => handleTriggerAiSync(videoB)}
+                            disabled={isAiSyncing}
+                            className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 text-xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                            title="Gemini Vision 화면 분석 + 3-Point 오디오 2-Stage 정밀 싱크 실행"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" /> 🤖 AI 정밀 싱크
                           </button>
                         </div>
                       </div>
@@ -1526,7 +1621,7 @@ export default function SyncVisualizerPage() {
                       <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800">
                         <iframe
                           key={`quad-${v.id}-${vSeek}`}
-                          src={`https://www.youtube.com/embed/${v.youtube_id}?start=${vSeek}&autoplay=1&mute=${(audioSource === 'DECK_B' && isSelectedB) || (audioSource === 'DECK_A' && isSelectedA) ? '0' : '1'}`}
+                          src={`https://www.youtube.com/embed/${v.youtube_id}?start=${vSeek}&autoplay=1&mute=${!isMuted && ((activeAudioSource === 'DECK_B' && isSelectedB) || (activeAudioSource === 'DECK_A' && isSelectedA)) ? '0' : '1'}`}
                           title={v.title}
                           className="w-full h-full"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
@@ -1740,6 +1835,131 @@ export default function SyncVisualizerPage() {
             loadSyncGraph(selectedConcertId);
           }}
         />
+      )}
+
+      {/* ================= CALIBRATOR LOADING SPINNER MODAL ================= */}
+      {isLoadingCalibrator && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-slate-900/90 border border-twice-magenta/40 rounded-2xl p-5 max-w-xs w-full shadow-2xl shadow-twice-magenta/20 flex flex-col items-center text-center gap-3">
+            <div className="relative w-10 h-10 flex items-center justify-center">
+              <div className="absolute inset-0 rounded-full border-2 border-twice-magenta/20"></div>
+              <div className="absolute inset-0 rounded-full border-2 border-t-twice-magenta border-r-twice-apricot animate-spin"></div>
+              <Sparkles className="w-4 h-4 text-twice-magenta animate-pulse" />
+            </div>
+            <div>
+              <p className="text-sm font-bold text-white">캘리브레이터 준비 중</p>
+              <p className="text-xs text-gray-400 mt-0.5">영상 메타데이터 및 콘서트 목록 로드 중...</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= AI 2-STAGE SYNC SPINNER MODAL ================= */}
+      {isAiSyncModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-emerald-500/30 rounded-3xl p-6 max-w-md w-full shadow-2xl shadow-emerald-950/80 relative text-center">
+            
+            {/* Close button if not running */}
+            {!isAiSyncing && (
+              <button
+                onClick={() => setIsAiSyncModalOpen(false)}
+                className="absolute top-4 right-4 text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+
+            {/* Target Video Info */}
+            <div className="mb-4">
+              <span className="px-2.5 py-1 bg-emerald-950 border border-emerald-500/40 text-emerald-400 text-xs rounded-full font-mono font-bold">
+                Video #{aiSyncTargetVideo?.id}
+              </span>
+              <h3 className="text-base font-bold text-white mt-2 truncate">
+                {aiSyncTargetVideo?.title}
+              </h3>
+            </div>
+
+            {/* Running State with Spinner */}
+            {isAiSyncing && (
+              <div className="py-6 flex flex-col items-center justify-center space-y-4">
+                <div className="relative">
+                  <div className="w-16 h-16 rounded-full border-4 border-slate-700 border-t-twice-magenta border-r-twice-apricot animate-spin" />
+                  <Sparkles className="w-6 h-6 text-emerald-400 absolute inset-0 m-auto animate-pulse" />
+                </div>
+                
+                <div className="space-y-1.5">
+                  <h4 className="text-sm font-bold text-white">AI 2-Stage 정밀 싱크 분석 중...</h4>
+                  <p className="text-xs text-gray-400">
+                    Stage 1: Gemini Vision 화면 의상/안무 분석<br/>
+                    Stage 2: 3-Point 오디오 서브세컨드 파형 정밀 정렬
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Success Result State */}
+            {!isAiSyncing && aiSyncResult && (
+              <div className="py-4 space-y-4">
+                <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto text-emerald-400">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-emerald-300">AI 정밀 싱크 성공!</h4>
+                  <p className="text-xs text-gray-400">
+                    오프셋이 마스터 영상에 0.01초 단위로 정확히 잠겼습니다.
+                  </p>
+                </div>
+
+                <div className="bg-slate-950/80 rounded-2xl p-3 border border-slate-800 text-left space-y-2 text-xs font-mono">
+                  <div className="flex justify-between items-center text-gray-400">
+                    <span>이전 오프셋:</span>
+                    <span className="text-gray-300">{aiSyncResult.previous_offset}s</span>
+                  </div>
+                  <div className="flex justify-between items-center text-emerald-400 font-bold">
+                    <span>보정 오프셋:</span>
+                    <span>{aiSyncResult.new_offset}s (Δ {aiSyncResult.delta >= 0 ? `+${aiSyncResult.delta}` : aiSyncResult.delta}s)</span>
+                  </div>
+                  <div className="flex justify-between items-center text-gray-400">
+                    <span>보정 횟수:</span>
+                    <span className="text-cyan-300">{aiSyncResult.calibration_count}회차 ({aiSyncResult.calibration_status})</span>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setIsAiSyncModalOpen(false)}
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-950"
+                >
+                  확인 및 스튜디오로 복귀
+                </button>
+              </div>
+            )}
+
+            {/* Error State */}
+            {!isAiSyncing && aiSyncError && (
+              <div className="py-4 space-y-4">
+                <div className="w-12 h-12 bg-rose-500/20 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto text-rose-400">
+                  <AlertTriangle className="w-7 h-7" />
+                </div>
+
+                <div className="space-y-1">
+                  <h4 className="text-sm font-bold text-rose-300">AI 정밀 싱크 실패</h4>
+                  <p className="text-xs text-rose-200/80 break-words">
+                    {aiSyncError}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsAiSyncModalOpen(false)}
+                  className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold text-xs transition-all"
+                >
+                  닫기
+                </button>
+              </div>
+            )}
+
+          </div>
+        </div>
       )}
 
     </div>

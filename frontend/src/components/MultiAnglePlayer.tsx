@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-import { Maximize2, ExternalLink, Volume2, VolumeX } from 'lucide-react';
+import { Maximize2, ExternalLink } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime } from '../utils/timelineSync';
+import { useGlobalAudio } from '../context/AudioContext';
 
 export interface MultiAnglePlayerRef {
   getCurrentConcertTime: () => number;
@@ -20,11 +21,11 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const initialTime = parseInt(queryParams.get('t') || '0', 10);
+  const { isMuted, setActiveAudioSource } = useGlobalAudio();
 
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,23 +142,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   };
 
-  const toggleMute = () => {
-    const masterPlayer = players[masterId];
-    if (masterPlayer && typeof masterPlayer.unMute === 'function' && masterPlayer.getIframe()) {
-      if (isMuted) {
-        masterPlayer.unMute();
-        setIsMuted(false);
-      } else {
-        masterPlayer.mute();
-        setIsMuted(true);
-      }
-    } else {
-      setIsMuted(!isMuted);
+  // Reflect master video to global active audio label
+  useEffect(() => {
+    if (masterVideo) {
+      setActiveAudioSource(`Video #${masterVideo.id}`);
     }
-  };
+  }, [masterVideo?.id]);
 
   useEffect(() => {
-    // Enforce audio routing: Master is controlled by isMuted, Slaves are always muted
+    // Enforce audio routing: Only master player is unmuted (when !isMuted), all others always muted
     Object.keys(players).forEach(idStr => {
       const id = parseInt(idStr);
       const player = players[id];
@@ -262,29 +255,6 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 className="w-full h-full absolute inset-0"
               />
             )}
-
-            {/* Tap to Unmute / Mute Toggle Button on Master Player */}
-            <button
-              onClick={toggleMute}
-              className={`absolute top-4 right-4 z-20 px-3 py-1.5 rounded-full text-xs font-black flex items-center gap-1.5 shadow-xl transition-all duration-300 backdrop-blur-md border ${
-                isMuted 
-                  ? 'bg-twice-magenta/90 text-white border-white/20 hover:scale-105 animate-pulse' 
-                  : 'bg-slate-900/80 text-gray-300 border-slate-700 hover:text-white hover:bg-slate-800'
-              }`}
-              title={isMuted ? "소리 켜기" : "음소거"}
-            >
-              {isMuted ? (
-                <>
-                  <VolumeX className="w-4 h-4 text-white" />
-                  <span>소리 켜기 (Tap to Unmute)</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-4 h-4 text-twice-magenta" />
-                  <span>음소거</span>
-                </>
-              )}
-            </button>
           </div>
           <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
             <span className="text-twice-magenta">{masterVideo?.members?.join(", ") || 'No Members Tagged'}</span>

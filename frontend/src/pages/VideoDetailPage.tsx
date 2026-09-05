@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
@@ -232,12 +232,12 @@ const VideoDetailPage = () => {
                       구간 Sync {video.sync_segments && video.sync_segments.length > 0 ? `(${video.sync_segments.length})` : ''}
                     </button>
                     <button 
-                      onClick={() => setShowPairwiseCalibrator(true)} 
+                      onClick={() => navigate(`/sync-tree?concert_id=${video.concert_id || 2}&video_id=${video.id}`)} 
                       className="flex items-center gap-2 bg-gradient-to-r from-twice-magenta/20 to-twice-apricot/20 hover:from-twice-magenta/30 hover:to-twice-apricot/30 text-white border border-twice-magenta/40 px-4 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all shadow-lg active:scale-95"
-                      title="다른 겹치는 직캠과 1:1로 비교하며 0.05초 단위 미세 싱크 맞추기"
+                      title="Sync Tree (멀티 데크 정밀 캘리브레이터 및 마스터 타임라인 시각화)"
                     >
-                      <Sliders className="h-4 w-4 text-twice-apricot" />
-                      1:1 Sync 캘리브레이터
+                      <GitBranch className="h-4 w-4 text-twice-magenta" />
+                      Sync Tree
                     </button>
                     {isAdminMode && (
                       <button onClick={() => setIsEditing(true)} className="p-3 bg-slate-700 hover:bg-twice-magenta rounded-xl transition-all text-white shadow-lg">
@@ -299,14 +299,24 @@ const VideoDetailPage = () => {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
-                      <Clock className="h-3 w-3"/> Concert Offset (sec)
-                      {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
-                        <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
-                          <Info className="h-3 w-3 text-twice-magenta" />
-                        </button>
-                      )}
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1 flex items-center gap-2">
+                        <Clock className="h-3 w-3"/> Concert Offset (sec)
+                        {video.concert && video.concert.setlist && video.concert.setlist.length > 0 && (
+                          <button onClick={() => setShowTimelineInfo(true)} className="p-1 hover:bg-slate-700 rounded transition-colors ml-1">
+                            <Info className="h-3 w-3 text-twice-magenta" />
+                          </button>
+                        )}
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowPairwiseCalibrator(true)}
+                        className="text-[10px] text-gray-400 hover:text-twice-apricot flex items-center gap-1 font-bold underline transition-colors"
+                        title="구버전 1:1 Pairwise 캘리브레이터 (Archive)"
+                      >
+                        <Sliders className="h-3 w-3" /> 구버전 1:1 캘리브레이터
+                      </button>
+                    </div>
                     <input type="number" step="0.01" min="-9999" className="w-full bg-slate-900 border border-slate-700 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-twice-magenta text-white shadow-inner"
                       placeholder="e.g. -10.5 if starts earlier"
                       value={editData.sync_offset} onChange={(e) => setEditData({...editData, sync_offset: e.target.value})} />

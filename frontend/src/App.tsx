@@ -6,8 +6,10 @@ import AboutPage from './pages/AboutPage';
 import AdminDashboardPage from './pages/AdminDashboardPage';
 import PresentationPage from './pages/PresentationPage';
 import SyncVisualizerPage from './pages/SyncVisualizerPage';
-import { Candy, LayoutDashboard, GitBranch } from 'lucide-react';
+import { Candy, LayoutDashboard } from 'lucide-react';
 import { API_BASE_URL } from './constants';
+import { GlobalAudioProvider } from './context/AudioContext';
+import { GlobalAudioButton } from './components/GlobalAudioButton';
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -21,42 +23,41 @@ function App() {
   const adminKey = localStorage.getItem('admin_key');
 
   return (
-    <Router>
-      <ScrollToTop />
-      <div className="min-h-screen flex flex-col">
-        {/* Navigation Header */}
-        <nav className="z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between h-16">
-              <Link to="/" className="flex items-center space-x-2">
-                <Candy className="h-8 w-8 text-twice-magenta" />
-                <div className="flex flex-col">
-                  <span className="text-base sm:text-2xl font-black uppercase tracking-tighter italic twice-text-gradient leading-tight">
-                    <span className="sm:hidden">TWICE 360° ARCHIVE</span>
-                    <span className="hidden sm:inline">TWICE World Tour 360° Fancam Archive</span>
-                  </span>
-                  {import.meta.env.DEV && (
-                    <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none ml-1 hidden sm:block">
-                      Dev Mode • API: {API_BASE_URL.replace('http://', '').replace('https://', '')}
+    <GlobalAudioProvider>
+      <Router>
+        <ScrollToTop />
+        <div className="min-h-screen flex flex-col">
+          {/* Navigation Header */}
+          <nav className="z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-700">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+              <div className="flex items-center justify-between h-16">
+                <Link to="/" className="flex items-center space-x-2">
+                  <Candy className="h-8 w-8 text-twice-magenta" />
+                  <div className="flex flex-col">
+                    <span className="text-base sm:text-2xl font-black uppercase tracking-tighter italic twice-text-gradient leading-tight">
+                      <span className="sm:hidden">TWICE 360° ARCHIVE</span>
+                      <span className="hidden sm:inline">TWICE World Tour 360° Fancam Archive</span>
                     </span>
+                    {import.meta.env.DEV && (
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-widest leading-none ml-1 hidden sm:block">
+                        Dev Mode • API: {API_BASE_URL.replace('http://', '').replace('https://', '')}
+                      </span>
+                    )}
+                  </div>
+                </Link>
+                <div className="flex items-center space-x-3">
+                  <GlobalAudioButton />
+                  <Link to="/" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">Home</Link>
+                  <Link to="/about" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">About</Link>
+                  {adminKey && (
+                    <Link to="/admin" className="bg-slate-800 text-twice-apricot hover:bg-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all border border-twice-apricot/20">
+                      <LayoutDashboard className="h-4 w-4" /> Dashboard
+                    </Link>
                   )}
                 </div>
-              </Link>
-              <div className="flex items-center space-x-3">
-                <Link to="/" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">Home</Link>
-                <Link to="/sync-tree" className="text-twice-apricot hover:text-white px-3 py-2 text-sm font-bold flex items-center gap-1.5 bg-slate-800/80 rounded-xl border border-twice-apricot/30 transition-all shadow-sm">
-                  <GitBranch className="h-4 w-4 text-twice-magenta" /> Sync Tree
-                </Link>
-                <Link to="/about" className="text-gray-300 hover:text-white px-3 py-2 text-sm font-medium">About</Link>
-                {adminKey && (
-                  <Link to="/admin" className="bg-slate-800 text-twice-apricot hover:bg-slate-700 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest flex items-center gap-2 transition-all border border-twice-apricot/20">
-                    <LayoutDashboard className="h-4 w-4" /> Dashboard
-                  </Link>
-                )}
               </div>
             </div>
-          </div>
-        </nav>
+          </nav>
 
         {/* Main Content */}
         <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
@@ -86,6 +87,7 @@ function App() {
         </footer>
       </div>
     </Router>
+  </GlobalAudioProvider>
   );
 }
 

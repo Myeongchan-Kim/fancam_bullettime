@@ -66,6 +66,7 @@ export interface Video {
   view_count?: number;
   like_count?: number;
   created_at: string;
+  concert_id?: number | null;
   songs?: Song[];
   concert?: Concert;
   sync_segments?: VideoSyncSegment[];
