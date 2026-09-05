@@ -4,6 +4,7 @@ import { Maximize2, ExternalLink, Volume2, VolumeX } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime } from '../utils/timelineSync';
+import { useGlobalAudio } from '../context/AudioContext';
 
 export interface MultiAnglePlayerRef {
   getCurrentConcertTime: () => number;
@@ -20,11 +21,11 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const location = useLocation();
   const queryParams = new URLSearchParams(location.search);
   const initialTime = parseInt(queryParams.get('t') || '0', 10);
+  const { isMuted, toggleGlobalMute, setActiveAudioSource } = useGlobalAudio();
 
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isMuted, setIsMuted] = useState(true);
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -141,23 +142,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   };
 
-  const toggleMute = () => {
-    const masterPlayer = players[masterId];
-    if (masterPlayer && typeof masterPlayer.unMute === 'function' && masterPlayer.getIframe()) {
-      if (isMuted) {
-        masterPlayer.unMute();
-        setIsMuted(false);
-      } else {
-        masterPlayer.mute();
-        setIsMuted(true);
-      }
-    } else {
-      setIsMuted(!isMuted);
+  // Reflect master video to global active audio label
+  useEffect(() => {
+    if (masterVideo) {
+      setActiveAudioSource(`Video #${masterVideo.id}`);
     }
+  }, [masterVideo?.id]);
+
+  const toggleMute = () => {
+    toggleGlobalMute();
   };
 
   useEffect(() => {
-    // Enforce audio routing: Master is controlled by isMuted, Slaves are always muted
+    // Enforce audio routing: Only master player is unmuted (when !isMuted), all others always muted
     Object.keys(players).forEach(idStr => {
       const id = parseInt(idStr);
       const player = players[id];

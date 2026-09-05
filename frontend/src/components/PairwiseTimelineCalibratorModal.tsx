@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
+import { useGlobalAudio } from '../context/AudioContext';
 
 interface PairwiseTimelineCalibratorModalProps {
   currentVideo: Video;
@@ -52,10 +53,11 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const [initialTargetOffset, setInitialTargetOffset] = useState<number>(0);
 
   // Dual Player States
+  const { isMuted, setIsMuted } = useGlobalAudio();
   const [playerA, setPlayerA] = useState<YouTubePlayer | null>(null);
   const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [audioMode, setAudioMode] = useState<'A' | 'B' | 'BOTH' | 'MUTE'>('A');
+  const [audioTarget, setAudioTarget] = useState<'A' | 'B'>('A');
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [saveMessage, setSaveMessage] = useState<string>('');
@@ -385,25 +387,24 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     }
   };
 
-  // Audio Mode Management
+  // Audio Mode Management (Global exclusive audio: at most ONE active, or ALL muted)
   useEffect(() => {
     if (!playerA || !playerB) return;
     try {
-      if (audioMode === 'A') {
-        playerA.unMute();
-        playerB.mute();
-      } else if (audioMode === 'B') {
+      if (isMuted) {
         playerA.mute();
-        playerB.unMute();
-      } else if (audioMode === 'BOTH') {
-        playerA.unMute();
-        playerB.unMute();
+        playerB.mute();
       } else {
-        playerA.mute();
-        playerB.mute();
+        if (audioTarget === 'A') {
+          playerA.unMute();
+          playerB.mute();
+        } else {
+          playerB.unMute();
+          playerA.mute();
+        }
       }
     } catch (e) {}
-  }, [audioMode, playerA, playerB]);
+  }, [isMuted, audioTarget, playerA, playerB]);
 
   // Format mm:ss
   const formatTime = (secs: number) => {
@@ -820,25 +821,31 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   </button>
                 </div>
 
-                {/* Audio Switcher */}
+                {/* Exclusive Audio Switcher */}
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[11px] font-bold">
                   <button 
-                    onClick={() => setAudioMode('A')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${audioMode === 'A' ? 'bg-twice-apricot text-black font-black' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => {
+                      setIsMuted(false);
+                      setAudioTarget('A');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${!isMuted && audioTarget === 'A' ? 'bg-twice-apricot text-black font-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     🔊 앵커 A 소리
                   </button>
                   <button 
-                    onClick={() => setAudioMode('B')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${audioMode === 'B' ? 'bg-twice-magenta text-white font-black' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => {
+                      setIsMuted(false);
+                      setAudioTarget('B');
+                    }}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${!isMuted && audioTarget === 'B' ? 'bg-twice-magenta text-white font-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     🔊 타겟 B 소리
                   </button>
                   <button 
-                    onClick={() => setAudioMode('BOTH')}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${audioMode === 'BOTH' ? 'bg-purple-600 text-white font-black' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setIsMuted(true)}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${isMuted ? 'bg-red-500/80 text-white font-black' : 'text-gray-400 hover:text-white'}`}
                   >
-                    🎧 동시 출력 (비트 간섭)
+                    🔇 전체 Mute
                   </button>
                 </div>
               </div>

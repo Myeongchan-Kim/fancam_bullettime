@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import { 
   GitBranch, AlertTriangle, CheckCircle2, Split, 
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
-  X, Volume2, Maximize2, ChevronDown, Layers,
+  X, Volume2, VolumeX, Maximize2, ChevronDown, Layers,
   Sliders, LayoutGrid, Columns, Square, Save, RotateCcw,
   ShieldCheck, MoveHorizontal, ArrowLeftRight
 } from 'lucide-react';
@@ -13,6 +13,7 @@ import { API_BASE_URL } from '../constants';
 import { Concert, SyncGraphData, SyncGraphVideoNode, Video } from '../types';
 import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
+import { useGlobalAudio } from '../context/AudioContext';
 
 export default function SyncVisualizerPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -50,11 +51,11 @@ export default function SyncVisualizerPage() {
   const isDraggingTimelineRef = useRef<boolean>(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
+  // Global exclusive audio management
+  const { isMuted, setIsMuted, toggleGlobalMute, activeAudioSource, setActiveAudioSource } = useGlobalAudio();
+
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
-
-  // Audio source for multi-angle playback ('DECK_A' | 'DECK_B' | 'MUTE')
-  const [audioSource, setAudioSource] = useState<'DECK_A' | 'DECK_B' | 'MUTE'>('DECK_B');
 
   // In-Place Offset Fine-Tuning State (applied to Deck B)
   const [fineTuneDelta, setFineTuneDelta] = useState<number>(0);
@@ -599,21 +600,27 @@ export default function SyncVisualizerPage() {
     } catch (e) {}
   }, [fineTuneDelta]);
 
-  // 3. Audio Source Management
+  // 3. Audio Source Management (Global exclusive audio: strictly at most ONE unmuted, or ALL muted)
   useEffect(() => {
     try {
-      if (audioSource === 'DECK_A') {
-        playerA?.unMute();
-        playerB?.mute();
-      } else if (audioSource === 'DECK_B') {
-        playerB?.unMute();
+      if (isMuted) {
         playerA?.mute();
+        playerB?.mute();
       } else {
-        playerA?.mute();
-        playerB?.mute();
+        if (activeAudioSource === 'DECK_A') {
+          playerA?.unMute();
+          playerB?.mute();
+        } else if (activeAudioSource === 'DECK_B') {
+          playerB?.unMute();
+          playerA?.mute();
+        } else {
+          // If activeAudioSource is something else, default to Deck B
+          playerB?.unMute();
+          playerA?.mute();
+        }
       }
     } catch (e) {}
-  }, [audioSource, playerA, playerB]);
+  }, [isMuted, activeAudioSource, playerA, playerB]);
 
   // 4. Stable Pairwise Sync Loop (Adopting PairwiseTimelineCalibratorModal algorithm)
   useEffect(() => {
@@ -1260,16 +1267,36 @@ export default function SyncVisualizerPage() {
               {/* Right Group: Audio & Time Indicator */}
               <div className="flex items-center gap-3 text-xs font-mono">
                 <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1.5 rounded-xl border border-slate-700">
-                  <Volume2 className="w-3.5 h-3.5 text-twice-apricot" />
+                  <button
+                    onClick={toggleGlobalMute}
+                    className="flex items-center gap-1 hover:text-white transition-colors"
+                    title={isMuted ? "전체 음소거 해제" : "전체 음소거"}
+                  >
+                    {isMuted ? (
+                      <VolumeX className="w-3.5 h-3.5 text-red-400" />
+                    ) : (
+                      <Volume2 className="w-3.5 h-3.5 text-twice-apricot animate-pulse" />
+                    )}
+                  </button>
                   <span className="text-gray-400 text-[11px]">오디오:</span>
                   <select
-                    value={audioSource}
-                    onChange={(e) => setAudioSource(e.target.value as any)}
-                    className="bg-transparent text-white text-[11px] font-bold focus:outline-none cursor-pointer"
+                    value={isMuted ? 'MUTE' : (activeAudioSource === 'DECK_A' ? 'DECK_A' : 'DECK_B')}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      if (val === 'MUTE') {
+                        setIsMuted(true);
+                      } else {
+                        setIsMuted(false);
+                        setActiveAudioSource(val);
+                      }
+                    }}
+                    className={`bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer ${
+                      isMuted ? 'text-gray-400' : 'text-twice-apricot'
+                    }`}
                   >
-                    <option value="DECK_B" className="bg-slate-900">Deck B (우측) 소리</option>
-                    <option value="DECK_A" className="bg-slate-900">Deck A (좌측) 소리</option>
-                    <option value="MUTE" className="bg-slate-900">음소거</option>
+                    <option value="DECK_B" className="bg-slate-900 text-white">Deck B (우측) 단일 소리</option>
+                    <option value="DECK_A" className="bg-slate-900 text-white">Deck A (좌측) 단일 소리</option>
+                    <option value="MUTE" className="bg-slate-900 text-gray-400">전체 음소거 (Mute All)</option>
                   </select>
                 </div>
 
@@ -1337,7 +1364,7 @@ export default function SyncVisualizerPage() {
                           setPlayerA(e.target);
                           const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
                           e.target.seekTo(startA, true);
-                          if (audioSource === 'DECK_A') e.target.unMute();
+                          if (!isMuted && activeAudioSource === 'DECK_A') e.target.unMute();
                           else e.target.mute();
                         }}
                       />
@@ -1402,7 +1429,7 @@ export default function SyncVisualizerPage() {
                           setPlayerB(e.target);
                           const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
                           e.target.seekTo(startB, true);
-                          if (audioSource === 'DECK_B') e.target.unMute();
+                          if (!isMuted && activeAudioSource === 'DECK_B') e.target.unMute();
                           else e.target.mute();
                         }}
                       />
@@ -1616,7 +1643,7 @@ export default function SyncVisualizerPage() {
                       <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800">
                         <iframe
                           key={`quad-${v.id}-${vSeek}`}
-                          src={`https://www.youtube.com/embed/${v.youtube_id}?start=${vSeek}&autoplay=1&mute=${(audioSource === 'DECK_B' && isSelectedB) || (audioSource === 'DECK_A' && isSelectedA) ? '0' : '1'}`}
+                          src={`https://www.youtube.com/embed/${v.youtube_id}?start=${vSeek}&autoplay=1&mute=${!isMuted && ((activeAudioSource === 'DECK_B' && isSelectedB) || (activeAudioSource === 'DECK_A' && isSelectedA)) ? '0' : '1'}`}
                           title={v.title}
                           className="w-full h-full"
                           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
