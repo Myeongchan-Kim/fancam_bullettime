@@ -4,7 +4,7 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import { 
   GitBranch, AlertTriangle, CheckCircle2, Split, 
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
-  X, Volume2, VolumeX, Maximize2, ChevronDown, Layers,
+  X, Maximize2, ChevronDown, Layers,
   Sliders, LayoutGrid, Columns, Square, Save, RotateCcw,
   ShieldCheck, MoveHorizontal, ArrowLeftRight
 } from 'lucide-react';
@@ -52,7 +52,7 @@ export default function SyncVisualizerPage() {
   const timelineRef = useRef<HTMLDivElement>(null);
 
   // Global exclusive audio management
-  const { isMuted, setIsMuted, toggleGlobalMute, activeAudioSource, setActiveAudioSource } = useGlobalAudio();
+  const { isMuted, activeAudioSource, setActiveAudioSource } = useGlobalAudio();
 
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
@@ -1267,36 +1267,14 @@ export default function SyncVisualizerPage() {
               {/* Right Group: Audio & Time Indicator */}
               <div className="flex items-center gap-3 text-xs font-mono">
                 <div className="flex items-center gap-1.5 bg-slate-800 px-2.5 py-1.5 rounded-xl border border-slate-700">
-                  <button
-                    onClick={toggleGlobalMute}
-                    className="flex items-center gap-1 hover:text-white transition-colors"
-                    title={isMuted ? "전체 음소거 해제" : "전체 음소거"}
-                  >
-                    {isMuted ? (
-                      <VolumeX className="w-3.5 h-3.5 text-red-400" />
-                    ) : (
-                      <Volume2 className="w-3.5 h-3.5 text-twice-apricot animate-pulse" />
-                    )}
-                  </button>
-                  <span className="text-gray-400 text-[11px]">오디오:</span>
+                  <span className="text-gray-400 text-[11px]">오디오 출력:</span>
                   <select
-                    value={isMuted ? 'MUTE' : (activeAudioSource === 'DECK_A' ? 'DECK_A' : 'DECK_B')}
-                    onChange={(e) => {
-                      const val = e.target.value;
-                      if (val === 'MUTE') {
-                        setIsMuted(true);
-                      } else {
-                        setIsMuted(false);
-                        setActiveAudioSource(val);
-                      }
-                    }}
-                    className={`bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer ${
-                      isMuted ? 'text-gray-400' : 'text-twice-apricot'
-                    }`}
+                    value={activeAudioSource === 'DECK_A' ? 'DECK_A' : 'DECK_B'}
+                    onChange={(e) => setActiveAudioSource(e.target.value)}
+                    className="bg-transparent text-[11px] font-bold focus:outline-none cursor-pointer text-twice-apricot"
                   >
                     <option value="DECK_B" className="bg-slate-900 text-white">Deck B (우측) 단일 소리</option>
                     <option value="DECK_A" className="bg-slate-900 text-white">Deck A (좌측) 단일 소리</option>
-                    <option value="MUTE" className="bg-slate-900 text-gray-400">전체 음소거 (Mute All)</option>
                   </select>
                 </div>
 

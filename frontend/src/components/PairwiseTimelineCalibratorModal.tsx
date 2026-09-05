@@ -53,7 +53,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   const [initialTargetOffset, setInitialTargetOffset] = useState<number>(0);
 
   // Dual Player States
-  const { isMuted, setIsMuted } = useGlobalAudio();
+  const { isMuted } = useGlobalAudio();
   const [playerA, setPlayerA] = useState<YouTubePlayer | null>(null);
   const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -821,31 +821,20 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
                   </button>
                 </div>
 
-                {/* Exclusive Audio Switcher */}
+                {/* Audio Target Switcher */}
                 <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-white/5 text-[11px] font-bold">
+                  <span className="text-gray-500 text-[10px] px-2">오디오 소스:</span>
                   <button 
-                    onClick={() => {
-                      setIsMuted(false);
-                      setAudioTarget('A');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${!isMuted && audioTarget === 'A' ? 'bg-twice-apricot text-black font-black' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setAudioTarget('A')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${audioTarget === 'A' ? 'bg-twice-apricot text-black font-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     🔊 앵커 A 소리
                   </button>
                   <button 
-                    onClick={() => {
-                      setIsMuted(false);
-                      setAudioTarget('B');
-                    }}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${!isMuted && audioTarget === 'B' ? 'bg-twice-magenta text-white font-black' : 'text-gray-400 hover:text-white'}`}
+                    onClick={() => setAudioTarget('B')}
+                    className={`px-3 py-1.5 rounded-lg transition-all ${audioTarget === 'B' ? 'bg-twice-magenta text-white font-black' : 'text-gray-400 hover:text-white'}`}
                   >
                     🔊 타겟 B 소리
-                  </button>
-                  <button 
-                    onClick={() => setIsMuted(true)}
-                    className={`px-3 py-1.5 rounded-lg transition-all ${isMuted ? 'bg-red-500/80 text-white font-black' : 'text-gray-400 hover:text-white'}`}
-                  >
-                    🔇 전체 Mute
                   </button>
                 </div>
               </div>
