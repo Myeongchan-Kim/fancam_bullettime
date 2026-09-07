@@ -61,17 +61,23 @@ class Video(Base):
     is_shorts = Column(Boolean, default=False)
     is_unavailable = Column(Boolean, default=False, index=True)
     
+    # Sync Graph / Edge Hierarchy (Ref-Dest Anchor Relationship)
+    parent_video_id = Column(Integer, ForeignKey("videos.id", ondelete="SET NULL"), nullable=True, index=True)
+    relative_offset = Column(Float, nullable=True) # Offset relative to parent_video (t_child_start - t_parent_start)
+    
     # Calibration & Metric Tracking Layer
     calibration_count = Column(Integer, default=0, index=True)
     calibration_status = Column(String, default="uncalibrated", index=True) # 'uncalibrated' | 'ai_calibrated' | 'manually_verified'
     calibrated_at = Column(DateTime, nullable=True)
-    calibration_method = Column(String, nullable=True) # 'manual_studio' | 'pairwise_modal' | 'ai_audio_sync' | 'ai_setlist' | etc.
+    calibration_method = Column(String, nullable=True) # 'manual_studio' | 'pairwise_modal' | 'ai_audio_sync' | 'p2p_peer_audio_fast_sync' | 'ai_setlist' | etc.
     view_count = Column(Integer, default=0)
     like_count = Column(Integer, default=0)
     
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC), index=True)
     
     # Relationships
+    parent = relationship("Video", remote_side=[id], back_populates="children")
+    children = relationship("Video", back_populates="parent")
     song = relationship("Song", foreign_keys=[song_id], back_populates="videos", overlaps="songs,videos_list") # Deprecated
     songs = relationship("Song", secondary=video_song_association, back_populates="videos_list", lazy="selectin")
     concert = relationship("Concert", back_populates="videos", lazy="joined")

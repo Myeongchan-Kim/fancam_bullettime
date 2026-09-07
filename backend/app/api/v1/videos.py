@@ -192,7 +192,18 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
         new_offset = update_data.pop("sync_offset")
         method = update_data.pop("calibration_method", "manual_studio")
         status = update_data.pop("calibration_status", "manually_verified")
-        record_video_calibration(db, db_video, sync_offset=new_offset, method=method, status=status, commit=False)
+        p_id = update_data.pop("parent_video_id", None)
+        r_offset = update_data.pop("relative_offset", None)
+        record_video_calibration(
+            db, 
+            db_video, 
+            sync_offset=new_offset, 
+            method=method, 
+            status=status,
+            parent_video_id=p_id,
+            relative_offset=r_offset,
+            commit=False
+        )
 
     for key, value in update_data.items():
         setattr(db_video, key, value)
@@ -366,5 +377,120 @@ def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/videos/{video_id}/ai-sync")
+def trigger_video_ai_sync(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """
+    2-Stage Multi-Modal Precision Sync (Gemini Vision 1st Stage + 3-Point Audio 2nd Stage)
+    """
+    from scripts.precision_sync_calibrator import calibrate_video_2stage_visual_and_audio
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    candidate_masters = db.query(Video).filter(
+        Video.concert_id == video.concert_id,
+        Video.duration > 3600
+    ).all()
+    # Sort candidate masters: prefer 0.0 offset or active reference videos like #63, #1094
+    candidate_masters.sort(key=lambda m: (0 if m.id == 63 else 1 if m.sync_offset == 0.0 else 2, -m.duration))
+    
+    if not candidate_masters:
+        raise HTTPException(status_code=400, detail="Master full concert video not found for this concert")
+        
+    prev_offset = video.sync_offset or 0.0
+    try:
+        success = False
+        last_error = None
+        for master_video in candidate_masters:
+            logger.info(f"Trying Master Video #{master_video.id} ({master_video.title}) for Video #{video.id}...")
+            try:
+                success = calibrate_video_2stage_visual_and_audio(db, video, master_video)
+                if success:
+                    break
+            except Exception as e:
+                logger.warning(f"Failed AI sync with Master #{master_video.id}: {e}")
+                last_error = str(e)
+                
+        if not success:
+            raise HTTPException(status_code=400, detail=f"AI Precision Sync failed to lock offset with sufficient confidence (Last attempt: {last_error or 'low correlation'})")
+            
+        db.refresh(video)
+        return {
+            "status": "success",
+            "video_id": video.id,
+            "previous_offset": prev_offset,
+            "new_offset": video.sync_offset,
+            "delta": round(video.sync_offset - prev_offset, 2),
+            "calibration_count": video.calibration_count,
+            "calibration_status": video.calibration_status,
+            "calibration_method": video.calibration_method,
+            "calibrated_at": video.calibrated_at.isoformat() if video.calibrated_at else None
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"AI sync failed for video {video_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"AI Sync 실행 중 오류: {str(e)} (Vercel Serverless 환경에서는 로컬 백엔드 또는 워커 컨테이너가 필요할 수 있습니다.)"
+        )
+
+@router.post("/videos/{video_id}/rough-sync")
+def trigger_video_rough_sync(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """
+    영상 설명란 타임스탬프, 곡 메타데이터, 콘서트 세트리스트 기반 대략적 위치(Macro Offset) 즉시 안착
+    """
+    from app.services.calibration import estimate_video_rough_offset, record_video_calibration
+    
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+        
+    approx_offset, reason, parent_id = estimate_video_rough_offset(db, video)
+    if approx_offset is None:
+        raise HTTPException(status_code=400, detail="영상 설명란 및 세트리스트에서 일치하는 곡 위치를 찾지 못했습니다.")
+        
+    prev_offset = video.sync_offset or 0.0
+    rel_offset = None
+    if parent_id:
+        parent = db.query(Video).filter(Video.id == parent_id).first()
+        if parent and parent.sync_offset is not None:
+            rel_offset = round(approx_offset - parent.sync_offset, 2)
+            
+    record_video_calibration(
+        db,
+        video,
+        sync_offset=round(approx_offset, 2),
+        method="ai_setlist_macro_sync",
+        status="ai_calibrated",
+        parent_video_id=parent_id,
+        relative_offset=rel_offset,
+        commit=True
+    )
+    
+    return {
+        "status": "success",
+        "video_id": video.id,
+        "previous_offset": prev_offset,
+        "new_offset": video.sync_offset,
+        "delta": round(video.sync_offset - prev_offset, 2),
+        "reason": reason,
+        "parent_video_id": video.parent_video_id,
+        "relative_offset": video.relative_offset,
+        "calibration_status": video.calibration_status,
+        "calibration_method": video.calibration_method
+    }
+
+
 
 

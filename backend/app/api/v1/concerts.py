@@ -34,6 +34,9 @@ def get_concert(concert_id: int, response: Response, db: Session = Depends(get_d
     concert.video_count = count
     return concert
 
+@router.post("/admin/verify")
+def verify_admin_key(admin: bool = Depends(verify_admin)):
+    return {"status": "success", "message": "Admin key verified successfully"}
 
 @router.patch("/admin/setlist/{item_id}")
 def update_setlist_item(item_id: int, start_time: float = Query(...), db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
@@ -177,6 +180,8 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
             "calibration_method": v.calibration_method,
             "view_count": v.view_count or 0,
             "like_count": v.like_count or 0,
+            "parent_video_id": v.parent_video_id,
+            "relative_offset": v.relative_offset,
             "segments": segs,
             "songs": [{"id": s.id, "name": s.name, "is_solo": s.is_solo, "member_name": s.member_name} for s in v.songs] if v.songs else []
         })
@@ -198,4 +203,37 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         "setlist": setlist_items,
         "videos": video_nodes
     }
+
+@router.get("/concerts/{concert_id}/audit-discrepancies")
+def get_concert_discrepancies(
+    concert_id: int,
+    threshold: float = 120.0,
+    db: Session = Depends(get_db)
+):
+    """
+    특정 콘서트의 모든 직캠 중 세트리스트 곡 시작 시각과 허용치(기본 120초) 이상 크게 어긋난 영상 목록 조회
+    """
+    from app.services.calibration import audit_concert_discrepancies
+    discrepancies = audit_concert_discrepancies(db, concert_id, threshold_seconds=threshold)
+    return {
+        "concert_id": concert_id,
+        "threshold_seconds": threshold,
+        "count": len(discrepancies),
+        "discrepancies": discrepancies
+    }
+
+@router.post("/concerts/{concert_id}/auto-macro-align")
+def post_concert_auto_macro_align(
+    concert_id: int,
+    threshold: float = 120.0,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """
+    특정 콘서트의 어긋난 의심 영상들을 세트리스트 기반으로 일괄 자동 안착(Batch Macro Alignment) 실행
+    """
+    from app.services.calibration import auto_macro_align_concert
+    result = auto_macro_align_concert(db, concert_id, threshold_seconds=threshold)
+    return result
+
 

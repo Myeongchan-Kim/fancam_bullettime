@@ -77,24 +77,59 @@ $$\min_{\{t_i\}} \sum_{(i,j)} w_{ij} \cdot \left( (t_j - t_i) - \Delta t_{ij} \r
 
 ---
 
-## 4. 데이터 저장 및 런타임 재생 (Flattening)
+## 4. 데이터 저장 및 연쇄 전파 (DB Schema & Cascade Propagation)
 
-1. **상대 관계(Graph)**는 관리자 캘리브레이션 및 연쇄 전파(Cascade Update) 시에만 메모리/그래프로 활용됩니다.
-2. 최종 산출된 결과는 **`Video.sync_offset` 컬럼에 단일 부동소수점(Float 절대 초)으로 Flatten되어 영구 저장**됩니다.
-3. **런타임 이점**: 멀티앵글 플레이어(`MultiAnglePlayer.tsx`)가 수십 개의 영상을 동시에 360°로 전환 재생할 때, 그래프 순회 오버헤드 없이 **$O(1)$ 상수 시간에 즉시 싱크를 맞추어 재생**할 수 있습니다.
+초기 프로토타입에서는 절대 오프셋(`sync_offset`)만 단일 컬럼으로 보관하여, 부모 영상을 옮겨도 자식 영상들이 연동되지 않는 단절 문제가 있었습니다. 이를 해결하기 위해 **Ref-Dest 엣지 관계를 보존하면서도 O(1) 초고속 재생을 동시에 달성하는 하이브리드 구조**를 확립했습니다:
+
+### 4.1 영구 저장 스키마 (`videos` Table)
+```sql
+ALTER TABLE videos 
+  ADD COLUMN parent_video_id INTEGER REFERENCES videos(id) ON DELETE SET NULL,
+  ADD COLUMN relative_offset FLOAT DEFAULT NULL;
+```
+- **`sync_offset` (절대 오프셋)**: 마스터 콘서트 00:00:00초 기준의 절대 시작 시각. 플레이어가 360° 앵글 전환 시 그래프 탐색 비용 없이 **$O(1)$ 상수 시간에 즉시 재생**하는 데 사용됩니다.
+- **`parent_video_id` (부모 앵커 ID, Ref)**: 해당 영상의 싱크를 잡을 때 기준(Reference Anchor)이 된 상위 또는 동료 직캠의 ID.
+- **`relative_offset` (상대 오차, Dest - Ref)**: 부모 영상 시작점 대비 나의 상대적 시간차 ($t_{\text{child}} - t_{\text{parent}}$).
+
+### 4.2 연쇄 전파 알고리즘 (Cascade Propagation)
+기준(Anchor)이 되는 부모 영상의 오프셋이 사용자의 미세 조정이나 재보정으로 $\Delta t$만큼 변경되면, 백엔드의 `cascade_update_children_offsets`가 해당 부모에 매달린 모든 자식/자손 직캠들의 `sync_offset`을 실시간으로 일괄 동기화합니다:
+
+```python
+def cascade_update_children_offsets(db: Session, parent_id: int, delta: float):
+    """Recursively cascade delta offset change to all descendant children in the sync tree."""
+    if abs(delta) < 0.0001:
+        return
+    children = db.query(Video).filter(Video.parent_video_id == parent_id).all()
+    for child in children:
+        child.sync_offset = round((child.sync_offset or 0.0) + delta, 3)
+        cascade_update_children_offsets(db, child.id, delta)
+```
+
+이로써 **"어느 특정 곡의 대표 직캠(Anchor) 하나만 옮겨도 그 곡에 연결된 수십 개의 멤버별 직캠이 일괄적으로 함께 이동"**하는 진정한 계층형 동기화가 동작합니다.
 
 ---
 
-## 5. 요약 (Summary Flow)
+## 5. P2P 피어 직캠 엣지 생성 (P2P Peer Fast-Path & Edge Formation)
+
+오디오 동기화 시 3시간짜리 대형 마스터 영상을 전수 다운로드하는 대신, 이미 검증된 동료 직캠(Peer Anchor)과 오디오 코렐레이션을 수행합니다. 이때 일치하는 피어가 발견되면:
+1. `parent_video_id`에 피어 영상 ID를 즉시 기록.
+2. `relative_offset`에 두 직캠 간의 상대 오차를 기록.
+3. 피어의 절대 오프셋과 결합하여 자신의 `sync_offset`을 도출하고 DB에 엣지를 생성합니다.
+
+---
+
+## 6. 요약 아키텍처 흐름 (Summary Flow)
 
 ```
-[Gemini Vision 시각 판별]
-       ↓ (Lv 0 세트리스트 시작 시각으로 매크로 배치)
-[기본 sync_offset 안착]
+[Gemini Vision / 제목 / 태그 곡 판별]
        ↓
-[사용자 1:1 캘리브레이터 조율]
-       ↓ (단방향 계층 앵커링 & 유니온-파인드 순환 차단)
-[동기화 트리 연쇄 전파 (Cascade)]
-       ↓ (루프 감지 시 최소제곱법 오차 분산)
-[DB Video.sync_offset 절대값 저장 (O(1) 런타임 재생)]
+[P2P Peer Fast-Path: 동일 곡 검증 직캠 탐색]
+       ↓ (발견 시 2~3초 만에 10초 오디오 코렐레이션)
+[Ref-Dest Edge 형성: parent_video_id & relative_offset 보존]
+       ↓
+[사용자 미세 조정 (Fine-Tune Calibrator / Studio)]
+       ↓ (부모 오프셋 변경 시)
+[연쇄 전파 (Cascade Propagation): 자식/자손 노드 sync_offset 자동 일괄 동기화]
+       ↓
+[Video.sync_offset 절대값 유지로 멀티앵글 플레이어 O(1) 제로 레이턴시 재생]
 ```

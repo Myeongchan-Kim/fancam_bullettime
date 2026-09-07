@@ -46,7 +46,7 @@ const AdminDashboardPage = () => {
   }, [localSearch, searchQuery, setSearchParams]);
 
   const filteredVideos = useMemo(() => {
-    let filtered = videos;
+    let filtered = Array.isArray(videos) ? videos : [];
 
     if (selectedConcert && activeConcertObj?.setlist) {
       const setlistInRange = activeConcertObj.setlist.filter(item => 
@@ -110,13 +110,20 @@ const AdminDashboardPage = () => {
   const fetchVideos = async () => {
     setIsLoading(true);
     try {
-      let url = `${API_BASE_URL}/videos?`;
+      let url = `${API_BASE_URL}/videos?limit=500&`;
       if (selectedConcert) url += `concert_id=${selectedConcert}&`;
       if (shortsOnly) url += `shorts_only=true&`;
       const res = await axios.get(url);
-      setVideos(res.data);
+      if (Array.isArray(res.data)) {
+        setVideos(res.data);
+      } else if (res.data && Array.isArray(res.data.videos)) {
+        setVideos(res.data.videos);
+      } else {
+        setVideos([]);
+      }
     } catch (err) { 
       console.error("Error fetching videos", err); 
+      setVideos([]);
     } finally {
       setIsLoading(false);
     }
