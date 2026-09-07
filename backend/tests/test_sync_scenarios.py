@@ -210,3 +210,50 @@ def test_group_63_locked_offset_preservation():
 
 
 
+
+def test_sync_case_split_segments_continuity_1714():
+    """
+    Test Case: Video #1714 split segments must form a continuous cover
+    from 0.0s to duration without timeline holes or negative gaps.
+    """
+    from app.models.models import VideoSyncSegment
+    db = SessionLocal()
+    try:
+        v1714 = db.query(Video).filter(Video.id == 1714).first()
+        assert v1714 is not None, "Video 1714 should exist"
+        
+        segments = db.query(VideoSyncSegment).filter(
+            VideoSyncSegment.video_id == 1714
+        ).order_by(VideoSyncSegment.video_start_time.asc()).all()
+
+        assert len(segments) >= 2, "Video 1714 should have multiple split segments"
+
+        # Check coverage from 0 to duration
+        assert segments[0].video_start_time == 0.0, "First segment must start at 0.0s"
+        assert segments[-1].video_end_time >= v1714.duration - 1.0, "Last segment must reach end of video"
+
+        # Check segment-to-segment continuity
+        for i in range(len(segments) - 1):
+            curr_seg = segments[i]
+            next_seg = segments[i + 1]
+            assert curr_seg.video_end_time == next_seg.video_start_time, (
+                f"Segment gap detected between seg {curr_seg.id} and {next_seg.id}"
+            )
+    finally:
+        db.close()
+
+def test_sync_case_video_43_corrected_duration():
+    """
+    Test Case: Video #43 duration anomaly fix.
+    Ensures #43 is not 9999.0s and is calibrated around Chaeyoung solo IN MY ROOM (5622.65s).
+    """
+    db = SessionLocal()
+    try:
+        v43 = db.query(Video).filter(Video.id == 43).first()
+        assert v43 is not None, "Video 43 should exist"
+        assert v43.duration < 300.0, f"Video 43 duration should be under 300s, got {v43.duration}"
+        assert abs(v43.sync_offset - 5622.65) < 5.0, (
+            f"Video 43 offset should be calibrated around 5622.65s, got {v43.sync_offset}"
+        )
+    finally:
+        db.close()
