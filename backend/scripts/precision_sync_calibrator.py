@@ -143,17 +143,31 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
         for tag, t_local, off, sc in offsets:
             print(f"   {tag.upper()} (t={t_local:.1f}s) -> Master Offset = {off:.2f}s (Confidence: {sc:.2f})")
             
-        # Create piecewise VideoSyncSegments for each point
+        # Create piecewise VideoSyncSegments partitioned across probe midpoints to cover 0.0 ~ dur with no gaps
         db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == video.id).delete()
-        for i, (tag, t_local, off, sc) in enumerate(offsets):
-            seg_start = 0.0 if i == 0 else (t_local - 10.0)
-            seg_end = dur if i == len(offsets) - 1 else (t_local + 10.0)
+        n_pts = len(offsets)
+        for i in range(n_pts):
+            tag, t_local, off, sc = offsets[i]
+            # Boundary calculation: start from 0 for first segment, or midpoint between current and previous probe
+            if i == 0:
+                seg_start = 0.0
+            else:
+                prev_t = offsets[i - 1][1]
+                seg_start = round((prev_t + t_local) / 2.0, 1)
+
+            # End boundary: end at total duration for last segment, or midpoint between current and next probe
+            if i == n_pts - 1:
+                seg_end = dur
+            else:
+                next_t = offsets[i + 1][1]
+                seg_end = round((t_local + next_t) / 2.0, 1)
+
             seg = VideoSyncSegment(
                 video_id=video.id,
                 video_start_time=seg_start,
                 video_end_time=seg_end,
-                master_start_time=seg_start + off,
-                master_end_time=seg_end + off,
+                master_start_time=round(seg_start + off, 2),
+                master_end_time=round(seg_end + off, 2),
                 sync_offset=round(off, 2),
                 label=f"Part {i+1} ({tag})",
                 is_verified=True
