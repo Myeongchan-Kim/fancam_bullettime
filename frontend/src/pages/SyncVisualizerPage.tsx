@@ -412,16 +412,32 @@ export default function SyncVisualizerPage() {
     };
   }, [totalDuration, canvasHeight, videoA, videoB, fineTuneDelta, playerA, playerB]);
 
-  const handleSelectVideo = (video: SyncGraphVideoNode, seekToMasterTime?: number) => {
+  const handleSelectVideo = (video: SyncGraphVideoNode, preferredSeekTime?: number) => {
     if (activeDeckSlot === 'A') {
       setVideoA(video);
     } else {
       setVideoB(video);
     }
 
-    if (seekToMasterTime !== undefined) {
-      seekToMasterTimeline(seekToMasterTime);
+    // Check if current horizontal playhead cursor is already within this video's master range
+    const isCursorInsideVideo =
+      selectedTimeCursor >= video.master_start_time &&
+      selectedTimeCursor <= video.master_end_time;
+
+    // For split videos, check if cursor is inside any of its segments
+    const isCursorInsideSegments =
+      video.segments && video.segments.length > 0
+        ? video.segments.some(s => selectedTimeCursor >= s.master_start && selectedTimeCursor <= s.master_end)
+        : isCursorInsideVideo;
+
+    if (isCursorInsideVideo || isCursorInsideSegments) {
+      // Current horizontal line is already within the clicked video: preserve current position!
+      seekToMasterTimeline(selectedTimeCursor);
+    } else if (preferredSeekTime !== undefined) {
+      // If a specific segment was clicked and cursor is outside, jump to that segment's start
+      seekToMasterTimeline(preferredSeekTime);
     } else {
+      // Otherwise, jump to the start of the video
       seekToMasterTimeline(video.master_start_time);
     }
   };
