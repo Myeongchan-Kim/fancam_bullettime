@@ -54,6 +54,10 @@ class VideoBase(BaseModel):
     is_shorts: bool = False
     is_unavailable: bool = False
     
+    # Sync Graph / Edge Hierarchy
+    parent_video_id: Optional[int] = None
+    relative_offset: Optional[float] = None
+    
     # Calibration & Metrics Tracking
     calibration_count: Optional[int] = 0
     calibration_status: Optional[str] = "uncalibrated"
@@ -112,6 +116,8 @@ class VideoUpdate(BaseModel):
     is_shorts: Optional[bool] = None
     calibration_method: Optional[str] = None
     calibration_status: Optional[str] = None
+    parent_video_id: Optional[int] = None
+    relative_offset: Optional[float] = None
 
 class ContributionCreate(BaseModel):
     video_id: Optional[int] = None

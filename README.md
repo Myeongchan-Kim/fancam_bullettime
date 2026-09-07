@@ -115,4 +115,5 @@ uv run python -m app.crawler.step2_recommendation
 ```
 
 ## Architecture 🏗️
-Please refer to [ARCHITECTURE.md](./ARCHITECTURE.md) for detailed system design and data models.
+- System Design & Data Models: [ARCHITECTURE.md](./ARCHITECTURE.md)
+- Multi-Angle Sync Graph & Cascade Architecture: [docs/sync_graph_architecture.md](./docs/sync_graph_architecture.md)

@@ -6,7 +6,7 @@ import {
   Search, RefreshCw, Calendar, Sparkles, AlertCircle,
   X, Maximize2, ChevronDown, Layers,
   Sliders, LayoutGrid, Columns, Square, Save, RotateCcw,
-  ShieldCheck, MoveHorizontal, ArrowLeftRight
+  ShieldCheck, MoveHorizontal, ArrowLeftRight, Compass, MapPin
 } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
@@ -65,9 +65,17 @@ export default function SyncVisualizerPage() {
   // AI 2-Stage Multi-Modal Precision Sync Modal State
   const [isAiSyncModalOpen, setIsAiSyncModalOpen] = useState<boolean>(false);
   const [isAiSyncing, setIsAiSyncing] = useState<boolean>(false);
+  const [isRoughSyncing, setIsRoughSyncing] = useState<boolean>(false);
   const [aiSyncResult, setAiSyncResult] = useState<any>(null);
   const [aiSyncError, setAiSyncError] = useState<string | null>(null);
   const [aiSyncTargetVideo, setAiSyncTargetVideo] = useState<SyncGraphVideoNode | null>(null);
+
+  // Concert Discrepancy Audit & Auto-Align State
+  const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
+  const [auditData, setAuditData] = useState<any>(null);
+  const [isAuditing, setIsAuditing] = useState<boolean>(false);
+  const [isBatchAligning, setIsBatchAligning] = useState<boolean>(false);
+  const [batchAlignResult, setBatchAlignResult] = useState<any>(null);
 
   // Full Calibrator Modals
   const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
@@ -106,7 +114,7 @@ export default function SyncVisualizerPage() {
   }, []);
 
   // 2. Fetch Sync Graph Data
-  const loadSyncGraph = (concertId: number) => {
+  const loadSyncGraph = (concertId: number, preserveVideoAId?: number | null, preserveVideoBId?: number | null) => {
     setLoading(true);
     setError(null);
     fetch(`${API_BASE_URL}/concerts/${concertId}/sync-graph`)
@@ -118,13 +126,33 @@ export default function SyncVisualizerPage() {
         setGraphData(data);
         if (data.videos && data.videos.length > 0) {
           const master = data.videos.find(v => v.is_master) || data.videos[0];
-          const targetVideoId = parseInt(searchParams.get('video_id') || '0', 10);
-          const targetVideo = targetVideoId ? data.videos.find(v => v.id === targetVideoId) : null;
-          const second = targetVideo || data.videos.find(v => !v.is_master) || data.videos[1] || master;
           
-          setVideoA(master);
-          setVideoB(second);
-          setSelectedTimeCursor(second.master_start_time || master.master_start_time || 0);
+          // Determine Deck A: priority to explicitly preserved ID, then current videoA, then master
+          const effectiveAId = preserveVideoAId !== undefined ? preserveVideoAId : (videoA?.id ?? null);
+          const currentA = effectiveAId ? data.videos.find(v => v.id === effectiveAId) : null;
+          const nextVideoA = currentA || master;
+
+          // Determine Deck B: priority to explicitly preserved ID, then current videoB, then query param 'video_id', then default
+          const targetVideoId = parseInt(searchParams.get('video_id') || '0', 10);
+          const effectiveBId = preserveVideoBId !== undefined ? preserveVideoBId : (videoB?.id ?? targetVideoId ?? null);
+          const currentB = effectiveBId ? data.videos.find(v => v.id === effectiveBId) : null;
+          const targetVideo = targetVideoId ? data.videos.find(v => v.id === targetVideoId) : null;
+          const nextVideoB = currentB || targetVideo || data.videos.find(v => !v.is_master && v.id !== nextVideoA.id) || data.videos[1] || nextVideoA;
+          
+          setVideoA(nextVideoA);
+          setVideoB(nextVideoB);
+          
+          // Update URL query param to reflect currently calibrated Deck B
+          if (nextVideoB && nextVideoB.id) {
+            setSearchParams(prev => {
+              const next = new URLSearchParams(prev);
+              next.set('concert_id', concertId.toString());
+              next.set('video_id', nextVideoB.id.toString());
+              return next;
+            });
+          }
+          
+          setSelectedTimeCursor(nextVideoB.master_start_time || nextVideoA.master_start_time || 0);
         }
         setLoading(false);
       })
@@ -196,8 +224,8 @@ export default function SyncVisualizerPage() {
 
   // Unified Multi-Track Lane Packing:
   // Sort strictly by master_start_time ascending to achieve maximum left-compaction (왼쪽 밀착)
-  const { lanes, allVisibleVideos } = useMemo(() => {
-    if (!graphData || !graphData.videos) return { lanes: [], allVisibleVideos: [] };
+  const { lanes, allVisibleVideos, videoLaneMap } = useMemo(() => {
+    if (!graphData || !graphData.videos) return { lanes: [], allVisibleVideos: [], videoLaneMap: new Map<number, number>() };
 
     const visible: SyncGraphVideoNode[] = [];
     let masterNode: SyncGraphVideoNode | null = null;
@@ -266,9 +294,15 @@ export default function SyncVisualizerPage() {
       }
     }
 
+    const videoLaneMap = new Map<number, number>();
+    packedLanes.forEach((lane, lIdx) => {
+      lane.items.forEach(v => videoLaneMap.set(v.id, lIdx));
+    });
+
     return { 
       lanes: packedLanes.map(l => l.items),
-      allVisibleVideos: visible
+      allVisibleVideos: visible,
+      videoLaneMap
     };
   }, [graphData, statusFilter, memberFilter, searchQuery, totalDuration]);
 
@@ -425,20 +459,24 @@ export default function SyncVisualizerPage() {
       }
       
       const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(3));
+      const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
+      const relOffset = parentId && videoA?.sync_offset !== undefined ? Number((newOffset - videoA.sync_offset).toFixed(3)) : null;
       
       await axios.patch(
         `${API_BASE_URL}/videos/${videoB.id}`,
         { 
           sync_offset: newOffset,
           calibration_method: 'manual_studio',
-          calibration_status: 'manually_verified'
+          calibration_status: 'manually_verified',
+          parent_video_id: parentId,
+          relative_offset: relOffset
         },
         { headers: { 'x-admin-key': adminKey } }
       );
 
-      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 검증 카운트 증가)`);
+      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 기준: ${videoA ? `#${videoA.id}` : '마스터'}, 검증 카운트 증가)`);
       setFineTuneDelta(0);
-      loadSyncGraph(selectedConcertId);
+      loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id);
       setTimeout(() => setSaveSuccessMsg(null), 3000);
     } catch (err: any) {
       console.error('Failed to save offset', err);
@@ -490,7 +528,7 @@ export default function SyncVisualizerPage() {
 
       setAiSyncResult(res.data);
       setFineTuneDelta(0);
-      await loadSyncGraph(selectedConcertId);
+      await loadSyncGraph(selectedConcertId, videoA?.id, targetVideo.id);
     } catch (err: any) {
       console.error('AI Sync failed', err);
       if (err?.response?.status === 403) {
@@ -504,6 +542,106 @@ export default function SyncVisualizerPage() {
       setIsAiSyncing(false);
     }
   };
+
+  // AI Rough Sync (세트리스트/설명란 기반 대략적 위치 안착)
+  const handleTriggerRoughSync = async (targetVideo: SyncGraphVideoNode) => {
+    if (!targetVideo || targetVideo.is_master) return;
+
+    setAiSyncTargetVideo(targetVideo);
+    setIsAiSyncModalOpen(true);
+    setIsRoughSyncing(true);
+    setAiSyncResult(null);
+    setAiSyncError(null);
+
+    try {
+      let adminKey = localStorage.getItem('admin_key') || '';
+      if (!adminKey) {
+        const inputKey = window.prompt('대략적 싱크 안착을 실행하려면 Admin Key가 필요합니다:');
+        if (!inputKey) {
+          setIsAiSyncModalOpen(false);
+          setIsRoughSyncing(false);
+          return;
+        }
+        adminKey = inputKey.trim();
+        localStorage.setItem('admin_key', adminKey);
+        setIsAdminMode(true);
+      }
+
+      const res = await axios.post(
+        `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync`,
+        {},
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      setAiSyncResult({
+        ...res.data,
+        isRough: true
+      });
+      setFineTuneDelta(0);
+      await loadSyncGraph(selectedConcertId, videoA?.id, targetVideo.id);
+    } catch (err: any) {
+      console.error('Rough Sync failed', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
+      } else {
+        setAiSyncError(err?.response?.data?.detail || err?.message || '대략적 위치 안착 실행 중 오류가 발생했습니다.');
+      }
+    } finally {
+      setIsRoughSyncing(false);
+    }
+  };
+
+  // Open Discrepancy Audit Modal
+  const handleOpenAuditModal = async () => {
+    setShowAuditModal(true);
+    setIsAuditing(true);
+    setAuditData(null);
+    setBatchAlignResult(null);
+
+    try {
+      const res = await axios.get(`${API_BASE_URL}/concerts/${selectedConcertId}/audit-discrepancies`);
+      setAuditData(res.data);
+    } catch (err: any) {
+      console.error('Failed to audit discrepancies', err);
+    } finally {
+      setIsAuditing(false);
+    }
+  };
+
+  // Run Batch Macro Align on whole concert
+  const handleBatchAlignConcert = async () => {
+    let adminKey = localStorage.getItem('admin_key') || '';
+    if (!adminKey) {
+      const inputKey = window.prompt('일괄 자동 재정렬을 실행하려면 Admin Key가 필요합니다:');
+      if (!inputKey) return;
+      adminKey = inputKey.trim();
+      localStorage.setItem('admin_key', adminKey);
+      setIsAdminMode(true);
+    }
+
+    setIsBatchAligning(true);
+    try {
+      const res = await axios.post(
+        `${API_BASE_URL}/concerts/${selectedConcertId}/auto-macro-align`,
+        {},
+        { headers: { 'x-admin-key': adminKey } }
+      );
+      setBatchAlignResult(res.data);
+      // Reload audit & timeline
+      const auditRes = await axios.get(`${API_BASE_URL}/concerts/${selectedConcertId}/audit-discrepancies`);
+      setAuditData(auditRes.data);
+      await loadSyncGraph(selectedConcertId);
+    } catch (err: any) {
+      console.error('Batch auto-macro-align failed', err);
+      alert(err?.response?.data?.detail || err?.message || '일괄 재정렬 중 오류가 발생했습니다.');
+    } finally {
+      setIsBatchAligning(false);
+    }
+  };
+
+
 
   // Open Full Calibrator Modal
   const handleOpenCalibrator = async (video: SyncGraphVideoNode, isSegment: boolean = false) => {
@@ -732,144 +870,161 @@ export default function SyncVisualizerPage() {
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl backdrop-blur-sm">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5">
-              <GitBranch className="w-3.5 h-3.5" /> Unified Multi-Track Sync & Calibration Studio
-            </span>
-            <span className="text-gray-400 text-xs font-mono">1:1 타임라인 동기화 • 실시간 자유 듀얼 캘리브레이션 데크</span>
+      <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl backdrop-blur-sm space-y-4">
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-twice-magenta/20 text-twice-magenta border border-twice-magenta/30 flex items-center gap-1.5 shadow-sm">
+                <GitBranch className="w-3.5 h-3.5" /> Unified Multi-Track Sync & Calibration Studio
+              </span>
+              <span className="text-gray-400 text-xs font-mono hidden sm:inline">1:1 타임라인 동기화 • 실시간 자유 듀얼 캘리브레이션 데크</span>
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+              TWICE Concert Multi-Track Timeline & Calibration
+            </h1>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight">
-            TWICE Concert Multi-Track Timeline & Calibration
-          </h1>
-        </div>
 
-        {/* Concert Selector */}
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Calendar className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-            <select
-              value={selectedConcertId}
-              onChange={(e) => setSelectedConcertId(parseInt(e.target.value, 10))}
-              className="bg-slate-800 text-white pl-9 pr-8 py-2 rounded-xl border border-slate-700 text-xs font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
+          {/* Right Action Toolbar */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Concert Selector */}
+            <div className="relative min-w-[200px]">
+              <Calendar className="w-4 h-4 text-twice-apricot absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <select
+                value={selectedConcertId}
+                onChange={(e) => setSelectedConcertId(parseInt(e.target.value, 10))}
+                className="w-full bg-slate-800 text-white pl-9 pr-8 py-2 rounded-xl border border-slate-700 text-xs font-bold focus:outline-none focus:border-twice-magenta appearance-none cursor-pointer hover:bg-slate-750 transition-all shadow-inner"
+              >
+                {concerts.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.date ? new Date(c.date).toISOString().split('T')[0] : ''} {c.city} ({c.venue})
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+            </div>
+
+            <button 
+              onClick={() => loadSyncGraph(selectedConcertId)}
+              className="p-2 bg-slate-800 hover:bg-slate-750 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
+              title="새로고침"
             >
-              {concerts.map(c => (
-                <option key={c.id} value={c.id}>
-                  {c.date ? new Date(c.date).toISOString().split('T')[0] : ''} {c.city} ({c.venue})
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-          </div>
-          <button 
-            onClick={() => loadSyncGraph(selectedConcertId)}
-            className="p-2 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-xl border border-slate-700 transition-all shadow-sm"
-            title="Refresh Sync Data"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
-          </button>
-          <button 
-            onClick={async () => {
-              if (isAdminMode) {
-                if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
-                  localStorage.removeItem('admin_key');
-                  setIsAdminMode(false);
-                }
-              } else {
-                const key = window.prompt('Admin Key를 입력해주세요:');
-                if (key) {
-                  const trimmed = key.trim();
-                  try {
-                    await axios.post(
-                      `${API_BASE_URL}/admin/verify`,
-                      {},
-                      { headers: { 'x-admin-key': trimmed } }
-                    );
-                    localStorage.setItem('admin_key', trimmed);
-                    setIsAdminMode(true);
-                    alert('Admin 인증에 성공했습니다!');
-                  } catch (err) {
-                    alert('Admin Key가 올바르지 않습니다.');
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin text-twice-magenta' : ''}`} />
+            </button>
+
+            <button
+              onClick={handleOpenAuditModal}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm bg-gradient-to-r from-amber-600/90 to-orange-600/90 hover:from-amber-500 hover:to-orange-500 border-amber-500/40 text-white hover:scale-[1.02] active:scale-95"
+              title="세트리스트 대조 어긋난 영상 검사 및 일괄 재정렬"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>정합성 진단</span>
+            </button>
+
+            <button 
+              onClick={async () => {
+                if (isAdminMode) {
+                  if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
+                    localStorage.removeItem('admin_key');
+                    setIsAdminMode(false);
+                  }
+                } else {
+                  const key = window.prompt('Admin Key를 입력해주세요:');
+                  if (key) {
+                    const trimmed = key.trim();
+                    try {
+                      await axios.post(
+                        `${API_BASE_URL}/admin/verify`,
+                        {},
+                        { headers: { 'x-admin-key': trimmed } }
+                      );
+                      localStorage.setItem('admin_key', trimmed);
+                      setIsAdminMode(true);
+                      alert('Admin 인증에 성공했습니다!');
+                    } catch (err) {
+                      alert('Admin Key가 올바르지 않습니다.');
+                    }
                   }
                 }
-              }
-            }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
-              isAdminMode 
-                ? 'bg-indigo-600/90 hover:bg-indigo-500 border-indigo-400 text-white' 
-                : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-gray-400 hover:text-white'
-            }`}
-            title={isAdminMode ? 'Admin 로그인 됨 (클릭하여 로그아웃)' : 'Admin Key 입력'}
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>{isAdminMode ? 'Admin' : 'Login'}</span>
-          </button>
+              }}
+              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all border shadow-sm ${
+                isAdminMode 
+                  ? 'bg-indigo-600/90 hover:bg-indigo-500 border-indigo-400 text-white' 
+                  : 'bg-slate-800 hover:bg-slate-700 border-slate-700 text-gray-400 hover:text-white'
+              }`}
+              title={isAdminMode ? 'Admin 로그인 됨 (클릭하여 로그아웃)' : 'Admin Key 입력'}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>{isAdminMode ? 'Admin' : 'Login'}</span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      {/* Status Filter Tabs */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-        <button
-          onClick={() => setStatusFilter('all')}
-          className={`px-3 py-1.5 rounded-xl border font-bold transition-all ${
-            statusFilter === 'all' 
-              ? 'bg-slate-800 text-white border-slate-600 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-white'
-          }`}
-        >
-          전체 ({stats.total})
-        </button>
-        <button
-          onClick={() => setStatusFilter('uncalibrated')}
-          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'uncalibrated' 
-              ? 'bg-amber-950/70 text-amber-300 border-amber-500/60 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
-          }`}
-        >
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> ⚠️ 미보정 ({stats.uncalibrated})
-        </button>
-        <button
-          onClick={() => setStatusFilter('ai')}
-          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'ai' 
-              ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/60 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-emerald-400'
-          }`}
-        >
-          <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> 🤖 AI 보정 ({stats.ai})
-        </button>
-        <button
-          onClick={() => setStatusFilter('verified')}
-          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'verified' 
-              ? 'bg-purple-950/70 text-purple-300 border-purple-500/60 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-purple-400'
-          }`}
-        >
-          <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" /> ✅ 검증 완료 ({stats.verified})
-        </button>
-        <button
-          onClick={() => setStatusFilter('segmented')}
-          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'segmented' 
-              ? 'bg-sky-950/70 text-sky-300 border-sky-500/60 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-sky-400'
-          }`}
-        >
-          <Split className="w-3.5 h-3.5 text-sky-400" /> 분할 Split ({stats.segmented})
-        </button>
-        <button
-          onClick={() => setStatusFilter('solos')}
-          className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
-            statusFilter === 'solos' 
-              ? 'bg-pink-950/70 text-pink-300 border-pink-500/60 shadow-sm' 
-              : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-pink-400'
-          }`}
-        >
-          솔로곡 ({stats.solos})
-        </button>
+        {/* Divider & Status Filter Tabs in Header */}
+        <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between gap-2 overflow-x-auto text-xs">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] text-gray-400 font-bold mr-1 hidden sm:inline">필터:</span>
+            <button
+              onClick={() => setStatusFilter('all')}
+              className={`px-3 py-1.5 rounded-xl border font-bold transition-all ${
+                statusFilter === 'all' 
+                  ? 'bg-slate-800 text-white border-slate-600 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-white'
+              }`}
+            >
+              전체 ({stats.total})
+            </button>
+            <button
+              onClick={() => setStatusFilter('uncalibrated')}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+                statusFilter === 'uncalibrated' 
+                  ? 'bg-amber-950/70 text-amber-300 border-amber-500/60 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-amber-400'
+              }`}
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> ⚠️ 미보정 ({stats.uncalibrated})
+            </button>
+            <button
+              onClick={() => setStatusFilter('ai')}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+                statusFilter === 'ai' 
+                  ? 'bg-emerald-950/70 text-emerald-300 border-emerald-500/60 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-emerald-400'
+              }`}
+            >
+              <Sparkles className="w-3.5 h-3.5 text-emerald-400" /> 🤖 AI 보정 ({stats.ai})
+            </button>
+            <button
+              onClick={() => setStatusFilter('verified')}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+                statusFilter === 'verified' 
+                  ? 'bg-purple-950/70 text-purple-300 border-purple-500/60 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-purple-400'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5 text-purple-400" /> ✅ 검증 완료 ({stats.verified})
+            </button>
+            <button
+              onClick={() => setStatusFilter('segmented')}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+                statusFilter === 'segmented' 
+                  ? 'bg-sky-950/70 text-sky-300 border-sky-500/60 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-sky-400'
+              }`}
+            >
+              <Split className="w-3.5 h-3.5 text-sky-400" /> 분할 Split ({stats.segmented})
+            </button>
+            <button
+              onClick={() => setStatusFilter('solos')}
+              className={`px-3 py-1.5 rounded-xl border font-bold flex items-center gap-1.5 transition-all ${
+                statusFilter === 'solos' 
+                  ? 'bg-pink-950/70 text-pink-300 border-pink-500/60 shadow-sm' 
+                  : 'bg-slate-900/60 text-gray-400 border-slate-800 hover:text-pink-400'
+              }`}
+            >
+              솔로곡 ({stats.solos})
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Filter Toolbar & Zoom Scale Slider */}
@@ -998,54 +1153,72 @@ export default function SyncVisualizerPage() {
                 })}
               </div>
 
-              {/* 2. Background SVG for 1:1 Timeline Sync Connection Lines (회색 연결선) */}
+              {/* 2. Background SVG for Locked Group Sync Tree Connection Lines (Locked Parent-Child 연결선) */}
               <svg 
                 className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
                 style={{ height: `${canvasHeight}px` }}
               >
-                {lanes.slice(1).flatMap((laneVideos, lIdx) => {
-                  const targetLaneIdx = lIdx + 1;
+                {lanes.flatMap((laneVideos, lIdx) => {
+                  const targetLaneIdx = lIdx;
                   const targetX = getLaneX(targetLaneIdx) + LANE_WIDTH / 2;
-                  const masterX = getLaneX(0) + LANE_WIDTH / 2;
 
                   return laneVideos.flatMap((v) => {
                     const isHovered = hoveredVideo?.id === v.id;
                     const isSelectedA = videoA?.id === v.id;
                     const isSelectedB = videoB?.id === v.id;
-                    const isHighlighted = isHovered || isSelectedA || isSelectedB;
+                    const isChildOrParentActive = 
+                      (v.parent_video_id && (videoA?.id === v.parent_video_id || videoB?.id === v.parent_video_id || hoveredVideo?.id === v.parent_video_id)) ||
+                      (hoveredVideo?.parent_video_id === v.id || videoA?.parent_video_id === v.id || videoB?.parent_video_id === v.id);
+                    const isHighlighted = isHovered || isSelectedA || isSelectedB || isChildOrParentActive;
 
-                    // If video has split segments, draw connection for each segment
+                    // If video has a locked parent, find parent's lane X and start Y
+                    const parentId = v.parent_video_id;
+                    const parentNode = parentId ? allVisibleVideos.find(p => p.id === parentId) : null;
+                    const parentLaneIdx = parentId ? videoLaneMap.get(parentId) : undefined;
+                    
+                    // Fallback source: parent if exists, otherwise Lane 0 (Master Spine) if not master itself
+                    const sourceX = parentLaneIdx !== undefined ? (getLaneX(parentLaneIdx) + LANE_WIDTH / 2) : (getLaneX(0) + LANE_WIDTH / 2);
+
+                    // Don't draw line from node to itself
+                    if (parentLaneIdx === targetLaneIdx && parentNode && Math.abs(parentNode.master_start_time - v.master_start_time) < 1) {
+                      return null;
+                    }
+
+                    // If video is master and has no parent, no connection needed
+                    if (v.is_master && !parentId) return null;
+
+                    // If video has split segments, draw horizontal connection for each segment
                     if (v.segments && v.segments.length > 0) {
                       return v.segments.map((seg, sIdx) => {
                         const y = (seg.master_start / totalDuration) * canvasHeight;
                         return (
                           <line
                             key={`sync-seg-${v.id}-${sIdx}`}
-                            x1={masterX}
+                            x1={sourceX}
                             y1={y}
                             x2={targetX}
                             y2={y}
-                            stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
-                            strokeWidth={isHighlighted ? 2 : 1}
-                            strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                            stroke={isHighlighted ? '#ff5e99' : parentId ? 'rgba(56, 189, 248, 0.45)' : 'rgba(148, 163, 184, 0.18)'}
+                            strokeWidth={isHighlighted ? 2.2 : parentId ? 1.5 : 1}
+                            strokeDasharray={isHighlighted ? 'none' : parentId ? '4 2' : '2 3'}
                             className="transition-all duration-150"
                           />
                         );
                       });
                     }
 
-                    // Continuous video sync connection line from Master Spine (Lane 0) to this video's lane
+                    // Continuous video horizontal sync connection line to Locked Parent's lane (or Master Spine)
                     const y = (v.master_start_time / totalDuration) * canvasHeight;
                     return (
                       <line
                         key={`sync-${v.id}`}
-                        x1={masterX}
+                        x1={sourceX}
                         y1={y}
                         x2={targetX}
                         y2={y}
-                        stroke={isHighlighted ? '#ff5e99' : 'rgba(148, 163, 184, 0.22)'}
-                        strokeWidth={isHighlighted ? 2 : 1}
-                        strokeDasharray={isHighlighted ? 'none' : '3 3'}
+                        stroke={isHighlighted ? '#ff5e99' : parentId ? 'rgba(56, 189, 248, 0.45)' : 'rgba(148, 163, 184, 0.18)'}
+                        strokeWidth={isHighlighted ? 2.2 : parentId ? 1.5 : 1}
+                        strokeDasharray={isHighlighted ? 'none' : parentId ? '4 2' : '2 3'}
                         className="transition-all duration-150"
                       />
                     );
@@ -1559,8 +1732,16 @@ export default function SyncVisualizerPage() {
                             <ShieldCheck className="w-3.5 h-3.5" /> 구간 SPLIT 캘리브레이터
                           </button>
                           <button
+                            onClick={() => handleTriggerRoughSync(videoB)}
+                            disabled={isAiSyncing || isRoughSyncing}
+                            className="px-3 py-1.5 bg-gradient-to-r from-amber-600 via-orange-600 to-amber-500 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-amber-950/50 text-xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
+                            title="영상 설명란 타임스탬프 및 세트리스트 기반 대략적 위치(Macro Offset) 즉시 안착"
+                          >
+                            <Compass className="w-3.5 h-3.5 animate-spin-slow" /> 🎯 대략적 위치 찾기
+                          </button>
+                          <button
                             onClick={() => handleTriggerAiSync(videoB)}
-                            disabled={isAiSyncing}
+                            disabled={isAiSyncing || isRoughSyncing}
                             className="px-3 py-1.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950/50 text-xs transition-all hover:scale-105 active:scale-95 disabled:opacity-50"
                             title="Gemini Vision 화면 분석 + 3-Point 오디오 2-Stage 정밀 싱크 실행"
                           >
@@ -1880,55 +2061,79 @@ export default function SyncVisualizerPage() {
             </div>
 
             {/* Running State with Spinner */}
-            {isAiSyncing && (
+            {(isAiSyncing || isRoughSyncing) && (
               <div className="py-6 flex flex-col items-center justify-center space-y-4">
                 <div className="relative">
-                  <div className="w-16 h-16 rounded-full border-4 border-slate-700 border-t-twice-magenta border-r-twice-apricot animate-spin" />
-                  <Sparkles className="w-6 h-6 text-emerald-400 absolute inset-0 m-auto animate-pulse" />
+                  <div className="w-16 h-16 rounded-full border-4 border-slate-700 border-t-amber-500 border-r-twice-magenta animate-spin" />
+                  {isRoughSyncing ? (
+                    <Compass className="w-6 h-6 text-amber-400 absolute inset-0 m-auto animate-pulse" />
+                  ) : (
+                    <Sparkles className="w-6 h-6 text-emerald-400 absolute inset-0 m-auto animate-pulse" />
+                  )}
                 </div>
                 
                 <div className="space-y-1.5">
-                  <h4 className="text-sm font-bold text-white">AI 2-Stage 정밀 싱크 분석 중...</h4>
+                  <h4 className="text-sm font-bold text-white">
+                    {isRoughSyncing ? '영상 설명란 및 세트리스트 탐색 중...' : 'AI 2-Stage 정밀 싱크 분석 중...'}
+                  </h4>
                   <p className="text-xs text-gray-400">
-                    Stage 1: Gemini Vision 화면 의상/안무 분석<br/>
-                    Stage 2: 3-Point 오디오 서브세컨드 파형 정밀 정렬
+                    {isRoughSyncing 
+                      ? '유튜브 설명란 타임스탬프와 콘서트 세트리스트를 대조하여 대략적 위치를 빠르게 도출합니다.'
+                      : 'Stage 1: Gemini Vision 화면 의상/안무 분석\nStage 2: 3-Point 오디오 서브세컨드 파형 정밀 정렬'}
                   </p>
                 </div>
               </div>
             )}
 
             {/* Success Result State */}
-            {!isAiSyncing && aiSyncResult && (
+            {!isAiSyncing && !isRoughSyncing && aiSyncResult && (
               <div className="py-4 space-y-4">
-                <div className="w-12 h-12 bg-emerald-500/20 border border-emerald-500/40 rounded-full flex items-center justify-center mx-auto text-emerald-400">
-                  <CheckCircle2 className="w-7 h-7" />
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center mx-auto ${
+                  aiSyncResult.isRough ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400' : 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400'
+                }`}>
+                  {aiSyncResult.isRough ? <MapPin className="w-7 h-7" /> : <CheckCircle2 className="w-7 h-7" />}
                 </div>
 
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-emerald-300">AI 정밀 싱크 성공!</h4>
+                  <h4 className={`text-sm font-bold ${aiSyncResult.isRough ? 'text-amber-300' : 'text-emerald-300'}`}>
+                    {aiSyncResult.isRough ? '대략적 위치 안착 성공!' : 'AI 정밀 싱크 성공!'}
+                  </h4>
                   <p className="text-xs text-gray-400">
-                    오프셋이 마스터 영상에 0.01초 단위로 정확히 잠겼습니다.
+                    {aiSyncResult.isRough
+                      ? '세트리스트 위치에 안착되었습니다. 이제 슬라이더나 정밀 싱크로 미세 조정할 수 있습니다.'
+                      : '오프셋이 마스터 영상에 0.01초 단위로 정확히 잠겼습니다.'}
                   </p>
                 </div>
 
                 <div className="bg-slate-950/80 rounded-2xl p-3 border border-slate-800 text-left space-y-2 text-xs font-mono">
+                  {aiSyncResult.reason && (
+                    <div className="text-[11px] text-amber-400/90 pb-1 border-b border-slate-800 font-sans">
+                      💡 {aiSyncResult.reason}
+                    </div>
+                  )}
                   <div className="flex justify-between items-center text-gray-400">
                     <span>이전 오프셋:</span>
                     <span className="text-gray-300">{aiSyncResult.previous_offset}s</span>
                   </div>
-                  <div className="flex justify-between items-center text-emerald-400 font-bold">
-                    <span>보정 오프셋:</span>
+                  <div className="flex justify-between items-center text-amber-400 font-bold">
+                    <span>안착 오프셋:</span>
                     <span>{aiSyncResult.new_offset}s (Δ {aiSyncResult.delta >= 0 ? `+${aiSyncResult.delta}` : aiSyncResult.delta}s)</span>
                   </div>
-                  <div className="flex justify-between items-center text-gray-400">
-                    <span>보정 횟수:</span>
-                    <span className="text-cyan-300">{aiSyncResult.calibration_count}회차 ({aiSyncResult.calibration_status})</span>
-                  </div>
+                  {aiSyncResult.parent_video_id && (
+                    <div className="flex justify-between items-center text-sky-400">
+                      <span>연결된 기준(Anchor):</span>
+                      <span>#{aiSyncResult.parent_video_id} (상대: {aiSyncResult.relative_offset}s)</span>
+                    </div>
+                  )}
                 </div>
 
                 <button
                   onClick={() => setIsAiSyncModalOpen(false)}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs transition-all shadow-lg shadow-emerald-950"
+                  className={`w-full py-2.5 text-white rounded-xl font-bold text-xs transition-all shadow-lg ${
+                    aiSyncResult.isRough 
+                      ? 'bg-amber-600 hover:bg-amber-500 shadow-amber-950'
+                      : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950'
+                  }`}
                 >
                   확인 및 스튜디오로 복귀
                 </button>
@@ -1936,14 +2141,14 @@ export default function SyncVisualizerPage() {
             )}
 
             {/* Error State */}
-            {!isAiSyncing && aiSyncError && (
+            {!isAiSyncing && !isRoughSyncing && aiSyncError && (
               <div className="py-4 space-y-4">
                 <div className="w-12 h-12 bg-rose-500/20 border border-rose-500/40 rounded-full flex items-center justify-center mx-auto text-rose-400">
                   <AlertTriangle className="w-7 h-7" />
                 </div>
 
                 <div className="space-y-1">
-                  <h4 className="text-sm font-bold text-rose-300">AI 정밀 싱크 실패</h4>
+                  <h4 className="text-sm font-bold text-rose-300">싱크 조정 실패</h4>
                   <p className="text-xs text-rose-200/80 break-words">
                     {aiSyncError}
                   </p>
@@ -1958,6 +2163,138 @@ export default function SyncVisualizerPage() {
               </div>
             )}
 
+          </div>
+        </div>
+      )}
+
+      {/* ================= DISCREPANCY AUDIT & BATCH AUTO-ALIGN MODAL ================= */}
+      {showAuditModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fade-in">
+          <div className="bg-slate-900 border border-amber-500/30 rounded-3xl p-6 max-w-2xl w-full shadow-2xl shadow-amber-950/80 relative text-left max-h-[85vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div className="flex items-center gap-2">
+                <div className="p-2 bg-amber-500/20 rounded-xl text-amber-400">
+                  <Compass className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white">
+                    콘서트 타임라인 정합성 진단 & 일괄 재배치
+                  </h3>
+                  <p className="text-xs text-gray-400">
+                    공식 세트리스트 곡 시작 시각과 2분 이상 크게 어긋난 직캠을 색출하고 자동 안착합니다.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAuditModal(false)}
+                className="text-gray-400 hover:text-white p-1 rounded-full hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Area */}
+            <div className="flex-1 overflow-y-auto py-4 space-y-3">
+              {isAuditing && (
+                <div className="py-12 flex flex-col items-center justify-center gap-3">
+                  <div className="w-10 h-10 rounded-full border-2 border-slate-700 border-t-amber-500 animate-spin" />
+                  <p className="text-xs text-gray-400">세트리스트와 전체 직캠 대조 분석 중...</p>
+                </div>
+              )}
+
+              {!isAuditing && auditData && (
+                <>
+                  <div className="flex items-center justify-between bg-slate-950/70 p-3 rounded-2xl border border-slate-800">
+                    <div className="text-xs">
+                      <span className="text-gray-400">진단 결과: </span>
+                      <span className="font-bold text-white font-mono">
+                        {auditData.count > 0 ? (
+                          <span className="text-amber-400">{auditData.count}개의 영상 위치 어긋남 감지</span>
+                        ) : (
+                          <span className="text-emerald-400">모든 직캠이 세트리스트 정상 범위 내에 있습니다! ✨</span>
+                        )}
+                      </span>
+                    </div>
+
+                    {auditData.count > 0 && (
+                      <button
+                        onClick={handleBatchAlignConcert}
+                        disabled={isBatchAligning}
+                        className="px-3.5 py-1.5 bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-500 hover:to-orange-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-amber-950/50 transition-all disabled:opacity-50"
+                      >
+                        {isBatchAligning ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            일괄 재배치 중...
+                          </>
+                        ) : (
+                          <>
+                            <Compass className="w-3.5 h-3.5" />
+                            {auditData.count}개 전체 일괄 안착 실행
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {batchAlignResult && (
+                    <div className="p-3 bg-emerald-950/80 border border-emerald-500/40 rounded-2xl text-xs text-emerald-300">
+                      🎉 <b>일괄 안착 완료:</b> 총 {batchAlignResult.aligned_count}개의 영상이 세트리스트 정위치로 재배치되었습니다.
+                    </div>
+                  )}
+
+                  {auditData.discrepancies && auditData.discrepancies.length > 0 ? (
+                    <div className="space-y-2 mt-2">
+                      {auditData.discrepancies.map((item: any) => (
+                        <div
+                          key={`audit-${item.video_id}`}
+                          className="p-3 bg-slate-950/50 hover:bg-slate-800/50 rounded-2xl border border-slate-800/80 flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono font-bold text-amber-400">#{item.video_id}</span>
+                              <span className="text-white font-semibold truncate">{item.title}</span>
+                            </div>
+                            <div className="flex items-center gap-3 text-[11px] text-gray-400 mt-1 font-mono">
+                              <span>곡: <span className="text-sky-300 font-bold">{item.matched_song}</span></span>
+                              <span>현재: {item.current_offset}s</span>
+                              <span>세트리스트: {item.expected_offset}s</span>
+                              <span className="text-rose-400 font-bold">오차: {item.discrepancy_seconds}s</span>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              const found = graphData?.videos?.find(v => v.id === item.video_id);
+                              if (found) {
+                                setVideoB(found);
+                                setActiveDeckSlot('B');
+                                setShowAuditModal(false);
+                                seekToMasterTimeline(item.expected_offset);
+                              }
+                            }}
+                            className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg text-[11px] font-bold transition-all flex-shrink-0"
+                          >
+                            데크 B로 확인
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="pt-3 border-t border-slate-800 flex justify-end">
+              <button
+                onClick={() => setShowAuditModal(false)}
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all"
+              >
+                닫기
+              </button>
+            </div>
           </div>
         </div>
       )}

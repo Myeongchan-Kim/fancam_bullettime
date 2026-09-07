@@ -163,6 +163,49 @@ def test_sync_case_intro_four_1714():
     finally:
         db.close()
 
+def test_master_timeline_drifts_audit():
+    """
+    Test Case: Cross-Master Timeline Drift Audit for Concert 2.
+    Ensures that differences between cut full concerts (e.g. #63) and unedited full concerts (e.g. #1094)
+    are automatically detected and reported.
+    """
+    from app.services.calibration import audit_master_timeline_drifts
+    db = SessionLocal()
+    try:
+        report = audit_master_timeline_drifts(db, concert_id=2)
+        assert report["status"] == "success", "Drift audit should succeed"
+        assert len(report["comparisons"]) >= 1, "Should find at least 1 comparison against reference master"
+        
+        # Check cut detection on #63
+        comp63 = [c for c in report["comparisons"] if c["compared_video_id"] == 63]
+        if comp63:
+            assert comp63[0]["has_cut_detected"] is True, "Cut full concert #63 should be flagged as has_cut_detected"
+            assert comp63[0]["duration_difference_seconds"] > 2000, "Should detect >2000s duration cut in #63"
+    finally:
+        db.close()
+
+def test_group_63_locked_offset_preservation():
+    """
+    Test Case: Locked Group Hierarchy for #63 (Sub-Master MARS Cluster).
+    Ensures child videos (#1181, #1676, #36) are strictly attached to #63 or its descendants
+    and preserve their relative_offset.
+    """
+    db = SessionLocal()
+    try:
+        v63 = db.query(Video).filter(Video.id == 63).first()
+        v1181 = db.query(Video).filter(Video.id == 1181).first()
+        v36 = db.query(Video).filter(Video.id == 36).first()
+        v1676 = db.query(Video).filter(Video.id == 1676).first()
+
+        assert v63 is not None and v1181 is not None and v36 is not None and v1676 is not None
+        assert v1181.parent_video_id == 63, "Video 1181 should have parent_video_id == 63"
+        assert v1676.parent_video_id == 63, "Video 1676 should have parent_video_id == 63"
+        assert v36.parent_video_id == 1181, "Video 36 should be child of 1181"
+        assert v36.relative_offset is not None, "Video 36 should have relative_offset preserved"
+    finally:
+        db.close()
+
+
 
 
 

@@ -432,14 +432,21 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     setIsSaving(true);
     setSaveMessage('');
     try {
+      const parentId = anchorVideo && anchorVideo.id !== targetVideo.id ? anchorVideo.id : null;
+      const relOffset = parentId && anchorVideo?.sync_offset !== undefined ? Number((targetOffset - anchorVideo.sync_offset).toFixed(3)) : null;
+
       if (adminKey) {
         // Admin direct update
         await axios.patch(`${API_BASE_URL}/videos/${targetVideo.id}`, {
-          sync_offset: targetOffset
+          sync_offset: targetOffset,
+          calibration_method: 'pairwise_modal',
+          calibration_status: 'manually_verified',
+          parent_video_id: parentId,
+          relative_offset: relOffset
         }, {
           headers: { 'X-Admin-Key': adminKey }
         });
-        setSaveMessage('관리자 권한으로 싱크가 즉시 저장되었습니다!');
+        setSaveMessage('관리자 권한으로 싱크 계층(Anchor-Target)이 즉시 저장되었습니다!');
       } else {
         // User contribution submission (auto-approved if verified)
         await axios.post(`${API_BASE_URL}/videos/${targetVideo.id}/contributions`, {

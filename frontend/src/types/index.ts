@@ -63,6 +63,8 @@ export interface Video {
   calibration_status?: string;
   calibrated_at?: string | null;
   calibration_method?: string | null;
+  parent_video_id?: number | null;
+  relative_offset?: number | null;
   view_count?: number;
   like_count?: number;
   created_at: string;
@@ -115,6 +117,8 @@ export interface SyncGraphVideoNode {
   calibration_status?: string;
   calibrated_at?: string | null;
   calibration_method?: string | null;
+  parent_video_id?: number | null;
+  relative_offset?: number | null;
   view_count?: number;
   like_count?: number;
   segments: {

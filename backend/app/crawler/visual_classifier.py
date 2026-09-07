@@ -112,7 +112,7 @@ Analyze the provided YouTube video frame/thumbnail image with extreme visual pre
 
 ### Input Video Context:
 - **Title**: {title}
-- **Description Snippet**: {description[:300] if description else "None"}
+- **Description / Setlist Notes**: {description[:1500].strip() if description else "None"}
 
 ### Output Schema (Pure JSON):
 {{

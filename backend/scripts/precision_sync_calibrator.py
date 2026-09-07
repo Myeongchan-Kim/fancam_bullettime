@@ -21,12 +21,21 @@ from app.services.calibration import record_video_calibration
 
 os.makedirs("scratch/precision_sync", exist_ok=True)
 
+import shutil
+
+YT_DLP_EXE = (
+    shutil.which("yt-dlp")
+    or os.path.join(os.path.dirname(sys.executable), "yt-dlp")
+    or "/opt/homebrew/bin/yt-dlp"
+    or "yt-dlp"
+)
+
 def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str) -> str:
     out_wav = f"scratch/precision_sync/{out_name}.wav"
-    if os.path.exists(out_wav):
+    if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
         return out_wav
     cmd = [
-        "yt-dlp",
+        YT_DLP_EXE,
         "--download-sections", f"*{max(0, start_s):.1f}-{start_s+dur_s:.1f}",
         "-x", "--audio-format", "wav",
         "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
@@ -162,16 +171,95 @@ def calibrate_video_3point(db, video: Video, master_video: Video, expected_maste
         print(f"   ✅ Created {len(offsets)} split timeline segments for Video {video.id}! Calibration Count: {video.calibration_count}")
         return True
 
+def calibrate_video_peer_anchor(db, video: Video, song_name: str) -> bool:
+    """
+    Step 1: P2P Peer Anchor Fast-Path.
+    Finds an already calibrated short peer fancam for the same concert & song,
+    cross-correlates audio slices directly against the peer, and derives the master offset.
+    Takes ~5-10s instead of downloading heavy master concert video streams.
+    """
+    peers = db.query(Video).filter(
+        Video.concert_id == video.concert_id,
+        Video.id != video.id,
+        Video.duration != None,
+        Video.duration < 600,
+        Video.sync_offset != None,
+        Video.calibration_status.in_(["ai_calibrated", "manually_verified", "user_calibrated"]),
+        Video.songs.any(name=song_name)
+    ).all()
+    
+    if not peers:
+        return False
+        
+    dur = float(video.duration or 60.0)
+    probe_local_t = min(15.0, dur / 2.0)
+    ref_name = f"v{video.id}_peer_probe_{int(probe_local_t)}"
+    ref_wav = download_audio_slice(video.youtube_id, probe_local_t, 10.0, ref_name)
+    
+    for peer in peers:
+        peer_dur = float(peer.duration or 100.0)
+        # Search window in peer audio: 0s to min(peer_dur, 100s)
+        tgt_dur = min(peer_dur, 120.0)
+        tgt_name = f"peer_{peer.id}_slice_{int(tgt_dur)}"
+        tgt_wav = download_audio_slice(peer.youtube_id, 0.0, tgt_dur, tgt_name)
+        
+        peer_matched_sec, score = cross_correlate(ref_wav, tgt_wav, 0.0)
+        if score > 0.12:
+            # High confidence alignment with peer!
+            # If t=probe_local_t in video matches peer_matched_sec in peer:
+            # video_time + offset_video = peer_time + offset_peer
+            # probe_local_t + offset_video = peer_matched_sec + peer.sync_offset
+            # offset_video = peer.sync_offset + peer_matched_sec - probe_local_t
+            rel_offset = round(peer_matched_sec - probe_local_t, 2)
+            derived_offset = round(peer.sync_offset + rel_offset, 2)
+            old_offset = video.sync_offset
+            record_video_calibration(
+                db,
+                video,
+                sync_offset=derived_offset,
+                method="p2p_peer_audio_fast_sync",
+                status="ai_calibrated",
+                parent_video_id=peer.id,
+                relative_offset=rel_offset,
+                commit=True
+            )
+            print(f"⚡ [PEER ANCHOR SYNC] Video {video.id} synced via Peer #{peer.id} ('{peer.title[:30]}'):")
+            print(f"   Score: {score:.2f}, Relative: {rel_offset:+.2f}s, Derived Offset: {derived_offset:.2f}s (Old: {old_offset}s)")
+            return True
+            
+    return False
+
+def try_fast_peer_sync(db, video: Video) -> bool:
+    """
+    Ultra-Fast Path 0: Check if video already has tagged songs.
+    If yes, immediately try P2P peer correlation before calling slow Gemini Vision!
+    """
+    if video.songs:
+        for s in video.songs:
+            print(f"⚡ [FAST P2P ATTEMPT] Checking calibrated peers for tagged song '{s.name}'...")
+            try:
+                if calibrate_video_peer_anchor(db, video, s.name):
+                    return True
+            except Exception as e:
+                print(f"   ⚠️ Fast P2P attempt failed for {s.name}: {e}")
+    return False
+
 def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Video) -> bool:
     """
     2-Stage Multi-Modal Precision Sync Pipeline:
-    - Stage 1 (Visual Coarse Alignment): Uses Gemini Vision to analyze thumbnail/scene,
+    - Stage 0 (Direct Peer Fast-Path): Checks existing tagged songs and syncs via peer in 3-5 seconds.
+    - Stage 1 (Visual Coarse Alignment): If no peer found, uses Gemini Vision to analyze thumbnail/scene,
       detecting song, act, outfit, and choreography section to find a coarse anchor window.
+      Also attempts Peer Anchor Fast-Path if a calibrated peer exists for the identified song.
     - Stage 2 (Audio Fine Alignment): Probes audio cross-correlation around the visual anchor.
       For medleys or long fancams starting from opening act, searches within active song window.
     """
     from app.crawler.visual_classifier import classify_fancam_visually
     
+    # Fast Path 0: If video already has a linked song, try peer sync immediately!
+    if try_fast_peer_sync(db, video):
+        return True
+        
     print(f"👁️ [STAGE 1: VISUAL COARSE MATCHING] Analyzing Video {video.id} ('{video.title[:45]}')...")
     visual_info = classify_fancam_visually(
         youtube_id=video.youtube_id,
@@ -187,6 +275,15 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
     print(f"   Visual Detected Song: {identified_song} (Confidence: {confidence:.2f})")
     print(f"   Visual Scene: {scene_desc[:80]}...")
     
+    # Fast Path 1: Check if we can sync via an already calibrated peer fancam for identified_song!
+    if identified_song:
+        try:
+            peer_synced = calibrate_video_peer_anchor(db, video, identified_song)
+            if peer_synced:
+                return True
+        except Exception as e:
+            print(f"   ⚠️ Peer anchor sync attempt failed: {e}")
+
     # Check candidate songs and intro mentions
     candidate_anchors = []
     
@@ -228,7 +325,7 @@ def calibrate_video_2stage_visual_and_audio(db, video: Video, master_video: Vide
     if not candidate_anchors:
         candidate_anchors.append(("Default", video.sync_offset or 219.5))
 
-    # Test candidate anchors with audio correlation
+    # Test candidate anchors with audio correlation against Master Video
     for anchor_name, center_t in candidate_anchors:
         print(f"   Stage 1 Candidate Anchor: {anchor_name} -> {center_t:.1f}s")
         print(f"🎵 [STAGE 2: AUDIO FINE MATCHING] Probing around {anchor_name} ({center_t:.1f}s)...")
