@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { YouTubePlayer } from 'react-youtube';
-import { GitBranch } from 'lucide-react';
+import { GitBranch, Loader2, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
 import { Concert, SyncGraphData, SyncGraphVideoNode, Video } from '../types';
@@ -911,6 +911,66 @@ export default function SyncVisualizerPage() {
         onMemberFilterChange={setMemberFilter}
         onScaleChange={setScaleFactor}
       />
+
+      {/* Loading State with rich visual indicator */}
+      {loading && (
+        <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-12 flex flex-col items-center justify-center min-h-[500px] text-center space-y-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+          {/* Ambient Glowing Background */}
+          <div className="absolute w-72 h-72 bg-gradient-to-tr from-twice-magenta/20 to-twice-apricot/20 rounded-full blur-3xl pointer-events-none animate-pulse -top-10 -left-10" />
+          <div className="absolute w-60 h-60 bg-gradient-to-br from-indigo-600/10 to-purple-600/10 rounded-full blur-2xl pointer-events-none animate-pulse -bottom-10 -right-10" />
+
+          <div className="relative">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-twice-magenta/20 via-purple-600/20 to-twice-apricot/20 border border-twice-magenta/30 flex items-center justify-center shadow-lg shadow-twice-magenta/10">
+              <Loader2 className="w-10 h-10 text-twice-magenta animate-spin" />
+            </div>
+            <div className="absolute -top-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-twice-apricot opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-twice-apricot"></span>
+            </div>
+          </div>
+
+          <div className="space-y-2 max-w-md relative z-10">
+            <h3 className="text-xl font-black text-white flex items-center justify-center gap-2">
+              <span>동기화 그래프 & 타임라인 분석 중...</span>
+              <Sparkles className="w-5 h-5 text-twice-apricot animate-bounce" />
+            </h3>
+            <p className="text-xs text-gray-400 leading-relaxed">
+              수십 개의 팬캠 영상과 세트리스트 타임라인을 정밀 분석하고 있습니다.<br />
+              잠시만 기다려주세요. 곧 멀티트랙 캔버스와 듀얼 데크가 열립니다!
+            </p>
+          </div>
+
+          {/* Skeleton representation of timeline and decks */}
+          <div className="w-full max-w-2xl grid grid-cols-12 gap-3 opacity-40 pt-4">
+            <div className="col-span-4 h-32 rounded-xl bg-slate-800/80 animate-pulse border border-slate-700/50 flex flex-col justify-around p-3">
+              <div className="h-2 w-3/4 bg-slate-700 rounded"></div>
+              <div className="h-2 w-1/2 bg-slate-700 rounded"></div>
+              <div className="h-2 w-5/6 bg-slate-700 rounded"></div>
+            </div>
+            <div className="col-span-8 h-32 rounded-xl bg-slate-800/80 animate-pulse border border-slate-700/50 grid grid-cols-2 gap-2 p-3">
+              <div className="h-full bg-slate-900/80 rounded-lg flex items-center justify-center border border-slate-750">
+                <span className="text-[10px] text-gray-500 font-mono">DECK A (MASTER)</span>
+              </div>
+              <div className="h-full bg-slate-900/80 rounded-lg flex items-center justify-center border border-slate-750">
+                <span className="text-[10px] text-gray-500 font-mono">DECK B (FANCAM)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error State */}
+      {!loading && error && (
+        <div className="bg-rose-950/20 border border-rose-500/30 rounded-2xl p-8 text-center space-y-4">
+          <p className="text-rose-400 font-bold text-sm">{error}</p>
+          <button
+            onClick={() => loadSyncGraph(selectedConcertId)}
+            className="px-4 py-2 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-xl transition-all"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
 
       {/* Main Dual-View: Left Timeline (4 cols) + Right Deck Studio (8 cols) */}
       {!loading && !error && graphData && (

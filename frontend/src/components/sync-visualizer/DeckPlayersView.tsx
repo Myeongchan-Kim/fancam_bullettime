@@ -1,7 +1,7 @@
 import React from 'react';
 import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Link } from 'react-router-dom';
-import { Maximize2 } from 'lucide-react';
+import { Maximize2, Loader2 } from 'lucide-react';
 import { SyncGraphData, SyncGraphVideoNode } from '../../types';
 import { calculateLocalSeekTime } from '../../utils/syncGraphCalculations';
 
@@ -44,6 +44,17 @@ export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
   setPlayerA,
   setPlayerB
 }) => {
+  const [readyA, setReadyA] = React.useState<boolean>(false);
+  const [readyB, setReadyB] = React.useState<boolean>(false);
+
+  React.useEffect(() => {
+    setReadyA(false);
+  }, [videoA?.id]);
+
+  React.useEffect(() => {
+    setReadyB(false);
+  }, [videoB?.id]);
+
   const seekTimeA = calculateLocalSeekTime(videoA, selectedTimeCursor);
   const seekTimeB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
 
@@ -95,19 +106,28 @@ export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
 
             <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
               {videoA && (
-                <YouTube
-                  key={`deckA-${videoA.id}`}
-                  videoId={videoA.youtube_id}
-                  className="w-full h-full"
-                  opts={playerOpts}
-                  onReady={(e) => {
-                    setPlayerA(e.target);
-                    const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
-                    e.target.seekTo(startA, true);
-                    if (!isMuted && activeAudioSource === 'DECK_A') e.target.unMute();
-                    else e.target.mute();
-                  }}
-                />
+                <>
+                  <YouTube
+                    key={`deckA-${videoA.id}`}
+                    videoId={videoA.youtube_id}
+                    className="w-full h-full"
+                    opts={playerOpts}
+                    onReady={(e) => {
+                      setPlayerA(e.target);
+                      setReadyA(true);
+                      const startA = calculateLocalSeekTime(videoA, selectedTimeCursor);
+                      e.target.seekTo(startA, true);
+                      if (!isMuted && activeAudioSource === 'DECK_A') e.target.unMute();
+                      else e.target.mute();
+                    }}
+                  />
+                  {!readyA && (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-2 pointer-events-none transition-opacity">
+                      <Loader2 className="w-6 h-6 text-sky-400 animate-spin" />
+                      <span className="text-[10px] text-sky-300 font-mono">영상을 불러오는 중...</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
@@ -159,19 +179,28 @@ export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
 
             <div className="aspect-video w-full rounded-xl overflow-hidden bg-black border border-slate-800 shadow-lg relative">
               {videoB && (
-                <YouTube
-                  key={`deckB-${videoB.id}`}
-                  videoId={videoB.youtube_id}
-                  className="w-full h-full"
-                  opts={playerOpts}
-                  onReady={(e) => {
-                    setPlayerB(e.target);
-                    const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
-                    e.target.seekTo(startB, true);
-                    if (!isMuted && activeAudioSource === 'DECK_B') e.target.unMute();
-                    else e.target.mute();
-                  }}
-                />
+                <>
+                  <YouTube
+                    key={`deckB-${videoB.id}`}
+                    videoId={videoB.youtube_id}
+                    className="w-full h-full"
+                    opts={playerOpts}
+                    onReady={(e) => {
+                      setPlayerB(e.target);
+                      setReadyB(true);
+                      const startB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
+                      e.target.seekTo(startB, true);
+                      if (!isMuted && activeAudioSource === 'DECK_B') e.target.unMute();
+                      else e.target.mute();
+                    }}
+                  />
+                  {!readyB && (
+                    <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-2 pointer-events-none transition-opacity">
+                      <Loader2 className="w-6 h-6 text-twice-magenta animate-spin" />
+                      <span className="text-[10px] text-twice-magenta font-mono">영상을 불러오는 중...</span>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
