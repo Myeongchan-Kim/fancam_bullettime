@@ -183,6 +183,10 @@ def audit_concert_discrepancies(db: Session, concert_id: int, threshold_seconds:
         if v.sync_offset is None or (v.duration and v.duration > 3600):
             continue
 
+        # 사람이 직접 검증/저장했거나(manually_verified), 비주얼 매칭으로 이미 보정된 영상은 절대 어긋남으로 간주하거나 덮어쓰지 않음
+        if v.calibration_status == "manually_verified" or v.calibration_method in ["manual_studio", "visual_group_match"]:
+            continue
+
         v_song_names = [s.name.upper().strip() for s in v.songs]
         if not v_song_names:
             for s_name in setlist_map.keys():

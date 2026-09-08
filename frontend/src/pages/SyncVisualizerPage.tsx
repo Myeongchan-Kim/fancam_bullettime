@@ -83,8 +83,6 @@ export default function SyncVisualizerPage() {
   const [showAuditModal, setShowAuditModal] = useState<boolean>(false);
   const [isAuditing, setIsAuditing] = useState<boolean>(false);
   const [auditData, setAuditData] = useState<any>(null);
-  const [isBatchAligning, setIsBatchAligning] = useState<boolean>(false);
-  const [batchAlignResult, setBatchAlignResult] = useState<any>(null);
 
   // Modals for pairwise and segment calibration
   const [showPairwiseModal, setShowPairwiseModal] = useState<boolean>(false);
@@ -639,7 +637,6 @@ export default function SyncVisualizerPage() {
     setShowAuditModal(true);
     setIsAuditing(true);
     setAuditData(null);
-    setBatchAlignResult(null);
 
     try {
       const res = await axios.get(`${API_BASE_URL}/concerts/${selectedConcertId}/audit-discrepancies`);
@@ -649,42 +646,6 @@ export default function SyncVisualizerPage() {
       alert(`진단 오류: ${err.message}`);
     } finally {
       setIsAuditing(false);
-    }
-  };
-
-  // Execute Batch Auto-Align for Concert
-  const handleBatchAlignConcert = async () => {
-    setIsBatchAligning(true);
-    setBatchAlignResult(null);
-
-    try {
-      let adminKey = localStorage.getItem('admin_key') || '';
-      if (!adminKey) {
-        const inputKey = window.prompt('일괄 안착을 실행하려면 Admin Key가 필요합니다:');
-        if (!inputKey) {
-          setIsBatchAligning(false);
-          return;
-        }
-        adminKey = inputKey.trim();
-        localStorage.setItem('admin_key', adminKey);
-        setIsAdminMode(true);
-      }
-
-      const res = await axios.post(
-        `${API_BASE_URL}/concerts/${selectedConcertId}/batch-rough-align`,
-        {},
-        { headers: { 'x-admin-key': adminKey } }
-      );
-
-      setBatchAlignResult(res.data);
-      await loadSyncGraph(selectedConcertId);
-      const auditRes = await axios.get(`${API_BASE_URL}/concerts/${selectedConcertId}/audit-discrepancies`);
-      setAuditData(auditRes.data);
-    } catch (err: any) {
-      console.error('Batch align failed', err);
-      alert(`일괄 안착 실패: ${err?.response?.data?.detail || err.message}`);
-    } finally {
-      setIsBatchAligning(false);
     }
   };
 
@@ -1046,11 +1007,13 @@ export default function SyncVisualizerPage() {
         isOpen={showAuditModal}
         isAuditing={isAuditing}
         auditData={auditData}
-        isBatchAligning={isBatchAligning}
-        batchAlignResult={batchAlignResult}
         graphData={graphData}
         onClose={() => setShowAuditModal(false)}
-        onBatchAlign={handleBatchAlignConcert}
+        onTriggerRoughSyncForVideo={(targetVideo) => {
+          setVideoB(targetVideo);
+          setActiveDeckSlot('B');
+          handleTriggerRoughSync(targetVideo);
+        }}
         onSelectVideoForInspection={(targetVideo, expectedOffset) => {
           setVideoB(targetVideo);
           setActiveDeckSlot('B');
