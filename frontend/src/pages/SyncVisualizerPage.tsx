@@ -638,91 +638,102 @@ export default function SyncVisualizerPage() {
     }
   };
 
-  // Bidirectional Playback Sync Loop
+  // 4. Stable Pairwise Sync Loop
   useEffect(() => {
-    if (!playerA && !playerB) return;
+    const interval = setInterval(() => {
+      if (!playerA && !playerB) return;
+      if (isDraggingTimelineRef.current) return;
 
-    const interval = setInterval(async () => {
       try {
-        let stateA = -1;
-        let stateB = -1;
-        let timeA = 0;
-        let timeB = 0;
+        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+        const timeA = typeof playerA?.getCurrentTime === 'function' ? playerA.getCurrentTime() : 0;
+        const timeB = typeof playerB?.getCurrentTime === 'function' ? playerB.getCurrentTime() : 0;
 
-        try {
-          if (playerA?.getPlayerState) stateA = await playerA.getPlayerState();
-          if (playerA?.getCurrentTime) timeA = await playerA.getCurrentTime();
-        } catch (e) {}
+        // --- Deck A is actively playing ---
+        if (stateA === 1 && videoA) {
+          isPlaybackTickRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
+          
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
+          }
 
-        try {
-          if (playerB?.getPlayerState) stateB = await playerB.getPlayerState();
-          if (playerB?.getCurrentTime) timeB = await playerB.getCurrentTime();
-        } catch (e) {}
-
-        const isPlayingA = stateA === 1;
-        const isPlayingB = stateB === 1;
-
-        if (isPlayingA && isPlayingB) {
-          const deltaA = Math.abs(timeA - lastTimeRefA.current);
-          const deltaB = Math.abs(timeB - lastTimeRefB.current);
-
-          if (deltaA > 1.2 && deltaA > deltaB) {
-            const masterFromA = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
-            setSelectedTimeCursor(masterFromA);
-            const targetB = calculateLocalSeekTime(videoB, masterFromA, fineTuneDelta);
-            if (Math.abs(timeB - targetB) > 0.3) {
-              lastSeekTimeBRef.current = Date.now();
-              playerB?.seekTo(targetB, true);
-            }
-          } else if (deltaB > 1.2 && deltaB > deltaA) {
-            const masterFromB = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
-            setSelectedTimeCursor(masterFromB);
-            const targetA = calculateLocalSeekTime(videoA, masterFromB);
-            if (Math.abs(timeA - targetA) > 0.3) {
-              lastSeekTimeARef.current = Date.now();
-              playerA?.seekTo(targetA, true);
-            }
-          } else {
-            const now = Date.now();
-            if (activeAudioSource === 'DECK_B' || activeDeckSlot === 'B') {
-              if (now - lastSeekTimeBRef.current > 800) {
-                const masterFromB = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
-                setSelectedTimeCursor(masterFromB);
-                const targetA = calculateLocalSeekTime(videoA, masterFromB);
-                if (Math.abs(timeA - targetA) > 0.4 && (now - lastSeekTimeARef.current > 1200)) {
-                  lastSeekTimeARef.current = now;
-                  playerA?.seekTo(targetA, true);
-                }
+          if (playerB && videoB) {
+            const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+            const durB = videoB.duration || 300;
+            if (expB >= 0 && expB <= durB) {
+              if (stateB !== 1 && stateB !== 3) {
+                // Deck B is paused/cued, start playing from target sync position
+                playerB.seekTo(expB, true);
+                playerB.playVideo();
+                lastSeekTimeBRef.current = Date.now();
+              } else if (stateB === 1 && Math.abs(timeB - expB) > 0.9 && (Date.now() - lastSeekTimeBRef.current > 2000)) {
+                // Correct significant drift only after 2s stabilization grace period
+                playerB.seekTo(expB, true);
+                lastSeekTimeBRef.current = Date.now();
               }
-            } else {
-              if (now - lastSeekTimeARef.current > 800) {
-                const masterFromA = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
-                setSelectedTimeCursor(masterFromA);
-                const targetB = calculateLocalSeekTime(videoB, masterFromA, fineTuneDelta);
-                if (Math.abs(timeB - targetB) > 0.4 && (now - lastSeekTimeBRef.current > 1200)) {
-                  lastSeekTimeBRef.current = now;
-                  playerB?.seekTo(targetB, true);
-                }
-              }
+            } else if (stateB === 1) {
+              playerB.pauseVideo();
             }
           }
-        } else if (isPlayingA && !isPlayingB) {
-          const deltaA = Math.abs(timeA - lastTimeRefA.current);
-          const masterFromA = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
-          setSelectedTimeCursor(masterFromA);
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
 
-          if (deltaA > 1.2) {
-            const targetB = calculateLocalSeekTime(videoB, masterFromA, fineTuneDelta);
-            playerB?.seekTo(targetB, true);
+        // --- Deck B is actively playing ---
+        if (stateB === 1 && videoB && stateA !== 1) {
+          isPlaybackTickRef.current = true;
+          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
+          
+          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+            setSelectedTimeCursor(masterTime);
           }
-        } else if (isPlayingB && !isPlayingA) {
-          const deltaB = Math.abs(timeB - lastTimeRefB.current);
-          const masterFromB = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
-          setSelectedTimeCursor(masterFromB);
 
-          if (deltaB > 1.2) {
-            const targetA = calculateLocalSeekTime(videoA, masterFromB);
-            playerA?.seekTo(targetA, true);
+          if (playerA && videoA) {
+            const expA = calculateLocalSeekTime(videoA, masterTime);
+            const durA = videoA.duration || 300;
+            if (expA >= 0 && expA <= durA) {
+              if (stateA !== 1 && stateA !== 3) {
+                playerA.seekTo(expA, true);
+                playerA.playVideo();
+                lastSeekTimeARef.current = Date.now();
+              } else if (stateA === 1 && Math.abs(timeA - expA) > 0.9 && (Date.now() - lastSeekTimeARef.current > 2000)) {
+                playerA.seekTo(expA, true);
+                lastSeekTimeARef.current = Date.now();
+              }
+            } else if (stateA === 1) {
+              playerA.pauseVideo();
+            }
+          }
+          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          lastTimeRefA.current = timeA;
+          lastTimeRefB.current = timeB;
+          return;
+        }
+
+        // --- Both paused: Detect user seeking on native YouTube seekbar ---
+        if (stateA !== 1 && stateB !== 1) {
+          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
+            isPlaybackTickRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
+            setSelectedTimeCursor(masterTime);
+            if (playerB && videoB) {
+              const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
+              playerB.seekTo(expB, true);
+            }
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
+          } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
+            isPlaybackTickRef.current = true;
+            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
+            setSelectedTimeCursor(masterTime);
+            if (playerA && videoA) {
+              const expA = calculateLocalSeekTime(videoA, masterTime);
+              playerA.seekTo(expA, true);
+            }
+            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           }
         }
 
@@ -732,7 +743,7 @@ export default function SyncVisualizerPage() {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor, activeAudioSource, activeDeckSlot]);
+  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor]);
 
   // Format seconds to mm:ss or hh:mm:ss
   const formatTime = (seconds: number) => {
