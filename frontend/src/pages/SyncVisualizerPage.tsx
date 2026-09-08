@@ -178,20 +178,50 @@ export default function SyncVisualizerPage() {
     setSearchParams(params);
   }, [selectedConcertId]);
 
-  // Total master concert duration
-  const totalDuration = useMemo(() => {
-    if (!graphData || !graphData.videos || graphData.videos.length === 0) return 10800;
-    return Math.max(
+  // Total master concert timeline boundaries (supporting negative start and post-concert margins)
+  const { minMasterTime, maxMasterTime, totalDuration, timelineSpan } = useMemo(() => {
+    if (!graphData || !graphData.videos || graphData.videos.length === 0) {
+      return { minMasterTime: 0, maxMasterTime: 10800, totalDuration: 10800, timelineSpan: 10800 };
+    }
+
+    const minVideoStart = Math.min(
+      0,
+      ...graphData.videos.map(v => {
+        if (v.segments && v.segments.length > 0) {
+          return Math.min(...v.segments.map(s => s.master_start));
+        }
+        return v.master_start_time ?? 0;
+      })
+    );
+
+    const maxVideoEnd = Math.max(
       graphData.master_video?.duration || 0,
-      ...graphData.videos.map(v => v.master_end_time || 0),
+      ...graphData.videos.map(v => {
+        if (v.segments && v.segments.length > 0) {
+          return Math.max(...v.segments.map(s => s.master_end));
+        }
+        return v.master_end_time ?? 0;
+      }),
       7200
     );
+
+    // Give comfortable margins: at least 300s before if there are negative videos, and 120s buffer after
+    const calculatedMin = minVideoStart < 0 ? Math.floor((minVideoStart - 120) / 60) * 60 : -180;
+    const calculatedMax = Math.ceil((maxVideoEnd + 180) / 60) * 60;
+    const span = calculatedMax - calculatedMin;
+
+    return {
+      minMasterTime: calculatedMin,
+      maxMasterTime: calculatedMax,
+      totalDuration: maxVideoEnd,
+      timelineSpan: span
+    };
   }, [graphData]);
 
   // Overall Timeline Canvas Height in px
   const canvasHeight = useMemo(() => {
-    return Math.max(700, Math.round((totalDuration / 60) * scaleFactor));
-  }, [totalDuration, scaleFactor]);
+    return Math.max(700, Math.round((timelineSpan / 60) * scaleFactor));
+  }, [timelineSpan, scaleFactor]);
 
   // Statistics
   const stats = useMemo(() => {
@@ -310,7 +340,7 @@ export default function SyncVisualizerPage() {
 
   // User Timeline Seeking (Click & Drag)
   const seekToMasterTimeline = (masterSec: number) => {
-    const clamped = Math.max(0, Math.min(totalDuration, masterSec));
+    const clamped = Math.max(minMasterTime, Math.min(maxMasterTime, masterSec));
     isPlaybackTickRef.current = false;
     setSelectedTimeCursor(clamped);
 
@@ -328,7 +358,7 @@ export default function SyncVisualizerPage() {
     if (!timelineRef.current) return;
     const rect = timelineRef.current.getBoundingClientRect();
     const clickY = e.clientY - rect.top;
-    const clickedSec = (clickY / canvasHeight) * totalDuration;
+    const clickedSec = minMasterTime + (clickY / canvasHeight) * timelineSpan;
     seekToMasterTimeline(clickedSec);
   };
 
@@ -352,7 +382,7 @@ export default function SyncVisualizerPage() {
       window.removeEventListener('mousemove', handleGlobalMouseMove);
       window.removeEventListener('mouseup', handleGlobalMouseUp);
     };
-  }, [totalDuration, canvasHeight, videoA, videoB, fineTuneDelta, playerA, playerB]);
+  }, [minMasterTime, maxMasterTime, timelineSpan, canvasHeight, videoA, videoB, fineTuneDelta, playerA, playerB]);
 
   const handleSelectVideo = (video: SyncGraphVideoNode, preferredSeekTime?: number) => {
     if (activeDeckSlot === 'A') {
@@ -736,7 +766,7 @@ export default function SyncVisualizerPage() {
         // --- Deck B is actively playing ---
         if (stateB === 1 && videoB && stateA !== 1) {
           isPlaybackTickRef.current = true;
-          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
+          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
           
           if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
             setSelectedTimeCursor(masterTime);
@@ -768,7 +798,7 @@ export default function SyncVisualizerPage() {
         if (stateA !== 1 && stateB !== 1) {
           if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
             isPlaybackTickRef.current = true;
-            const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
+            const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration, 0, minMasterTime);
             setSelectedTimeCursor(masterTime);
             if (playerB && videoB) {
               const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
@@ -777,7 +807,7 @@ export default function SyncVisualizerPage() {
             setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
           } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
             isPlaybackTickRef.current = true;
-            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta);
+            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
             setSelectedTimeCursor(masterTime);
             if (playerA && videoA) {
               const expA = calculateLocalSeekTime(videoA, masterTime);
@@ -793,18 +823,21 @@ export default function SyncVisualizerPage() {
     }, 250);
 
     return () => clearInterval(interval);
-  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor]);
+  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor, minMasterTime]);
 
-  // Format seconds to mm:ss or hh:mm:ss
+  // Format seconds to mm:ss or hh:mm:ss (supports negative margin)
   const formatTime = (seconds: number) => {
-    const s = Math.max(0, Math.floor(seconds));
+    const isNeg = seconds < 0;
+    const absSec = Math.abs(seconds);
+    const s = Math.floor(absSec);
     const h = Math.floor(s / 3600);
     const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
+    const prefix = isNeg ? '-' : '';
     if (h > 0) {
-      return `${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+      return `${prefix}${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
     }
-    return `${m}:${sec.toString().padStart(2, '0')}`;
+    return `${prefix}${m}:${sec.toString().padStart(2, '0')}`;
   };
 
   return (
@@ -888,6 +921,8 @@ export default function SyncVisualizerPage() {
             canvasHeight={canvasHeight}
             totalCanvasWidth={totalCanvasWidth}
             totalDuration={totalDuration}
+            minMasterTime={minMasterTime}
+            maxMasterTime={maxMasterTime}
             TIME_AXIS_WIDTH={TIME_AXIS_WIDTH}
             LANE_WIDTH={LANE_WIDTH}
             LANE_GAP={LANE_GAP}

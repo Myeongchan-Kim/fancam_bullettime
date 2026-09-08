@@ -62,8 +62,8 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   const startB = currentEffectiveOffset;
   const endB = startB + durB;
 
-  // Timeline view window
-  const timelineMin = Math.max(0, Math.min(startA, startB) - 25);
+  // Timeline view window (allows negative timeline margin before Master 0s)
+  const timelineMin = Math.min(startA, startB) - 25;
   const timelineMax = Math.max(endA, endB) + 25;
   const timelineSpan = Math.max(1, timelineMax - timelineMin);
 

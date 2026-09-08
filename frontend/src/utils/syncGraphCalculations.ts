@@ -46,7 +46,8 @@ export function calculateMasterTimeFromLocal(
   video: SyncGraphVideoNode | null,
   localTime: number,
   totalDuration: number,
-  delta: number = 0
+  delta: number = 0,
+  minMasterTime: number = 0
 ): number {
   if (!video) return 0;
 
@@ -56,27 +57,27 @@ export function calculateMasterTimeFromLocal(
       s => localTime >= (s.video_start || 0) && localTime <= (s.video_end || video.duration || 300)
     );
     if (seg) {
-      return Math.max(0, Math.min(totalDuration, localTime + seg.sync_offset + delta));
+      return Math.max(minMasterTime, Math.min(totalDuration, localTime + seg.sync_offset + delta));
     }
 
     // 2. Fallback to closest segment based on localTime
     const sortedSegs = [...video.segments].sort((a, b) => a.video_start - b.video_start);
     if (localTime < sortedSegs[0].video_start) {
-      return Math.max(0, Math.min(totalDuration, localTime + sortedSegs[0].sync_offset + delta));
+      return Math.max(minMasterTime, Math.min(totalDuration, localTime + sortedSegs[0].sync_offset + delta));
     }
     for (let i = 0; i < sortedSegs.length - 1; i++) {
       if (localTime >= sortedSegs[i].video_end && localTime < sortedSegs[i + 1].video_start) {
         // Midpoint choice between two segments
         const useNext = (localTime - sortedSegs[i].video_end) > (sortedSegs[i + 1].video_start - localTime);
         const chosenSeg = useNext ? sortedSegs[i + 1] : sortedSegs[i];
-        return Math.max(0, Math.min(totalDuration, localTime + chosenSeg.sync_offset + delta));
+        return Math.max(minMasterTime, Math.min(totalDuration, localTime + chosenSeg.sync_offset + delta));
       }
     }
     const lastSeg = sortedSegs[sortedSegs.length - 1];
-    return Math.max(0, Math.min(totalDuration, localTime + lastSeg.sync_offset + delta));
+    return Math.max(minMasterTime, Math.min(totalDuration, localTime + lastSeg.sync_offset + delta));
   }
 
-  return Math.max(0, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
+  return Math.max(minMasterTime, Math.min(totalDuration, localTime + (video.sync_offset || 0) + delta));
 }
 
 /**
