@@ -7,6 +7,8 @@ interface TimelineLanesCanvasProps {
   canvasHeight: number;
   totalCanvasWidth: number;
   totalDuration: number;
+  minMasterTime?: number;
+  maxMasterTime?: number;
   TIME_AXIS_WIDTH: number;
   LANE_WIDTH: number;
   LANE_GAP: number;
@@ -28,6 +30,8 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
   canvasHeight,
   totalCanvasWidth,
   totalDuration,
+  minMasterTime = 0,
+  maxMasterTime,
   TIME_AXIS_WIDTH,
   LANE_WIDTH,
   LANE_GAP,
@@ -43,9 +47,16 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
   onHoverVideo,
   formatTime
 }) => {
+  const actualMaxTime = maxMasterTime !== undefined ? maxMasterTime : totalDuration;
+  const timeSpan = Math.max(1, actualMaxTime - minMasterTime);
+
+  const timeToY = (sec: number) => {
+    return ((sec - minMasterTime) / timeSpan) * canvasHeight;
+  };
+
   const getPositionStyles = (startTime: number, duration: number) => {
-    const top = (startTime / totalDuration) * canvasHeight;
-    const height = Math.max(14, (duration / totalDuration) * canvasHeight);
+    const top = timeToY(startTime);
+    const height = Math.max(14, (duration / timeSpan) * canvasHeight);
     return { top: `${top}px`, height: `${height}px` };
   };
 
@@ -78,9 +89,10 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
           style={{ width: `${TIME_AXIS_WIDTH}px` }}
           className="relative h-full flex-shrink-0 border-r border-slate-800/80"
         >
-          {Array.from({ length: Math.ceil(totalDuration / 900) }).map((_, gIdx) => {
-            const sec = gIdx * 900;
-            const topPx = (sec / totalDuration) * canvasHeight;
+          {Array.from({ length: Math.ceil((actualMaxTime - minMasterTime) / 900) + 1 }).map((_, gIdx) => {
+            const sec = Math.floor(minMasterTime / 900) * 900 + gIdx * 900;
+            if (sec < minMasterTime || sec > actualMaxTime) return null;
+            const topPx = timeToY(sec);
             return (
               <div
                 key={gIdx}
@@ -127,7 +139,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
 
               if (v.segments && v.segments.length > 0) {
                 return v.segments.map((seg, sIdx) => {
-                  const y = (seg.master_start / totalDuration) * canvasHeight;
+                  const y = timeToY(seg.master_start);
                   return (
                     <line
                       key={`sync-seg-${v.id}-${sIdx}`}
@@ -144,7 +156,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                 });
               }
 
-              const y = (v.master_start_time / totalDuration) * canvasHeight;
+              const y = timeToY(v.master_start_time);
               return (
                 <line
                   key={`sync-${v.id}`}
@@ -280,7 +292,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
 
         {/* 4. Interactive Horizontal Time Scrubber Line */}
         <div
-          style={{ top: `${(selectedTimeCursor / totalDuration) * canvasHeight}px` }}
+          style={{ top: `${timeToY(selectedTimeCursor)}px` }}
           className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
         >
           <div className="w-full border-t-2 border-twice-magenta shadow-[0_0_12px_rgba(255,94,153,0.8)]" />
