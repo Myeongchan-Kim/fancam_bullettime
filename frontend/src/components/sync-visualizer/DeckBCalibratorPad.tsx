@@ -296,9 +296,23 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <button
               onClick={onSaveOffset}
               disabled={isSavingOffset}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 text-xs transition-all"
+              className={`px-3 py-1.5 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg text-xs transition-all ${
+                isSavingOffset 
+                  ? 'bg-emerald-700 cursor-wait shadow-emerald-950/50' 
+                  : 'bg-emerald-600 hover:bg-emerald-500 shadow-emerald-950 hover:scale-105 active:scale-95'
+              }`}
             >
-              <Save className="w-3.5 h-3.5" /> {activeSegment ? `구간 [${activeSegment.label || `#${activeSegment.id}`}] 오프셋 저장` : '오프셋 영구 저장'}
+              {isSavingOffset ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>저장 처리 중...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{activeSegment ? `구간 [${activeSegment.label || `#${activeSegment.id}`}] 오프셋 저장` : '오프셋 영구 저장'}</span>
+                </>
+              )}
             </button>
           )}
           <button
