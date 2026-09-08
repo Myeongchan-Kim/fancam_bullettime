@@ -94,7 +94,7 @@ export default function SyncVisualizerPage() {
   const [isLoadingCalibrator, setIsLoadingCalibrator] = useState<boolean>(false);
 
   // Zoom / Track Configuration
-  const [scaleFactor, setScaleFactor] = useState<number>(18);
+  const [scaleFactor, setScaleFactor] = useState<number>(10);
   const LANE_WIDTH = 13;
   const LANE_GAP = 5;
   const TIME_AXIS_WIDTH = 48;

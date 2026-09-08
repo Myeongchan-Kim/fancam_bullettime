@@ -234,7 +234,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
         <span className="text-[10px]">Scale:</span>
         <input 
           type="range" 
-          min="10" 
+          min="5" 
           max="40" 
           value={scaleFactor} 
           onChange={(e) => onScaleChange(parseInt(e.target.value, 10))}
