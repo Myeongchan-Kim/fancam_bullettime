@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { 
   calculateLocalSeekTime, 
   calculateMasterTimeFromLocal, 
-  isCursorInsideVideoRange 
+  isCursorInsideVideoRange,
+  getActiveSegment
 } from './syncGraphCalculations';
 import { SyncGraphVideoNode } from '../types';
 
@@ -132,6 +133,32 @@ describe('syncGraphCalculations Unit Tests', () => {
       expect(isCursorInsideVideoRange(splitVideo, 350)).toBe(true);
       expect(isCursorInsideVideoRange(splitVideo, 550)).toBe(false);
       expect(isCursorInsideVideoRange(splitVideo, 650)).toBe(true);
+    });
+  });
+
+  describe('getActiveSegment', () => {
+    it('returns null for videos without segments', () => {
+      expect(getActiveSegment(continuousVideo, 1050)).toBeNull();
+      expect(getActiveSegment(null, 100)).toBeNull();
+    });
+
+    it('returns direct matching segment when cursor is inside it', () => {
+      const seg1 = getActiveSegment(splitVideo, 100);
+      expect(seg1?.id).toBe(1);
+      const seg2 = getActiveSegment(splitVideo, 350);
+      expect(seg2?.id).toBe(2);
+      const seg3 = getActiveSegment(splitVideo, 650);
+      expect(seg3?.id).toBe(3);
+    });
+
+    it('returns closest upcoming segment when cursor is in a gap', () => {
+      const seg = getActiveSegment(splitVideo, 250);
+      expect(seg?.id).toBe(2);
+    });
+
+    it('returns last segment when cursor is past all segments', () => {
+      const seg = getActiveSegment(splitVideo, 900);
+      expect(seg?.id).toBe(3);
     });
   });
 });

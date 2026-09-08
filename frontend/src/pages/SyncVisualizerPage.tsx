@@ -9,11 +9,11 @@ import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalib
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
 import { useGlobalAudio } from '../context/AudioContext';
 
-// Modular Subcomponents & Pure Utilities
 import { 
   calculateLocalSeekTime, 
   calculateMasterTimeFromLocal, 
-  isCursorInsideVideoRange 
+  isCursorInsideVideoRange,
+  getActiveSegment
 } from '../utils/syncGraphCalculations';
 import { ActionToolbar, StatusFilterTabs, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
@@ -389,11 +389,6 @@ export default function SyncVisualizerPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [playerMode, videoB]);
 
-  // Current effective offset for Deck B
-  const effectiveOffsetB = videoB 
-    ? Number((videoB.sync_offset + fineTuneDelta).toFixed(2))
-    : 0;
-
   // Real-time synchronization when fineTuneDelta changes
   useEffect(() => {
     if (!videoB || !playerB) return;
@@ -422,23 +417,55 @@ export default function SyncVisualizerPage() {
         setIsAdminMode(true);
       }
 
-      const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(2));
-      const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
-      const relOffset = parentId ? Number((newOffset - (videoA?.sync_offset || 0)).toFixed(2)) : null;
+      // Check if videoB is a split video with segments
+      const isSplitVideo = !!(videoB.segments && videoB.segments.length > 0);
+      const activeSeg = isSplitVideo ? getActiveSegment(videoB, selectedTimeCursor) : null;
 
-      await axios.patch(
-        `${API_BASE_URL}/videos/${videoB.id}/offset`,
-        {
-          sync_offset: newOffset,
-          calibration_method: 'manual_studio',
-          calibration_status: 'manually_verified',
-          parent_video_id: parentId,
-          relative_offset: relOffset
-        },
-        { headers: { 'x-admin-key': adminKey } }
-      );
+      if (isSplitVideo && activeSeg) {
+        const newSegOffset = Number((activeSeg.sync_offset + fineTuneDelta).toFixed(2));
+        const updatedPayload = videoB.segments.map(s => {
+          const isTarget = s.id === activeSeg.id;
+          const off = isTarget ? newSegOffset : s.sync_offset;
+          const vStart = s.video_start;
+          const vEnd = s.video_end;
+          return {
+            video_start_time: vStart,
+            video_end_time: vEnd,
+            master_start_time: Math.round(vStart + off),
+            master_end_time: Math.round(vEnd + off),
+            sync_offset: off,
+            label: s.label || null,
+            is_verified: true
+          };
+        });
 
-      setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 기준: ${videoA ? `#${videoA.id}` : '마스터'}, 검증 카운트 증가)`);
+        await axios.post(
+          `${API_BASE_URL}/videos/${videoB.id}/segments/bulk`,
+          updatedPayload,
+          { headers: { 'x-admin-key': adminKey } }
+        );
+
+        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 오프셋이 성공적으로 저장되었습니다! (오프셋: +${newSegOffset}s)`);
+      } else {
+        const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(2));
+        const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
+        const relOffset = parentId ? Number((newOffset - (videoA?.sync_offset || 0)).toFixed(2)) : null;
+
+        await axios.patch(
+          `${API_BASE_URL}/videos/${videoB.id}/offset`,
+          {
+            sync_offset: newOffset,
+            calibration_method: 'manual_studio',
+            calibration_status: 'manually_verified',
+            parent_video_id: parentId,
+            relative_offset: relOffset
+          },
+          { headers: { 'x-admin-key': adminKey } }
+        );
+
+        setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 기준: ${videoA ? `#${videoA.id}` : '마스터'}, 검증 카운트 증가)`);
+      }
+
       setFineTuneDelta(0);
       loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id);
       setTimeout(() => setSaveSuccessMsg(null), 3000);
@@ -895,7 +922,7 @@ export default function SyncVisualizerPage() {
                 videoA={videoA}
                 videoB={videoB}
                 fineTuneDelta={fineTuneDelta}
-                effectiveOffsetB={effectiveOffsetB}
+                selectedTimeCursor={selectedTimeCursor}
                 isSavingOffset={isSavingOffset}
                 saveSuccessMsg={saveSuccessMsg}
                 isAiSyncing={isAiSyncing}
