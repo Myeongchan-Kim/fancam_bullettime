@@ -491,6 +491,94 @@ def trigger_video_rough_sync(
         "calibration_method": video.calibration_method
     }
 
+@router.post("/videos/{video_id}/rough-sync-candidates")
+def get_video_rough_sync_candidates(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin)
+):
+    """
+    영상 위치 추정을 위해 두 가지 알고리즘(세트리스트/설명란 기반 vs 비디오 프레임 비주얼 매칭)을
+    모두 계산하여 후보 리스트를 반환합니다. DB를 바로 변경하지 않고 사용자 선택을 지원합니다.
+    """
+    from app.services.calibration import estimate_video_rough_offset
+    from app.crawler.visual_group_aligner import find_visual_group_location
+
+    video = db.query(Video).filter(Video.id == video_id).first()
+    if not video:
+        raise HTTPException(status_code=404, detail="Video not found")
+
+    candidates = []
+
+    # 1. Option A: 텍스트 / 세트리스트 기반 대략적 위치
+    approx_offset, reason, parent_id = estimate_video_rough_offset(db, video)
+    if approx_offset is not None:
+        candidates.append({
+            "id": "setlist_metadata",
+            "name": "세트리스트 & 메타데이터 기반",
+            "estimated_offset": round(approx_offset, 2),
+            "reason": reason or "등록된 곡 세트리스트 기반 추정",
+            "confidence": 0.7,
+            "badge": "📜 세트리스트",
+            "parent_video_id": parent_id
+        })
+
+    # 2. Option B: 비디오 프레임 비주얼 그룹 매칭 (Visual Frame Matching)
+    # Find master video in the same concert
+    long_videos = db.query(Video).filter(
+        Video.concert_id == video.concert_id,
+        Video.is_unavailable == False,
+        Video.duration > 3600
+    ).all()
+
+    if long_videos and video.youtube_id:
+        master_video = max(long_videos, key=lambda v: v.duration)
+        # Find peer fancams for the same song to form a group fingerprint
+        peer_yids = [video.youtube_id]
+        if video.songs:
+            primary_song = video.songs[0]
+            peers = db.query(Video).filter(
+                Video.concert_id == video.concert_id,
+                Video.is_unavailable == False,
+                Video.id != video.id,
+                Video.songs.any(id=primary_song.id)
+            ).limit(4).all()
+            peer_yids.extend([p.youtube_id for p in peers if p.youtube_id])
+
+        # Define search window around setlist estimate if available, otherwise act estimate
+        search_window = None
+        if approx_offset is not None:
+            search_window = (max(0.0, approx_offset - 900.0), min(float(master_video.duration), approx_offset + 900.0))
+
+        try:
+            v_res = find_visual_group_location(
+                master_youtube_id=master_video.youtube_id,
+                fancam_youtube_ids=peer_yids,
+                search_window=search_window,
+                master_interval_sec=30.0,
+                fancam_sample_offset_sec=30.0,
+                use_gemini_verification=True
+            )
+            if v_res.get("success"):
+                candidates.append({
+                    "id": "visual_matching",
+                    "name": "비주얼 화면 그룹 매칭 (Gemini/Vision)",
+                    "estimated_offset": round(v_res["best_master_time"] - 30.0, 2),
+                    "reason": v_res.get("reason") or "마스터 영상 무대 조명 및 의상 화면 일치",
+                    "confidence": round(v_res.get("confidence", 0.85), 3),
+                    "badge": "👁️ 비주얼 매칭",
+                    "parent_video_id": master_video.id
+                })
+        except Exception as e:
+            logger.warning(f"Visual group aligner failed: {e}")
+
+    return {
+        "video_id": video.id,
+        "current_offset": video.sync_offset,
+        "candidates": candidates
+    }
+
+
 
 
 

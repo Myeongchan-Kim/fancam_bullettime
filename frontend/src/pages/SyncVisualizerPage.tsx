@@ -452,7 +452,7 @@ export default function SyncVisualizerPage() {
         const relOffset = parentId ? Number((newOffset - (videoA?.sync_offset || 0)).toFixed(2)) : null;
 
         await axios.patch(
-          `${API_BASE_URL}/videos/${videoB.id}/offset`,
+          `${API_BASE_URL}/videos/${videoB.id}`,
           {
             sync_offset: newOffset,
             calibration_method: 'manual_studio',
@@ -534,7 +534,7 @@ export default function SyncVisualizerPage() {
     }
   };
 
-  // AI Rough Sync (세트리스트/설명란 기반 대략적 위치 안착)
+  // AI Rough Sync (세트리스트 & 비주얼 화면 그룹 매칭 기반 대략적 위치 후보 추천)
   const handleTriggerRoughSync = async (targetVideo: SyncGraphVideoNode) => {
     if (!targetVideo || targetVideo.is_master) return;
 
@@ -547,7 +547,7 @@ export default function SyncVisualizerPage() {
     try {
       let adminKey = localStorage.getItem('admin_key') || '';
       if (!adminKey) {
-        const inputKey = window.prompt('대략적 싱크 안착을 실행하려면 Admin Key가 필요합니다:');
+        const inputKey = window.prompt('대략적 싱크 추천을 실행하려면 Admin Key가 필요합니다:');
         if (!inputKey) {
           setIsAiSyncModalOpen(false);
           setIsRoughSyncing(false);
@@ -558,31 +558,81 @@ export default function SyncVisualizerPage() {
         setIsAdminMode(true);
       }
 
+      // Fetch candidates from both algorithms
       const res = await axios.post(
-        `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync`,
+        `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync-candidates`,
         {},
         { headers: { 'x-admin-key': adminKey } }
       );
 
-      setAiSyncResult({
-        ...res.data,
-        isRough: true
-      });
-      setFineTuneDelta(0);
-      await loadSyncGraph(selectedConcertId, videoA?.id, targetVideo.id);
+      const candidates = res.data.candidates || [];
+      if (candidates.length === 0) {
+        setAiSyncError('일치하는 세트리스트 또는 비주얼 화면 구간을 찾지 못했습니다.');
+      } else {
+        setAiSyncResult({
+          isCandidateSelection: true,
+          candidates: candidates,
+          current_offset: res.data.current_offset
+        });
+      }
     } catch (err: any) {
-      console.error('Rough sync failed', err);
+      console.error('Rough sync candidates fetch failed', err);
       if (err?.response?.status === 403) {
         localStorage.removeItem('admin_key');
         setIsAdminMode(false);
         setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
       } else {
-        setAiSyncError(err?.response?.data?.detail || err?.message || '대략적 싱크 안착 실행 중 오류가 발생했습니다.');
+        setAiSyncError(err?.response?.data?.detail || err?.message || '대략적 위치 후보 탐색 중 오류가 발생했습니다.');
       }
     } finally {
       setIsRoughSyncing(false);
     }
   };
+
+  // Apply Selected Rough Candidate
+  const handleApplyRoughCandidate = async (candidate: any) => {
+    if (!aiSyncTargetVideo) return;
+    const adminKey = localStorage.getItem('admin_key') || '';
+    const prevOffset = aiSyncTargetVideo.sync_offset || 0;
+    const newOffset = candidate.estimated_offset;
+
+    try {
+      setIsRoughSyncing(true);
+      const isVisual = candidate.id === 'visual_matching';
+      const method = isVisual ? 'visual_group_match' : 'ai_setlist_macro_sync';
+
+      await axios.patch(
+        `${API_BASE_URL}/videos/${aiSyncTargetVideo.id}`,
+        {
+          sync_offset: newOffset,
+          calibration_method: method,
+          calibration_status: 'ai_calibrated',
+          parent_video_id: candidate.parent_video_id || null
+        },
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      setAiSyncResult({
+        isRough: true,
+        isCandidateSelection: false,
+        video_id: aiSyncTargetVideo.id,
+        previous_offset: prevOffset,
+        new_offset: newOffset,
+        delta: Number((newOffset - prevOffset).toFixed(2)),
+        reason: candidate.reason,
+        parent_video_id: candidate.parent_video_id
+      });
+
+      setFineTuneDelta(0);
+      await loadSyncGraph(selectedConcertId, videoA?.id, aiSyncTargetVideo.id);
+    } catch (err: any) {
+      console.error('Failed to apply candidate', err);
+      alert(`적용 실패: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsRoughSyncing(false);
+    }
+  };
+
 
   // Open Discrepancy Audit Modal
   const handleOpenAuditModal = async () => {
@@ -989,6 +1039,7 @@ export default function SyncVisualizerPage() {
         aiSyncResult={aiSyncResult}
         aiSyncError={aiSyncError}
         onClose={() => setIsAiSyncModalOpen(false)}
+        onApplyCandidate={handleApplyRoughCandidate}
       />
 
       <DiscrepancyAuditModal
