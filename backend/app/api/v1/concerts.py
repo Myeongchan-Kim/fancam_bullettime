@@ -211,15 +211,19 @@ def get_concert_discrepancies(
     db: Session = Depends(get_db)
 ):
     """
-    특정 콘서트의 모든 직캠 중 세트리스트 곡 시작 시각과 허용치(기본 120초) 이상 크게 어긋난 영상 목록 조회
+    특정 콘서트의 모든 직캠 중 세트리스트 곡 시작 시각과 허용치(기본 120초) 이상 크게 어긋난 영상 목록 및
+    동일 영상 내 세그먼트(분할 구간) 간 타임라인 중첩(Overlap) 결함 목록 조회
     """
-    from app.services.calibration import audit_concert_discrepancies
+    from app.services.calibration import audit_concert_discrepancies, audit_segment_overlaps
     discrepancies = audit_concert_discrepancies(db, concert_id, threshold_seconds=threshold)
+    segment_overlaps = audit_segment_overlaps(db, concert_id)
     return {
         "concert_id": concert_id,
         "threshold_seconds": threshold,
         "count": len(discrepancies),
-        "discrepancies": discrepancies
+        "discrepancies": discrepancies,
+        "segment_overlaps_count": len(segment_overlaps),
+        "segment_overlaps": segment_overlaps
     }
 
 @router.post("/concerts/{concert_id}/auto-macro-align")
