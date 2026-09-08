@@ -187,7 +187,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
         <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           type="text"
-          placeholder="영상 제목, 곡명 검색..."
+          placeholder="영상 제목, 곡명, #영상ID 검색..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="w-full bg-slate-800 text-white pl-8 pr-3 py-1.5 rounded-lg text-xs border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"

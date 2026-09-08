@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { Sliders, RotateCcw, GripVertical, Save, ShieldCheck, Compass, Sparkles, Layers, Scissors } from 'lucide-react';
+import { Sliders, RotateCcw, GripVertical, Save, ShieldCheck, Compass, Sparkles, Layers, Scissors, ChevronLeft, ChevronRight } from 'lucide-react';
 import { SyncGraphVideoNode } from '../../types';
 import { getActiveSegment } from '../../utils/syncGraphCalculations';
 
@@ -56,16 +56,24 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   // Deck B target parameters (Segment vs Full Video)
   const targetOffset = activeSegment ? activeSegment.sync_offset : (videoB.sync_offset || 0);
   const currentEffectiveOffset = Number((targetOffset + fineTuneDelta).toFixed(2));
+  const startB = currentEffectiveOffset;
+  // Duration of Deck B
   const durB = activeSegment 
     ? Math.max(1, (activeSegment.video_end - activeSegment.video_start)) 
     : (videoB.duration || 240);
-  const startB = currentEffectiveOffset;
 
-  // Deck B 중심 스케일링: Deck B 바가 캘리브레이션 트랙 너비의 약 1/3 (33%)을 차지하도록 윈도우 스팬 설정
-  // timelineSpan = durB * 3 으로 두면 Deck B가 정확히 1/3을 차지함 (좌/우 마진 각각 durB 만큼)
-  const timelineSpan = Math.max(60, durB * 3.0);
-  // Deck B 바가 트랙 중앙에 오도록 좌우 마진 분배
-  const timelineMin = startB - (timelineSpan - durB) / 2.0;
+  // Viewport window offset shift (allows scrolling the comparison window by ±10 minutes)
+  const [viewportShift, setViewportShift] = useState<number>(0);
+
+  // Timeline view window: Deck B bar length + margin of ±10 minutes (600s left, 600s right)
+  const MARGIN_SECONDS = 600; // 10 minutes
+  const timelineSpan = durB + MARGIN_SECONDS * 2; // Total width = bar length + 20 minutes
+
+  // The base reference position for the window is the saved base offset (targetOffset) + viewportShift.
+  // CRITICAL: We DO NOT add fineTuneDelta to the window anchor!
+  // This keeps the track background completely fixed while the bar itself moves smoothly inside it when dragged.
+  const windowAnchor = targetOffset + viewportShift;
+  const timelineMin = windowAnchor - MARGIN_SECONDS;
   const timelineMax = timelineMin + timelineSpan;
 
   // Pointer drag state & ref
@@ -200,42 +208,78 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Deck B Draggable Target Bar */}
+        {/* Row 2: Deck B Draggable Target Bar with 10-minute shift buttons */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
             <span className="text-twice-magenta font-bold flex items-center gap-1 truncate max-w-[340px]">
               <span className="w-2 h-2 rounded-full bg-twice-magenta animate-pulse" />
               [Deck B {activeSegment ? `구간: ${activeSegment.label || `#${activeSegment.id}`}` : '대상'}] #{videoB.id} {videoB.title}
             </span>
-            <span className="text-[10px] text-twice-magenta font-bold shrink-0">
-              Offset: {currentEffectiveOffset.toFixed(2)}s ({formatTime(durB)})
-            </span>
+            <div className="flex items-center gap-2">
+              {viewportShift !== 0 && (
+                <button
+                  onClick={() => setViewportShift(0)}
+                  className="text-[9px] text-gray-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-bold"
+                  title="타임라인 뷰를 Deck B 중앙 위치로 리셋"
+                >
+                  뷰 리셋 ({viewportShift > 0 ? `+${viewportShift / 60}분` : `${viewportShift / 60}분`})
+                </button>
+              )}
+              <span className="text-[10px] text-twice-magenta font-bold shrink-0">
+                Offset: {currentEffectiveOffset.toFixed(2)}s ({formatTime(durB)})
+              </span>
+            </div>
           </div>
 
-          <div
-            ref={trackContainerRef}
-            onPointerDown={handlePointerDown}
-            onPointerMove={handlePointerMove}
-            onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
-            className={`h-6 bg-slate-900 rounded-lg overflow-hidden relative select-none cursor-grab active:cursor-grabbing border ${
-              isDragging ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/30 hover:border-twice-magenta/60'
-            } transition-colors`}
-            title="마우스 또는 터치로 바를 좌우로 드래그하여 싱크를 미세 조정하세요 (0.05초 단위)"
-          >
-            <div
-              className="h-full rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
-              style={{
-                marginLeft: `${Math.max(0, ((startB - timelineMin) / timelineSpan) * 100)}%`,
-                width: `${Math.max(4, Math.min(100, (durB / timelineSpan) * 100))}%`
-              }}
+          <div className="flex items-center gap-1.5">
+            {/* Shift viewport left by 10 minutes (-600s) */}
+            <button
+              type="button"
+              onClick={() => setViewportShift(prev => prev - 600)}
+              className="h-7 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
+              title="타임라인 구간을 10분 앞으로 이동 (-10분)"
             >
-              <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
-              <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
-                {isDragging ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : activeSegment ? `구간 드래그 싱크 (${activeSegment.label || `#${activeSegment.id}`})` : '드래그하여 싱크 조절 (Drag to Sync)'}
-              </span>
-              <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+              <ChevronLeft className="w-3.5 h-3.5 text-twice-magenta group-hover:-translate-x-0.5 transition-transform" />
+              <span className="hidden sm:inline font-mono text-[9px] mr-0.5">-10m</span>
+            </button>
+
+            {/* Draggable Track Container */}
+            <div
+              ref={trackContainerRef}
+              onPointerDown={handlePointerDown}
+              onPointerMove={handlePointerMove}
+              onPointerUp={handlePointerUp}
+              onPointerCancel={handlePointerUp}
+              className={`flex-1 h-7 bg-slate-900 rounded-lg overflow-hidden relative select-none cursor-grab active:cursor-grabbing border ${
+                isDragging ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/30 hover:border-twice-magenta/60'
+              } transition-colors`}
+              title="마우스 또는 터치로 바를 좌우로 드래그하여 싱크를 미세 조정하세요 (0.05초 단위)"
+            >
+              <div
+                className="h-full rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
+                style={{
+                  marginLeft: `${Math.max(0, Math.min(96, ((startB - timelineMin) / timelineSpan) * 100))}%`,
+                  width: `${Math.max(4, Math.min(100, (durB / timelineSpan) * 100))}%`
+                }}
+              >
+                <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                  {isDragging ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : activeSegment ? `구간 드래그 싱크 (${activeSegment.label || `#${activeSegment.id}`})` : '드래그하여 싱크 조절 (Drag to Sync)'}
+                </span>
+                <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+              </div>
             </div>
+
+            {/* Shift viewport right by 10 minutes (+600s) */}
+            <button
+              type="button"
+              onClick={() => setViewportShift(prev => prev + 600)}
+              className="h-7 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
+              title="타임라인 구간을 10분 뒤로 이동 (+10분)"
+            >
+              <span className="hidden sm:inline font-mono text-[9px] ml-0.5">+10m</span>
+              <ChevronRight className="w-3.5 h-3.5 text-twice-magenta group-hover:translate-x-0.5 transition-transform" />
+            </button>
           </div>
         </div>
       </div>
