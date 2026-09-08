@@ -40,14 +40,22 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   if (videoB.is_master) return null;
 
   return (
-    <div className="mt-3 pt-3 border-t border-slate-800 space-y-3">
+    <div className="bg-slate-900/95 border border-twice-magenta/40 rounded-2xl p-4 shadow-xl space-y-3 backdrop-blur-sm ring-1 ring-twice-magenta/20">
       {/* Calibrator Header & Offset / Delta Badge */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5">
-          <Sliders className="w-3.5 h-3.5 text-twice-magenta" />
-          <span className="text-xs font-black text-gray-200 uppercase tracking-wide">
-            Deck B 싱크 캘리브레이터
+        <div className="flex items-center gap-2">
+          <span className="w-5 h-5 rounded-full bg-twice-magenta/20 text-twice-magenta flex items-center justify-center text-[10px] font-mono font-black border border-twice-magenta/40">
+            B
           </span>
+          <div className="flex items-center gap-1.5">
+            <Sliders className="w-4 h-4 text-twice-magenta" />
+            <span className="text-xs font-black text-gray-200 uppercase tracking-wide">
+              Deck B 싱크 캘리브레이터
+            </span>
+            <span className="text-xs text-twice-magenta font-mono font-bold truncate max-w-[220px]">
+              (#{videoB.id} {videoB.title})
+            </span>
+          </div>
         </div>
 
         <div className="flex items-center gap-2 font-mono">

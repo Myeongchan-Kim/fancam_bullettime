@@ -19,6 +19,7 @@ import { ActionToolbar, StatusFilterTabs, SearchFilterBar } from '../components/
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
 import { DeckStudioHeader } from '../components/sync-visualizer/DeckStudioHeader';
 import { DeckPlayersView } from '../components/sync-visualizer/DeckPlayersView';
+import { DeckBCalibratorPad } from '../components/sync-visualizer/DeckBCalibratorPad';
 import { OverlappingVideosList } from '../components/sync-visualizer/OverlappingVideosList';
 import { AiSyncModal } from '../components/sync-visualizer/AiSyncModal';
 import { DiscrepancyAuditModal } from '../components/sync-visualizer/DiscrepancyAuditModal';
@@ -876,15 +877,9 @@ export default function SyncVisualizerPage() {
               graphData={graphData}
               selectedTimeCursor={selectedTimeCursor}
               fineTuneDelta={fineTuneDelta}
-              effectiveOffsetB={effectiveOffsetB}
               playerOpts={playerOpts}
               isMuted={isMuted}
               activeAudioSource={activeAudioSource}
-              isSavingOffset={isSavingOffset}
-              saveSuccessMsg={saveSuccessMsg}
-              isAiSyncing={isAiSyncing}
-              isRoughSyncing={isRoughSyncing}
-              isLoadingCalibrator={isLoadingCalibrator}
               overlappingVideos={overlappingVideos}
               formatTime={formatTime}
               setVideoA={setVideoA}
@@ -892,14 +887,28 @@ export default function SyncVisualizerPage() {
               setActiveDeckSlot={setActiveDeckSlot}
               setPlayerA={setPlayerA}
               setPlayerB={setPlayerB}
-              onResetFineTune={() => setFineTuneDelta(0)}
-              onDeltaChange={setFineTuneDelta}
-              onNudge={nudge}
-              onSaveOffset={handleSaveFineTuneOffset}
-              onOpenCalibrator={handleOpenCalibrator}
-              onTriggerRoughSync={handleTriggerRoughSync}
-              onTriggerAiSync={handleTriggerAiSync}
             />
+
+            {/* Common Bottom Dock: In-Place Deck B Calibration Pad */}
+            {videoB && !videoB.is_master && (
+              <DeckBCalibratorPad
+                videoB={videoB}
+                fineTuneDelta={fineTuneDelta}
+                effectiveOffsetB={effectiveOffsetB}
+                isSavingOffset={isSavingOffset}
+                saveSuccessMsg={saveSuccessMsg}
+                isAiSyncing={isAiSyncing}
+                isRoughSyncing={isRoughSyncing}
+                isLoadingCalibrator={isLoadingCalibrator}
+                onResetFineTune={() => setFineTuneDelta(0)}
+                onDeltaChange={setFineTuneDelta}
+                onNudge={nudge}
+                onSaveOffset={handleSaveFineTuneOffset}
+                onOpenCalibrator={handleOpenCalibrator}
+                onTriggerRoughSync={handleTriggerRoughSync}
+                onTriggerAiSync={handleTriggerAiSync}
+              />
+            )}
 
             <OverlappingVideosList
               overlappingVideos={overlappingVideos}

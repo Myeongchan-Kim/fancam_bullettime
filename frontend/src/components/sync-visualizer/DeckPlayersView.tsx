@@ -3,7 +3,6 @@ import YouTube, { YouTubePlayer } from 'react-youtube';
 import { Link } from 'react-router-dom';
 import { Maximize2 } from 'lucide-react';
 import { SyncGraphData, SyncGraphVideoNode } from '../../types';
-import { DeckBCalibratorPad } from './DeckBCalibratorPad';
 import { calculateLocalSeekTime } from '../../utils/syncGraphCalculations';
 
 interface DeckPlayersViewProps {
@@ -14,15 +13,9 @@ interface DeckPlayersViewProps {
   graphData: SyncGraphData | null;
   selectedTimeCursor: number;
   fineTuneDelta: number;
-  effectiveOffsetB: number;
   playerOpts: any;
   isMuted: boolean;
   activeAudioSource: string;
-  isSavingOffset: boolean;
-  saveSuccessMsg: string | null;
-  isAiSyncing: boolean;
-  isRoughSyncing: boolean;
-  isLoadingCalibrator: boolean;
   overlappingVideos: SyncGraphVideoNode[];
   formatTime: (sec: number) => string;
   setVideoA: (v: SyncGraphVideoNode) => void;
@@ -30,13 +23,6 @@ interface DeckPlayersViewProps {
   setActiveDeckSlot: (slot: 'A' | 'B') => void;
   setPlayerA: (p: YouTubePlayer) => void;
   setPlayerB: (p: YouTubePlayer) => void;
-  onResetFineTune: () => void;
-  onDeltaChange: (newDelta: number) => void;
-  onNudge: (amount: number) => void;
-  onSaveOffset: () => void;
-  onOpenCalibrator: (video: SyncGraphVideoNode, hasSegments: boolean) => void;
-  onTriggerRoughSync: (video: SyncGraphVideoNode) => void;
-  onTriggerAiSync: (video: SyncGraphVideoNode) => void;
 }
 
 export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
@@ -47,29 +33,16 @@ export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
   graphData,
   selectedTimeCursor,
   fineTuneDelta,
-  effectiveOffsetB,
   playerOpts,
   isMuted,
   activeAudioSource,
-  isSavingOffset,
-  saveSuccessMsg,
-  isAiSyncing,
-  isRoughSyncing,
-  isLoadingCalibrator,
   overlappingVideos,
   formatTime,
   setVideoA,
   setVideoB,
   setActiveDeckSlot,
   setPlayerA,
-  setPlayerB,
-  onResetFineTune,
-  onDeltaChange,
-  onNudge,
-  onSaveOffset,
-  onOpenCalibrator,
-  onTriggerRoughSync,
-  onTriggerAiSync
+  setPlayerB
 }) => {
   const seekTimeA = calculateLocalSeekTime(videoA, selectedTimeCursor);
   const seekTimeB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
@@ -205,27 +178,6 @@ export const DeckPlayersView: React.FC<DeckPlayersViewProps> = ({
             <p className="text-[11px] text-gray-300 truncate font-semibold">
               <span className="text-twice-magenta font-mono font-bold mr-1">#{videoB?.id}</span> {videoB?.title}
             </p>
-
-            {/* In-Place Target Offset Calibrator Pad */}
-            {videoB && !videoB.is_master && (
-              <DeckBCalibratorPad
-                videoB={videoB}
-                fineTuneDelta={fineTuneDelta}
-                effectiveOffsetB={effectiveOffsetB}
-                isSavingOffset={isSavingOffset}
-                saveSuccessMsg={saveSuccessMsg}
-                isAiSyncing={isAiSyncing}
-                isRoughSyncing={isRoughSyncing}
-                isLoadingCalibrator={isLoadingCalibrator}
-                onResetFineTune={onResetFineTune}
-                onDeltaChange={onDeltaChange}
-                onNudge={onNudge}
-                onSaveOffset={onSaveOffset}
-                onOpenCalibrator={onOpenCalibrator}
-                onTriggerRoughSync={onTriggerRoughSync}
-                onTriggerAiSync={onTriggerAiSync}
-              />
-            )}
           </div>
         </div>
       )}
