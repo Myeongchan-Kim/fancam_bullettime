@@ -15,7 +15,7 @@ import {
   calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange 
 } from '../utils/syncGraphCalculations';
-import { SyncVisualizerToolbar, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
+import { ActionToolbar, StatusFilterTabs, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
 import { DeckStudioHeader } from '../components/sync-visualizer/DeckStudioHeader';
 import { DeckPlayersView } from '../components/sync-visualizer/DeckPlayersView';
@@ -763,13 +763,11 @@ export default function SyncVisualizerPage() {
             </h1>
           </div>
 
-          <SyncVisualizerToolbar
+          <ActionToolbar
             concerts={concerts}
             selectedConcertId={selectedConcertId}
             loading={loading}
             isAdminMode={isAdminMode}
-            statusFilter={statusFilter}
-            stats={stats}
             onConcertChange={setSelectedConcertId}
             onRefresh={() => loadSyncGraph(selectedConcertId)}
             onOpenAuditModal={handleOpenAuditModal}
@@ -798,9 +796,15 @@ export default function SyncVisualizerPage() {
                 }
               }
             }}
-            onStatusFilterChange={setStatusFilter}
           />
         </div>
+
+        {/* Divider & Status Filter Tabs in Header (Second Row) */}
+        <StatusFilterTabs
+          statusFilter={statusFilter}
+          stats={stats}
+          onStatusFilterChange={setStatusFilter}
+        />
       </div>
 
       {/* Filter Toolbar & Zoom Scale Slider */}
