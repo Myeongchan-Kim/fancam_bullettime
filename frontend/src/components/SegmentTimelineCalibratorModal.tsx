@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { 
-  X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2
+  X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2, GitBranch
 } from 'lucide-react';
 import { Video, VideoSyncSegment } from '../types';
 
@@ -23,6 +23,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
   const setlist = video.concert?.setlist || [];
   const [isSaving, setIsSaving] = useState(false);
   const [isAutoAligning, setIsAutoAligning] = useState(false);
+  const [isRecursiveSplitting, setIsRecursiveSplitting] = useState<number | 'all' | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
   const adminKey = localStorage.getItem('admin_key') || '';
@@ -214,6 +215,42 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
     }
   };
 
+  // Handle Recursive Segment Alignment (Whole video or specific segment)
+  const handleRecursiveSplit = async (targetSegmentId?: number) => {
+    setIsRecursiveSplitting(targetSegmentId || 'all');
+    const targetLabel = targetSegmentId ? `구간 #${targetSegmentId}` : '전체 영상';
+    setStatusMessage({
+      type: 'info',
+      text: `🔬 [재귀적 컷 분석 시작] ${targetLabel}에 대해 3-Point 교차 상관 기반 재귀 분할 중... (설명란 없는 편집본 내부 컷 탐색)`
+    });
+
+    try {
+      const url = targetSegmentId 
+        ? `${API_BASE_URL}/videos/${video.id}/recursive-segment-align?segment_id=${targetSegmentId}`
+        : `${API_BASE_URL}/videos/${video.id}/recursive-segment-align`;
+      
+      const res = await axios.post(url);
+      if (res.data && res.data.success) {
+        setStatusMessage({
+          type: 'success',
+          text: `✂️ [재귀 분할 완료] ${targetLabel}에서 ${res.data.new_segments_count}개의 세분화된 곡별 세그먼트를 감지하여 등록했습니다!`
+        });
+        await fetchSegments();
+        if (onSaveSuccess) onSaveSuccess();
+      } else {
+        setStatusMessage({ type: 'error', text: res.data?.error || '재귀 분할에 실패했습니다.' });
+      }
+    } catch (err: any) {
+      console.error('Recursive split failed:', err);
+      setStatusMessage({
+        type: 'error',
+        text: err.response?.data?.detail || '재귀 분할 처리 중 오류가 발생했습니다.'
+      });
+    } finally {
+      setIsRecursiveSplitting(null);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 animate-in fade-in duration-200">
       <div className="bg-slate-950 border border-slate-800 rounded-3xl w-full max-w-6xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
@@ -237,12 +274,22 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
           <div className="flex items-center gap-2">
             <button
               onClick={handleAutoAlign}
-              disabled={isAutoAligning}
+              disabled={isAutoAligning || !!isRecursiveSplitting}
               className="px-3.5 py-2 bg-gradient-to-r from-indigo-600/30 to-purple-600/30 hover:from-indigo-600/50 hover:to-purple-600/50 text-indigo-300 text-xs font-bold rounded-xl border border-indigo-500/40 transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
               title="양끝 프로브(Boundary Probe) 및 오디오 교차 상관으로 1초 만에 전체 콘서트 구간 자동 정렬"
             >
               {isAutoAligning ? <Loader2 className="h-4 w-4 animate-spin text-indigo-400" /> : <Zap className="h-4 w-4 text-indigo-400" />}
               {isAutoAligning ? 'AI 정렬 중...' : 'AI 양끝 프로브 자동 정렬'}
+            </button>
+
+            <button
+              onClick={() => handleRecursiveSplit()}
+              disabled={isAutoAligning || !!isRecursiveSplitting}
+              className="px-3.5 py-2 bg-gradient-to-r from-emerald-600/30 to-teal-600/30 hover:from-emerald-600/50 hover:to-teal-600/50 text-emerald-300 text-xs font-bold rounded-xl border border-emerald-500/40 transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+              title="설명란이 없거나 편집된 영상도 3-Point 교차상관으로 컷을 스스로 찾아내어 재귀 분할"
+            >
+              {isRecursiveSplitting === 'all' ? <Loader2 className="h-4 w-4 animate-spin text-emerald-400" /> : <GitBranch className="h-4 w-4 text-emerald-400" />}
+              {isRecursiveSplitting === 'all' ? '재귀 분할 중...' : 'AI 재귀적 세그먼트 분할'}
             </button>
 
             <button
@@ -398,7 +445,21 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
                     />
                   </div>
 
-                  <div className="col-span-1 flex justify-center">
+                  <div className="col-span-1 flex items-center justify-center gap-1">
+                    {seg.id && seg.id > 0 && (
+                      <button
+                        onClick={() => handleRecursiveSplit(seg.id)}
+                        disabled={isAutoAligning || !!isRecursiveSplitting}
+                        className="p-1.5 text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 rounded-lg transition-colors disabled:opacity-30"
+                        title="이 구간 내부를 AI 3-Point 교차 상관으로 재귀적 세분화 (컷 지점 자동 분할)"
+                      >
+                        {isRecursiveSplitting === seg.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-400" />
+                        ) : (
+                          <GitBranch className="h-3.5 w-3.5" />
+                        )}
+                      </button>
+                    )}
                     <button 
                       onClick={() => handleDeleteSegment(idx)}
                       className="p-1.5 text-gray-500 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors"
