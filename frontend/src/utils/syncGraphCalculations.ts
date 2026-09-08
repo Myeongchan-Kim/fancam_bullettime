@@ -92,3 +92,34 @@ export function isCursorInsideVideoRange(
   }
   return cursor >= video.master_start_time && cursor <= video.master_end_time;
 }
+
+/**
+ * Finds the currently active segment for a video based on the master timeline cursor,
+ * or the closest segment if the cursor is outside segments.
+ */
+export function getActiveSegment(
+  video: SyncGraphVideoNode | null,
+  cursor: number
+) {
+  if (!video || !video.segments || video.segments.length === 0) return null;
+
+  // 1. Direct hit
+  const direct = video.segments.find(
+    s => cursor >= s.master_start && cursor <= s.master_end
+  );
+  if (direct) return direct;
+
+  // 2. Upcoming closest segment
+  const futureSegs = video.segments.filter(s => cursor < s.master_start);
+  if (futureSegs.length > 0) {
+    return [...futureSegs].sort((a, b) => a.master_start - b.master_start)[0];
+  }
+
+  // 3. Past closest segment
+  const pastSegs = video.segments.filter(s => cursor > s.master_end);
+  if (pastSegs.length > 0) {
+    return [...pastSegs].sort((a, b) => b.master_end - a.master_end)[0];
+  }
+
+  return video.segments[0];
+}

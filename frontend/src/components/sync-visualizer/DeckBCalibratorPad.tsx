@@ -1,12 +1,13 @@
 import React, { useRef, useState } from 'react';
-import { Sliders, RotateCcw, GripVertical, Save, ShieldCheck, Compass, Sparkles, Layers } from 'lucide-react';
+import { Sliders, RotateCcw, GripVertical, Save, ShieldCheck, Compass, Sparkles, Layers, Scissors } from 'lucide-react';
 import { SyncGraphVideoNode } from '../../types';
+import { getActiveSegment } from '../../utils/syncGraphCalculations';
 
 interface DeckBCalibratorPadProps {
   videoA: SyncGraphVideoNode | null;
   videoB: SyncGraphVideoNode;
   fineTuneDelta: number;
-  effectiveOffsetB: number;
+  selectedTimeCursor: number;
   isSavingOffset: boolean;
   saveSuccessMsg: string | null;
   isAiSyncing: boolean;
@@ -26,7 +27,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   videoA,
   videoB,
   fineTuneDelta,
-  effectiveOffsetB,
+  selectedTimeCursor,
   isSavingOffset,
   saveSuccessMsg,
   isAiSyncing,
@@ -43,14 +44,26 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
 }) => {
   if (videoB.is_master) return null;
 
-  // Timeline view calculations
+  // Check if Video B has segments and identify the active segment at current cursor
+  const isSplitVideo = !!(videoB.segments && videoB.segments.length > 0);
+  const activeSegment = isSplitVideo ? getActiveSegment(videoB, selectedTimeCursor) : null;
+
+  // Durations & Start times
   const durA = videoA?.duration || 240;
-  const durB = videoB?.duration || 240;
   const startA = videoA ? (videoA.sync_offset || 0) : 0;
   const endA = startA + durA;
-  const endB = effectiveOffsetB + durB;
 
-  const timelineMin = Math.max(0, Math.min(startA, effectiveOffsetB) - 25);
+  // Deck B target parameters (Segment vs Full Video)
+  const targetOffset = activeSegment ? activeSegment.sync_offset : (videoB.sync_offset || 0);
+  const currentEffectiveOffset = Number((targetOffset + fineTuneDelta).toFixed(2));
+  const durB = activeSegment 
+    ? Math.max(1, (activeSegment.video_end - activeSegment.video_start)) 
+    : (videoB.duration || 240);
+  const startB = currentEffectiveOffset;
+  const endB = startB + durB;
+
+  // Timeline view window
+  const timelineMin = Math.max(0, Math.min(startA, startB) - 25);
   const timelineMax = Math.max(endA, endB) + 25;
   const timelineSpan = Math.max(1, timelineMax - timelineMin);
 
@@ -109,6 +122,12 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <span className="text-xs text-twice-magenta font-mono font-bold truncate max-w-[220px]">
               (#{videoB.id} {videoB.title})
             </span>
+            {activeSegment && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                <Scissors className="w-2.5 h-2.5" />
+                구간: {activeSegment.label || `#${activeSegment.id}`}
+              </span>
+            )}
           </div>
         </div>
 
@@ -130,7 +149,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             </span>
             <div className="h-3 w-px bg-slate-800" />
             <span className="font-black text-white">
-              +{effectiveOffsetB.toFixed(2)}s
+              +{currentEffectiveOffset.toFixed(2)}s
             </span>
           </div>
         </div>
@@ -141,7 +160,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
         <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono">
           <span className="flex items-center gap-1.5 text-gray-300 font-bold">
             <Layers className="w-3 h-3 text-twice-apricot" />
-            2-Track 타임라인 바 비교
+            2-Track 타임라인 바 비교 {activeSegment && <span className="text-amber-400 font-bold">(선택된 Split 구간 편집 중)</span>}
           </span>
           <span className="text-[9px] text-gray-500">
             {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
@@ -175,10 +194,10 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
             <span className="text-twice-magenta font-bold flex items-center gap-1 truncate max-w-[340px]">
               <span className="w-2 h-2 rounded-full bg-twice-magenta animate-pulse" />
-              [Deck B 대상] #{videoB.id} {videoB.title}
+              [Deck B {activeSegment ? `구간: ${activeSegment.label || `#${activeSegment.id}`}` : '대상'}] #{videoB.id} {videoB.title}
             </span>
             <span className="text-[10px] text-twice-magenta font-bold shrink-0">
-              Offset: {effectiveOffsetB.toFixed(2)}s ({formatTime(durB)})
+              Offset: {currentEffectiveOffset.toFixed(2)}s ({formatTime(durB)})
             </span>
           </div>
 
@@ -196,13 +215,13 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <div
               className="h-full rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
               style={{
-                marginLeft: `${Math.max(0, ((effectiveOffsetB - timelineMin) / timelineSpan) * 100)}%`,
+                marginLeft: `${Math.max(0, ((startB - timelineMin) / timelineSpan) * 100)}%`,
                 width: `${Math.max(4, Math.min(100, (durB / timelineSpan) * 100))}%`
               }}
             >
               <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
               <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
-                {isDragging ? `Offset: ${effectiveOffsetB.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : '드래그하여 싱크 조절 (Drag to Sync)'}
+                {isDragging ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : activeSegment ? `구간 드래그 싱크 (${activeSegment.label || `#${activeSegment.id}`})` : '드래그하여 싱크 조절 (Drag to Sync)'}
               </span>
               <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
             </div>
@@ -279,7 +298,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               disabled={isSavingOffset}
               className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold flex items-center gap-1.5 shadow-lg shadow-emerald-950 text-xs transition-all"
             >
-              <Save className="w-3.5 h-3.5" /> 오프셋 영구 저장
+              <Save className="w-3.5 h-3.5" /> {activeSegment ? `구간 [${activeSegment.label || `#${activeSegment.id}`}] 오프셋 저장` : '오프셋 영구 저장'}
             </button>
           )}
           <button
