@@ -60,12 +60,13 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
     ? Math.max(1, (activeSegment.video_end - activeSegment.video_start)) 
     : (videoB.duration || 240);
   const startB = currentEffectiveOffset;
-  const endB = startB + durB;
 
-  // Timeline view window (allows negative timeline margin before Master 0s)
-  const timelineMin = Math.min(startA, startB) - 25;
-  const timelineMax = Math.max(endA, endB) + 25;
-  const timelineSpan = Math.max(1, timelineMax - timelineMin);
+  // Deck B 중심 스케일링: Deck B 바가 캘리브레이션 트랙 너비의 약 1/3 (33%)을 차지하도록 윈도우 스팬 설정
+  // timelineSpan = durB * 3 으로 두면 Deck B가 정확히 1/3을 차지함 (좌/우 마진 각각 durB 만큼)
+  const timelineSpan = Math.max(60, durB * 3.0);
+  // Deck B 바가 트랙 중앙에 오도록 좌우 마진 분배
+  const timelineMin = startB - (timelineSpan - durB) / 2.0;
+  const timelineMax = timelineMin + timelineSpan;
 
   // Pointer drag state & ref
   const [isDragging, setIsDragging] = useState<boolean>(false);
@@ -179,13 +180,23 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             </span>
           </div>
           <div className="h-4 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
-            <div
-              className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
-              style={{
-                marginLeft: `${Math.max(0, ((startA - timelineMin) / timelineSpan) * 100)}%`,
-                width: `${Math.max(2, Math.min(100, (durA / timelineSpan) * 100))}%`
-              }}
-            />
+            {(() => {
+              // Clamp Deck A bar within [timelineMin, timelineMax]
+              const visibleStart = Math.max(timelineMin, startA);
+              const visibleEnd = Math.min(timelineMax, endA);
+              if (visibleEnd <= visibleStart) return null;
+              const leftPct = ((visibleStart - timelineMin) / timelineSpan) * 100;
+              const widthPct = ((visibleEnd - visibleStart) / timelineSpan) * 100;
+              return (
+                <div
+                  className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
+                  style={{
+                    marginLeft: `${leftPct}%`,
+                    width: `${Math.max(1, widthPct)}%`
+                  }}
+                />
+              );
+            })()}
           </div>
         </div>
 
