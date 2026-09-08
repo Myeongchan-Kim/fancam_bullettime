@@ -892,6 +892,7 @@ export default function SyncVisualizerPage() {
             {/* Common Bottom Dock: In-Place Deck B Calibration Pad */}
             {videoB && !videoB.is_master && (
               <DeckBCalibratorPad
+                videoA={videoA}
                 videoB={videoB}
                 fineTuneDelta={fineTuneDelta}
                 effectiveOffsetB={effectiveOffsetB}
@@ -900,6 +901,7 @@ export default function SyncVisualizerPage() {
                 isAiSyncing={isAiSyncing}
                 isRoughSyncing={isRoughSyncing}
                 isLoadingCalibrator={isLoadingCalibrator}
+                formatTime={formatTime}
                 onResetFineTune={() => setFineTuneDelta(0)}
                 onDeltaChange={setFineTuneDelta}
                 onNudge={nudge}

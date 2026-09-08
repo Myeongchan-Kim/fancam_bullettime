@@ -1,8 +1,9 @@
-import React from 'react';
-import { Sliders, RotateCcw, MoveHorizontal, Save, ShieldCheck, Compass, Sparkles } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Sliders, RotateCcw, GripVertical, Save, ShieldCheck, Compass, Sparkles, Layers } from 'lucide-react';
 import { SyncGraphVideoNode } from '../../types';
 
 interface DeckBCalibratorPadProps {
+  videoA: SyncGraphVideoNode | null;
   videoB: SyncGraphVideoNode;
   fineTuneDelta: number;
   effectiveOffsetB: number;
@@ -11,6 +12,7 @@ interface DeckBCalibratorPadProps {
   isAiSyncing: boolean;
   isRoughSyncing: boolean;
   isLoadingCalibrator: boolean;
+  formatTime: (sec: number) => string;
   onResetFineTune: () => void;
   onDeltaChange: (newDelta: number) => void;
   onNudge: (amount: number) => void;
@@ -21,6 +23,7 @@ interface DeckBCalibratorPadProps {
 }
 
 export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
+  videoA,
   videoB,
   fineTuneDelta,
   effectiveOffsetB,
@@ -29,6 +32,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   isAiSyncing,
   isRoughSyncing,
   isLoadingCalibrator,
+  formatTime,
   onResetFineTune,
   onDeltaChange,
   onNudge,
@@ -38,6 +42,56 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   onTriggerAiSync
 }) => {
   if (videoB.is_master) return null;
+
+  // Timeline view calculations
+  const durA = videoA?.duration || 240;
+  const durB = videoB?.duration || 240;
+  const startA = videoA ? (videoA.sync_offset || 0) : 0;
+  const endA = startA + durA;
+  const endB = effectiveOffsetB + durB;
+
+  const timelineMin = Math.max(0, Math.min(startA, effectiveOffsetB) - 25);
+  const timelineMax = Math.max(endA, endB) + 25;
+  const timelineSpan = Math.max(1, timelineMax - timelineMin);
+
+  // Pointer drag state & ref
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const trackContainerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ startX: number; startDelta: number; trackWidth: number } | null>(null);
+
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!trackContainerRef.current) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const rect = trackContainerRef.current.getBoundingClientRect();
+    dragRef.current = {
+      startX: e.clientX,
+      startDelta: fineTuneDelta,
+      trackWidth: Math.max(rect.width, 1)
+    };
+    setIsDragging(true);
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isDragging || !dragRef.current) return;
+    const deltaX = e.clientX - dragRef.current.startX;
+    const deltaTime = (deltaX / dragRef.current.trackWidth) * timelineSpan;
+    const newDelta = Math.round((dragRef.current.startDelta + deltaTime) * 20) / 20; // 0.05s snap step
+
+    onDeltaChange(Number(newDelta.toFixed(2)));
+  };
+
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (isDragging) {
+      setIsDragging(false);
+      dragRef.current = null;
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+  };
 
   return (
     <div className="bg-slate-900/95 border border-twice-magenta/40 rounded-2xl p-4 shadow-xl space-y-3 backdrop-blur-sm ring-1 ring-twice-magenta/20">
@@ -82,27 +136,78 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
         </div>
       </div>
 
-      {/* Smooth Scrubber Range Slider (빠른 이동) */}
-      <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800/80 space-y-1">
-        <div className="flex justify-between items-center text-[9px] text-gray-400 font-mono">
-          <span>-30s</span>
-          <span className="text-twice-magenta font-bold flex items-center gap-1">
-            <MoveHorizontal className="w-2.5 h-2.5 animate-pulse" /> 슬라이더로 빠른 오프셋 이동 (0.05s)
+      {/* 2-Row Interactive Timeline Comparison Tracks (Deck A vs Deck B) */}
+      <div className="bg-slate-950/90 p-3 rounded-xl border border-slate-800 space-y-2">
+        <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono">
+          <span className="flex items-center gap-1.5 text-gray-300 font-bold">
+            <Layers className="w-3 h-3 text-twice-apricot" />
+            2-Track 타임라인 바 비교
           </span>
-          <span>+30s</span>
+          <span className="text-[9px] text-gray-500">
+            {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
+          </span>
         </div>
-        <input
-          type="range"
-          min={Math.max(0, (videoB.sync_offset || 0) - 30)}
-          max={(videoB.sync_offset || 0) + 30}
-          step={0.05}
-          value={effectiveOffsetB}
-          onChange={(e) => {
-            const newOff = parseFloat(e.target.value);
-            onDeltaChange(Number((newOff - videoB.sync_offset).toFixed(2)));
-          }}
-          className="w-full accent-twice-magenta bg-slate-800 rounded-lg h-1.5 cursor-pointer transition-all hover:bg-slate-700"
-        />
+
+        {/* Row 1: Deck A Reference Bar (Fixed) */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+            <span className="text-sky-300 font-bold flex items-center gap-1 truncate max-w-[340px]">
+              <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+              [Deck A 기준] #{videoA?.id || '?'} {videoA?.title || '기준 영상'}
+            </span>
+            <span className="text-[10px] text-gray-400 shrink-0">
+              Offset: {startA.toFixed(2)}s ({formatTime(durA)})
+            </span>
+          </div>
+          <div className="h-4 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
+            <div
+              className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
+              style={{
+                marginLeft: `${Math.max(0, ((startA - timelineMin) / timelineSpan) * 100)}%`,
+                width: `${Math.max(2, Math.min(100, (durA / timelineSpan) * 100))}%`
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Row 2: Deck B Draggable Target Bar */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
+            <span className="text-twice-magenta font-bold flex items-center gap-1 truncate max-w-[340px]">
+              <span className="w-2 h-2 rounded-full bg-twice-magenta animate-pulse" />
+              [Deck B 대상] #{videoB.id} {videoB.title}
+            </span>
+            <span className="text-[10px] text-twice-magenta font-bold shrink-0">
+              Offset: {effectiveOffsetB.toFixed(2)}s ({formatTime(durB)})
+            </span>
+          </div>
+
+          <div
+            ref={trackContainerRef}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            className={`h-6 bg-slate-900 rounded-lg overflow-hidden relative select-none cursor-grab active:cursor-grabbing border ${
+              isDragging ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/30 hover:border-twice-magenta/60'
+            } transition-colors`}
+            title="마우스 또는 터치로 바를 좌우로 드래그하여 싱크를 미세 조정하세요 (0.05초 단위)"
+          >
+            <div
+              className="h-full rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
+              style={{
+                marginLeft: `${Math.max(0, ((effectiveOffsetB - timelineMin) / timelineSpan) * 100)}%`,
+                width: `${Math.max(4, Math.min(100, (durB / timelineSpan) * 100))}%`
+              }}
+            >
+              <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+              <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                {isDragging ? `Offset: ${effectiveOffsetB.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : '드래그하여 싱크 조절 (Drag to Sync)'}
+              </span>
+              <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Step Nudge Buttons Grid (0.05s, 0.1s, 0.5s, 1.0s) */}
