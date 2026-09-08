@@ -126,6 +126,8 @@ export default function SyncVisualizerPage() {
     fetchConcerts();
   }, []);
 
+  const initialVideoId = searchParams.get('video_id') ? parseInt(searchParams.get('video_id')!, 10) : null;
+
   // Load Graph Data
   const loadSyncGraph = async (concertId: number, preserveVideoAId?: number, preserveVideoBId?: number) => {
     setLoading(true);
@@ -139,16 +141,23 @@ export default function SyncVisualizerPage() {
         let master = data.videos.find(v => v.is_master);
         if (!master) master = data.videos[0];
 
+        // 1. Deck A: 항상 마스터 영상을 우선 배치 (지정된 A ID가 있다면 유지)
         if (preserveVideoAId) {
           const foundA = data.videos.find(v => v.id === preserveVideoAId);
           setVideoA(foundA || master);
-        } else if (!videoA) {
+        } else {
           setVideoA(master);
         }
 
-        if (preserveVideoBId) {
-          const foundB = data.videos.find(v => v.id === preserveVideoBId);
+        // 2. Deck B: URL의 video_id 파라미터 또는 보존할 B ID, 없으면 첫 직캠 배치
+        const targetBId = preserveVideoBId || initialVideoId;
+        if (targetBId) {
+          const foundB = data.videos.find(v => v.id === targetBId);
           setVideoB(foundB || (data.videos.find(v => !v.is_master) || data.videos[0]));
+          // URL 파라미터로 진입 시 해당 직캠의 마스터 시작 지점으로 커서 자동 이동
+          if (foundB && foundB.master_start_time !== undefined && foundB.master_start_time !== null) {
+            setSelectedTimeCursor(foundB.master_start_time);
+          }
         } else if (!videoB) {
           const firstTarget = data.videos.find(v => !v.is_master) || data.videos[0];
           setVideoB(firstTarget);
@@ -163,8 +172,10 @@ export default function SyncVisualizerPage() {
   };
 
   useEffect(() => {
-    loadSyncGraph(selectedConcertId);
-    setSearchParams({ concert_id: selectedConcertId.toString() });
+    loadSyncGraph(selectedConcertId, undefined, initialVideoId || undefined);
+    const params: Record<string, string> = { concert_id: selectedConcertId.toString() };
+    if (initialVideoId) params.video_id = initialVideoId.toString();
+    setSearchParams(params);
   }, [selectedConcertId]);
 
   // Total master concert duration
