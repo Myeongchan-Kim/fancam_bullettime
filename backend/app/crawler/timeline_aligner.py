@@ -41,9 +41,10 @@ def download_audio_slice(stream_url: str, start_sec: float, duration_sec: float,
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         cmd = [
             FFMPEG_EXE, "-y",
+            "-reconnect", "1", "-reconnect_streamed", "1", "-reconnect_delay_max", "5",
             "-ss", str(max(0, start_sec)),
-            "-t", str(duration_sec),
             "-i", stream_url,
+            "-t", str(duration_sec),
             "-ar", "16000",
             "-ac", "1",
             out_path

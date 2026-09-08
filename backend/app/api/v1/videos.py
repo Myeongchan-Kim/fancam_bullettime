@@ -378,6 +378,28 @@ def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.post("/videos/{video_id}/recursive-segment-align")
+def trigger_recursive_segment_alignment(
+    video_id: int,
+    segment_id: Optional[int] = None,
+    db: Session = Depends(get_db)
+):
+    """
+    오디오 3-Point 교차 상관 및 재귀 분할(Recursive Piecewise Segmentation) 알고리즘
+    설명란이나 챕터가 없는 편집 영상도 오디오 파형 상관분석으로 내부 편집점(Cut)을 스스로 찾아내어 분할
+    """
+    from app.crawler.recursive_segment_calibrator import calibrate_video_recursive_segments
+    try:
+        res = calibrate_video_recursive_segments(video_id, db, target_segment_id=segment_id)
+        if not res.get("success"):
+            raise HTTPException(status_code=400, detail=res.get("error", "Recursive segmentation failed"))
+        return res
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.post("/videos/{video_id}/ai-sync")
 def trigger_video_ai_sync(
     video_id: int,
