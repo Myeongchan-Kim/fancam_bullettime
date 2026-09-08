@@ -15,7 +15,7 @@ import {
   calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange 
 } from '../utils/syncGraphCalculations';
-import { SyncVisualizerToolbar } from '../components/sync-visualizer/SyncVisualizerToolbar';
+import { SyncVisualizerToolbar, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
 import { DeckStudioHeader } from '../components/sync-visualizer/DeckStudioHeader';
 import { DeckPlayersView } from '../components/sync-visualizer/DeckPlayersView';
@@ -93,10 +93,10 @@ export default function SyncVisualizerPage() {
   const [isLoadingCalibrator, setIsLoadingCalibrator] = useState<boolean>(false);
 
   // Zoom / Track Configuration
-  const [scaleFactor, setScaleFactor] = useState<number>(20);
-  const LANE_WIDTH = 28;
-  const LANE_GAP = 6;
-  const TIME_AXIS_WIDTH = 55;
+  const [scaleFactor, setScaleFactor] = useState<number>(18);
+  const LANE_WIDTH = 13;
+  const LANE_GAP = 5;
+  const TIME_AXIS_WIDTH = 48;
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
@@ -769,10 +769,6 @@ export default function SyncVisualizerPage() {
             loading={loading}
             isAdminMode={isAdminMode}
             statusFilter={statusFilter}
-            memberFilter={memberFilter}
-            allMembers={allMembers}
-            searchQuery={searchQuery}
-            scaleFactor={scaleFactor}
             stats={stats}
             onConcertChange={setSelectedConcertId}
             onRefresh={() => loadSyncGraph(selectedConcertId)}
@@ -803,12 +799,20 @@ export default function SyncVisualizerPage() {
               }
             }}
             onStatusFilterChange={setStatusFilter}
-            onMemberFilterChange={setMemberFilter}
-            onSearchChange={setSearchQuery}
-            onScaleChange={setScaleFactor}
           />
         </div>
       </div>
+
+      {/* Filter Toolbar & Zoom Scale Slider */}
+      <SearchFilterBar
+        searchQuery={searchQuery}
+        memberFilter={memberFilter}
+        allMembers={allMembers}
+        scaleFactor={scaleFactor}
+        onSearchChange={setSearchQuery}
+        onMemberFilterChange={setMemberFilter}
+        onScaleChange={setScaleFactor}
+      />
 
       {/* Main Dual-View: Left Timeline (4 cols) + Right Deck Studio (8 cols) */}
       {!loading && !error && graphData && (
