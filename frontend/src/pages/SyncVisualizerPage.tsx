@@ -1126,6 +1126,12 @@ export default function SyncVisualizerPage() {
           setShowAuditModal(false);
           seekToMasterTimeline(expectedOffset);
         }}
+        onOpenSegmentCalibrator={(targetVideo) => {
+          setVideoB(targetVideo);
+          setActiveDeckSlot('B');
+          setShowAuditModal(false);
+          handleOpenCalibrator(targetVideo, true);
+        }}
       />
     </div>
   );

@@ -373,4 +373,57 @@ def audit_master_timeline_drifts(db: Session, concert_id: int) -> dict:
         "comparisons": comparisons
     }
 
+def audit_segment_overlaps(db: Session, concert_id: int, overlap_tolerance: float = 1.0) -> list[dict]:
+    """
+    동일 콘서트 내 동일 영상의 분할 구간(Segment) 중,
+    타임라인 상에서 서로 겹쳐있는(Overlapping) 오류 구간을 찾아 반환합니다.
+    """
+    from app.models.models import VideoSyncSegment
 
+    videos = db.query(Video).filter(Video.concert_id == concert_id).all()
+    overlaps = []
+
+    for v in videos:
+        # 풀 마스터 영상(1094 등 타임라인 기준축)은 세그먼트가 챕터 인덱스 역할이므로 제외
+        if v.duration and v.duration > 7200:
+            continue
+
+        segs = db.query(VideoSyncSegment).filter(
+            VideoSyncSegment.video_id == v.id
+        ).order_by(VideoSyncSegment.video_start_time).all()
+
+        if len(segs) <= 1:
+            continue
+
+        for i in range(len(segs) - 1):
+            cur = segs[i]
+            nxt = segs[i + 1]
+
+            m_overlap = round(cur.master_end_time - nxt.master_start_time, 1)
+            v_overlap = round(cur.video_end_time - nxt.video_start_time, 1)
+
+            if m_overlap > overlap_tolerance or v_overlap > overlap_tolerance:
+                overlaps.append({
+                    "video_id": v.id,
+                    "video_title": v.title,
+                    "segment_a": {
+                        "id": cur.id,
+                        "label": cur.label or f"Segment #{cur.id}",
+                        "video_range": [cur.video_start_time, cur.video_end_time],
+                        "master_range": [cur.master_start_time, cur.master_end_time],
+                        "sync_offset": cur.sync_offset
+                    },
+                    "segment_b": {
+                        "id": nxt.id,
+                        "label": nxt.label or f"Segment #{nxt.id}",
+                        "video_range": [nxt.video_start_time, nxt.video_end_time],
+                        "master_range": [nxt.master_start_time, nxt.master_end_time],
+                        "sync_offset": nxt.sync_offset
+                    },
+                    "master_overlap_seconds": m_overlap,
+                    "video_overlap_seconds": v_overlap,
+                    "discrepancy_type": "master_timeline_overlap" if m_overlap > overlap_tolerance else "video_timeline_overlap"
+                })
+
+    overlaps.sort(key=lambda x: -max(x["master_overlap_seconds"], x["video_overlap_seconds"]))
+    return overlaps
