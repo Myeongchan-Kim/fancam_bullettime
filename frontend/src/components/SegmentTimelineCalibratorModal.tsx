@@ -391,13 +391,47 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
                   </div>
 
                   <div className="col-span-3">
-                    <input 
-                      type="text"
-                      className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-twice-magenta mb-1.5"
-                      value={seg.label || ''}
-                      placeholder="곡명 또는 멘트"
-                      onChange={(e) => handleUpdateField(idx, 'label', e.target.value)}
-                    />
+                    <div className="flex items-center gap-1.5 mb-1.5">
+                      <select
+                        className="w-1/2 bg-slate-950 border border-slate-700/80 rounded-xl px-2 py-1.5 text-[11px] text-twice-apricot outline-none focus:border-twice-magenta"
+                        value={seg.setlist_id || ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                          const found = setlist.find(item => item.id === val);
+                          const updated = [...segments];
+                          const target = { ...updated[idx], setlist_id: val };
+                          if (found) {
+                            const songName = found.song?.name || found.event_name || '';
+                            if (!target.label || target.label.startsWith('구간')) {
+                              target.label = songName;
+                            }
+                            if (found.start_time !== null && found.start_time !== undefined) {
+                              const dur = target.video_end_time - target.video_start_time;
+                              target.master_start_time = Number(found.start_time);
+                              target.master_end_time = Number(found.start_time) + dur;
+                              target.sync_offset = Number(found.start_time) - target.video_start_time;
+                            }
+                          }
+                          updated[idx] = target;
+                          setSegments(updated);
+                        }}
+                      >
+                        <option value="">곡/셋리스트 연결 선택...</option>
+                        {setlist.map(item => (
+                          <option key={item.id} value={item.id}>
+                            {item.song?.name || item.event_name} ({formatTime(item.start_time || 0)})
+                          </option>
+                        ))}
+                      </select>
+
+                      <input 
+                        type="text"
+                        className="w-1/2 bg-slate-950 border border-slate-700/80 rounded-xl px-2 py-1.5 text-xs text-white outline-none focus:border-twice-magenta"
+                        value={seg.label || ''}
+                        placeholder="라벨 / 곡명"
+                        onChange={(e) => handleUpdateField(idx, 'label', e.target.value)}
+                      />
+                    </div>
                     {/* Segment Members Tagging */}
                     <div className="flex flex-wrap items-center gap-1">
                       <span className="text-[10px] text-gray-500 font-bold mr-0.5">멤버:</span>

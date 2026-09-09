@@ -576,7 +576,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/ai-sync`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       setAiSyncResult(res.data);
@@ -624,7 +627,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync-candidates`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       const candidates = res.data.candidates || [];

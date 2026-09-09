@@ -153,10 +153,21 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               (#{videoB.id} {videoB.title})
             </span>
             {activeSegment && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
-                <Scissors className="w-2.5 h-2.5" />
-                선택 구간: {activeSegment.label || `#${activeSegment.id}`}
-              </span>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
+                  <Scissors className="w-2.5 h-2.5" />
+                  선택 구간: {activeSegment.label || `#${activeSegment.id}`}
+                </span>
+                {activeSegment.members && activeSegment.members.length > 0 && (
+                  <div className="flex items-center gap-1">
+                    {activeSegment.members.map((m: string) => (
+                      <span key={m} className="px-1.5 py-0.2 rounded bg-twice-magenta/20 text-twice-apricot border border-twice-magenta/30 text-[9px] font-bold">
+                        {m}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         </div>
