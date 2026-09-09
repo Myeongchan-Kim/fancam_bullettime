@@ -95,7 +95,7 @@ export default function SyncVisualizerPage() {
   const [scaleFactor, setScaleFactor] = useState<number>(10);
   const LANE_WIDTH = 13;
   const LANE_GAP = 5;
-  const TIME_AXIS_WIDTH = 48;
+  const TIME_AXIS_WIDTH = 88;
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
@@ -344,14 +344,37 @@ export default function SyncVisualizerPage() {
     isPlaybackTickRef.current = false;
     setSelectedTimeCursor(clamped);
 
-    const targetA = calculateLocalSeekTime(videoA, clamped);
-    const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
-    try {
-      playerA?.seekTo?.(targetA, true);
-    } catch (e) {}
-    try {
-      playerB?.seekTo?.(targetB, true);
-    } catch (e) {}
+    // Deck A
+    if (videoA && playerA) {
+      const insideA = isCursorInsideVideoRange(videoA, clamped);
+      const targetA = calculateLocalSeekTime(videoA, clamped);
+      try {
+        if (insideA) {
+          playerA.seekTo?.(targetA, true);
+          lastTimeRefA.current = targetA;
+        } else {
+          playerA.pauseVideo?.();
+          playerA.seekTo?.(targetA, true);
+          lastTimeRefA.current = targetA;
+        }
+      } catch (e) {}
+    }
+
+    // Deck B
+    if (videoB && playerB) {
+      const insideB = isCursorInsideVideoRange(videoB, clamped);
+      const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
+      try {
+        if (insideB) {
+          playerB.seekTo?.(targetB, true);
+          lastTimeRefB.current = targetB;
+        } else {
+          playerB.pauseVideo?.();
+          playerB.seekTo?.(targetB, true);
+          lastTimeRefB.current = targetB;
+        }
+      } catch (e) {}
+    }
   };
 
   const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
@@ -553,7 +576,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/ai-sync`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       setAiSyncResult(res.data);
@@ -601,7 +627,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync-candidates`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       const candidates = res.data.candidates || [];
@@ -796,7 +825,7 @@ export default function SyncVisualizerPage() {
 
         // --- Both paused: Detect user seeking on native YouTube seekbar ---
         if (stateA !== 1 && stateB !== 1) {
-          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
+          if (videoA && isCursorInsideVideoRange(videoA, selectedTimeCursor) && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
             isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration, 0, minMasterTime);
             setSelectedTimeCursor(masterTime);
@@ -805,7 +834,7 @@ export default function SyncVisualizerPage() {
               playerB.seekTo(expB, true);
             }
             setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
+          } else if (videoB && isCursorInsideVideoRange(videoB, selectedTimeCursor) && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
             isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
             setSelectedTimeCursor(masterTime);
@@ -993,6 +1022,7 @@ export default function SyncVisualizerPage() {
             videoA={videoA}
             videoB={videoB}
             hoveredVideo={hoveredVideo}
+            setlist={graphData?.setlist}
             onTimelineMouseDown={handleTimelineMouseDown}
             onSelectVideo={handleSelectVideo}
             onHoverVideo={setHoveredVideo}

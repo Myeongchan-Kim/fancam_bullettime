@@ -308,6 +308,7 @@ def create_video_segment(
         master_end_time=seg_in.master_end_time,
         sync_offset=offset,
         label=seg_in.label,
+        members=seg_in.members,
         is_verified=seg_in.is_verified or False
     )
     db.add(new_seg)
@@ -342,6 +343,7 @@ def set_video_segments_bulk(
             master_end_time=s.master_end_time,
             sync_offset=offset,
             label=s.label,
+            members=s.members,
             is_verified=s.is_verified or False
         )
         db.add(new_seg)
