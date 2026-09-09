@@ -187,24 +187,35 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               Offset: {startA.toFixed(2)}s ({formatTime(durA)})
             </span>
           </div>
-          <div className="h-4 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
-            {(() => {
-              // Clamp Deck A bar within [timelineMin, timelineMax]
-              const visibleStart = Math.max(timelineMin, startA);
-              const visibleEnd = Math.min(timelineMax, endA);
-              if (visibleEnd <= visibleStart) return null;
-              const leftPct = ((visibleStart - timelineMin) / timelineSpan) * 100;
-              const widthPct = ((visibleEnd - visibleStart) / timelineSpan) * 100;
-              return (
-                <div
-                  className="h-full bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
-                  style={{
-                    marginLeft: `${leftPct}%`,
-                    width: `${Math.max(1, widthPct)}%`
-                  }}
-                />
-              );
-            })()}
+          <div className="flex items-center gap-1.5">
+            {/* Spacer matching Row 2 left button */}
+            <div className="w-[43px] shrink-0" aria-hidden="true" />
+
+            {/* Deck A Track Container */}
+            <div className="flex-1 h-4 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
+              {(() => {
+                // Deck A bar covers [startA, endA]
+                // If Deck A is a full concert (covers the current window), it will span 100% of this window
+                const visibleStart = Math.max(timelineMin, startA);
+                const visibleEnd = Math.min(timelineMax, endA);
+                if (visibleEnd <= visibleStart) return null;
+                const leftPct = Math.max(0, Math.min(100, ((visibleStart - timelineMin) / timelineSpan) * 100));
+                const rightPct = Math.max(0, Math.min(100, ((visibleEnd - timelineMin) / timelineSpan) * 100));
+                const widthPct = Math.max(0.5, rightPct - leftPct);
+                return (
+                  <div
+                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
+                    style={{
+                      left: `${leftPct}%`,
+                      width: `${widthPct}%`
+                    }}
+                  />
+                );
+              })()}
+            </div>
+
+            {/* Spacer matching Row 2 right button */}
+            <div className="w-[43px] shrink-0" aria-hidden="true" />
           </div>
         </div>
 
