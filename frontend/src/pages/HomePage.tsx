@@ -15,7 +15,7 @@ const FEATURED_SYNC_VIDEOS = [
     id: 43, 
     title: 'In my room', 
     subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
-    img: 'https://i.ytimg.com/vi/bjDt0qM9Xkw/hqdefault.jpg',
+    img: '/images/featured_cam01_inmyroom.jpg',
     angleCount: 3,
     extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
   },
