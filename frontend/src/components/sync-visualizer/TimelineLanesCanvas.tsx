@@ -1,6 +1,5 @@
-import React from 'react';
-import { Sparkles } from 'lucide-react';
-import { SyncGraphVideoNode } from '../../types';
+import { Music, Sparkles } from 'lucide-react';
+import { SyncGraphSetlistItem, SyncGraphVideoNode } from '../../types';
 
 interface TimelineLanesCanvasProps {
   timelineRef: React.RefObject<HTMLDivElement | null>;
@@ -19,6 +18,7 @@ interface TimelineLanesCanvasProps {
   videoA: SyncGraphVideoNode | null;
   videoB: SyncGraphVideoNode | null;
   hoveredVideo: SyncGraphVideoNode | null;
+  setlist?: SyncGraphSetlistItem[];
   onTimelineMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   onSelectVideo: (video: SyncGraphVideoNode, preferredSeekTime?: number) => void;
   onHoverVideo: (video: SyncGraphVideoNode | null) => void;
@@ -42,6 +42,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
   videoA,
   videoB,
   hoveredVideo,
+  setlist = [],
   onTimelineMouseDown,
   onSelectVideo,
   onHoverVideo,
@@ -84,22 +85,48 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
         style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
         className="relative mt-3 mb-2 flex cursor-crosshair select-none"
       >
-        {/* 1. Left Time Scale Axis (Every 15 minutes) */}
+        {/* 1. Left Time Scale Axis & Song Bookmarks */}
         <div 
           style={{ width: `${TIME_AXIS_WIDTH}px` }}
-          className="relative h-full flex-shrink-0 border-r border-slate-800/80"
+          className="relative h-full flex-shrink-0 border-r border-slate-800/80 overflow-hidden"
         >
+          {/* Subtle Song Background Blocks & Labels on Left Axis */}
+          {setlist.map((item, sIdx) => {
+            if (item.start_time === null || item.start_time === undefined) return null;
+            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
+            const topPx = timeToY(item.start_time);
+            const duration = (item.end_time && item.end_time > item.start_time) ? (item.end_time - item.start_time) : 180;
+            const heightPx = Math.max(16, (duration / timeSpan) * canvasHeight);
+
+            return (
+              <div
+                key={`song-axis-${item.id || sIdx}`}
+                style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                className="absolute left-0 right-0 border-t border-purple-500/20 bg-purple-500/[0.04] px-1 pointer-events-none group"
+                title={`${item.name} (${formatTime(item.start_time)})`}
+              >
+                <div className="flex items-center gap-0.5 pt-0.5 truncate">
+                  <Music className="w-2.5 h-2.5 text-purple-400/40 shrink-0" />
+                  <span className="text-[8.5px] font-sans font-bold text-purple-300/60 truncate leading-none">
+                    {item.name}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Regular 15-minute Time Scale Marks */}
           {Array.from({ length: Math.ceil((actualMaxTime - minMasterTime) / 900) + 1 }).map((_, gIdx) => {
             const sec = Math.floor(minMasterTime / 900) * 900 + gIdx * 900;
             if (sec < minMasterTime || sec > actualMaxTime) return null;
             const topPx = timeToY(sec);
             return (
               <div
-                key={gIdx}
+                key={`ruler-${gIdx}`}
                 style={{ top: `${topPx}px` }}
-                className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none"
+                className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none z-10"
               >
-                <span className="text-[9px] font-mono text-gray-500 -mt-2">
+                <span className="text-[9px] font-mono text-gray-500 -mt-2 bg-slate-900/80 px-0.5 rounded">
                   {formatTime(sec)}
                 </span>
               </div>
@@ -107,11 +134,31 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
           })}
         </div>
 
-        {/* 2. Background SVG for Locked Group Sync Tree Connection Lines */}
+        {/* 2. Background SVG for Faint Song Guide Lines and Group Sync Tree Connection Lines */}
         <svg 
           className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
           style={{ height: `${canvasHeight}px` }}
         >
+          {/* Faint Horizontal Song Start Guidelines across timeline */}
+          {setlist.map((item, sIdx) => {
+            if (item.start_time === null || item.start_time === undefined) return null;
+            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
+            const y = timeToY(item.start_time);
+            return (
+              <line
+                key={`song-line-${item.id || sIdx}`}
+                x1={TIME_AXIS_WIDTH}
+                y1={y}
+                x2={totalCanvasWidth}
+                y2={y}
+                stroke="#a855f7"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                strokeOpacity="0.15"
+              />
+            );
+          })}
+
           {lanes.flatMap((laneVideos, lIdx) => {
             const targetLaneIdx = lIdx;
             const targetX = getLaneX(targetLaneIdx) + LANE_WIDTH / 2;

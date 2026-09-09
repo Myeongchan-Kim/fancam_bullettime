@@ -993,6 +993,7 @@ export default function SyncVisualizerPage() {
             videoA={videoA}
             videoB={videoB}
             hoveredVideo={hoveredVideo}
+            setlist={graphData?.setlist}
             onTimelineMouseDown={handleTimelineMouseDown}
             onSelectVideo={handleSelectVideo}
             onHoverVideo={setHoveredVideo}
