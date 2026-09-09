@@ -48,31 +48,52 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   const isSplitVideo = !!(videoB.segments && videoB.segments.length > 0);
   const activeSegment = isSplitVideo ? getActiveSegment(videoB, selectedTimeCursor) : null;
 
-  // Durations & Start times
+  // Master timeline coordinates for Deck A
+  // Deck A is typically the master video (0 to duration), or another fancam (master_start to master_end)
   const durA = videoA?.duration || 240;
-  const startA = videoA ? (videoA.sync_offset || 0) : 0;
-  const endA = startA + durA;
+  const startA = videoA 
+    ? (videoA.master_start_time !== undefined && videoA.master_start_time !== null 
+        ? videoA.master_start_time 
+        : (videoA.sync_offset || 0))
+    : 0;
+  const endA = videoA
+    ? (videoA.master_end_time !== undefined && videoA.master_end_time !== null
+        ? videoA.master_end_time
+        : startA + durA)
+    : startA + durA;
 
   // Deck B target parameters (Segment vs Full Video)
-  const targetOffset = activeSegment ? activeSegment.sync_offset : (videoB.sync_offset || 0);
-  const currentEffectiveOffset = Number((targetOffset + fineTuneDelta).toFixed(2));
-  const startB = currentEffectiveOffset;
-  // Duration of Deck B
+  // For split videos, we work in master timeline coordinates:
+  // baseMasterStart = activeSegment.master_start, duration = video_end - video_start
+  const baseMasterStartB = activeSegment 
+    ? activeSegment.master_start 
+    : (videoB.master_start_time !== undefined && videoB.master_start_time !== null 
+        ? videoB.master_start_time 
+        : (videoB.sync_offset || 0));
+
   const durB = activeSegment 
     ? Math.max(1, (activeSegment.video_end - activeSegment.video_start)) 
     : (videoB.duration || 240);
 
+  // The effective offset being calibrated
+  const baseOffset = activeSegment ? activeSegment.sync_offset : (videoB.sync_offset || 0);
+  const currentEffectiveOffset = Number((baseOffset + fineTuneDelta).toFixed(2));
+
+  // Current active Deck B segment's live master start position (shifted by fineTuneDelta)
+  const currentMasterStartB = baseMasterStartB + fineTuneDelta;
+  const currentMasterEndB = currentMasterStartB + durB;
+
   // Viewport window offset shift (allows scrolling the comparison window by ±10 minutes)
   const [viewportShift, setViewportShift] = useState<number>(0);
 
-  // Timeline view window: Deck B bar length + margin of ±10 minutes (600s left, 600s right)
+  // Timeline view window: Deck B active bar length + margin of ±10 minutes (600s left, 600s right)
   const MARGIN_SECONDS = 600; // 10 minutes
   const timelineSpan = durB + MARGIN_SECONDS * 2; // Total width = bar length + 20 minutes
 
-  // The base reference position for the window is the saved base offset (targetOffset) + viewportShift.
+  // The base reference position for the window is the saved base master start + viewportShift.
   // CRITICAL: We DO NOT add fineTuneDelta to the window anchor!
-  // This keeps the track background completely fixed while the bar itself moves smoothly inside it when dragged.
-  const windowAnchor = targetOffset + viewportShift;
+  // This keeps the track background completely fixed while the active bar itself moves smoothly inside it when dragged.
+  const windowAnchor = baseMasterStartB + viewportShift;
   const timelineMin = windowAnchor - MARGIN_SECONDS;
   const timelineMax = timelineMin + timelineSpan;
 
@@ -134,7 +155,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             {activeSegment && (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
                 <Scissors className="w-2.5 h-2.5" />
-                구간: {activeSegment.label || `#${activeSegment.id}`}
+                선택 구간: {activeSegment.label || `#${activeSegment.id}`}
               </span>
             )}
           </div>
@@ -158,7 +179,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             </span>
             <div className="h-3 w-px bg-slate-800" />
             <span className="font-black text-white">
-              +{currentEffectiveOffset.toFixed(2)}s
+              Offset: {currentEffectiveOffset.toFixed(2)}s
             </span>
           </div>
         </div>
@@ -169,10 +190,10 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
         <div className="flex justify-between items-center text-[10px] text-gray-400 font-mono">
           <span className="flex items-center gap-1.5 text-gray-300 font-bold">
             <Layers className="w-3 h-3 text-twice-apricot" />
-            2-Track 타임라인 바 비교 {activeSegment && <span className="text-amber-400 font-bold">(선택된 Split 구간 편집 중)</span>}
+            2-Track 타임라인 바 비교 {isSplitVideo && <span className="text-amber-400 font-bold">({videoB.segments.length}개 Split 구간 표시)</span>}
           </span>
           <span className="text-[9px] text-gray-500">
-            {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
+            타임라인 윈도우: {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
           </span>
         </div>
 
@@ -184,7 +205,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               [Deck A 기준] #{videoA?.id || '?'} {videoA?.title || '기준 영상'}
             </span>
             <span className="text-[10px] text-gray-400 shrink-0">
-              Offset: {startA.toFixed(2)}s ({formatTime(durA)})
+              위치: {formatTime(startA)} ── {formatTime(endA)} ({formatTime(durA)})
             </span>
           </div>
           <div className="flex items-center gap-1.5">
@@ -192,10 +213,10 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <div className="w-[43px] shrink-0" aria-hidden="true" />
 
             {/* Deck A Track Container */}
-            <div className="flex-1 h-4 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
+            <div className="flex-1 h-5 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
               {(() => {
-                // Deck A bar covers [startA, endA]
-                // If Deck A is a full concert (covers the current window), it will span 100% of this window
+                // Deck A bar covers [startA, endA] on master timeline
+                // If Deck A is full concert covering the window, it spans smoothly across
                 const visibleStart = Math.max(timelineMin, startA);
                 const visibleEnd = Math.min(timelineMax, endA);
                 if (visibleEnd <= visibleStart) return null;
@@ -204,12 +225,17 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 const widthPct = Math.max(0.5, rightPct - leftPct);
                 return (
                   <div
-                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all"
+                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-md shadow-sm transition-all flex items-center px-2"
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`
                     }}
-                  />
+                    title={`Deck A: ${formatTime(startA)} ~ ${formatTime(endA)}`}
+                  >
+                    <span className="text-[9px] font-bold text-white/90 drop-shadow truncate">
+                      {videoA?.title || '기준 영상'}
+                    </span>
+                  </div>
                 );
               })()}
             </div>
@@ -219,7 +245,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           </div>
         </div>
 
-        {/* Row 2: Deck B Draggable Target Bar with 10-minute shift buttons */}
+        {/* Row 2: Deck B Target Bar with Multiple Segments Support */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
             <span className="text-twice-magenta font-bold flex items-center gap-1 truncate max-w-[340px]">
@@ -237,7 +263,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 </button>
               )}
               <span className="text-[10px] text-twice-magenta font-bold shrink-0">
-                Offset: {currentEffectiveOffset.toFixed(2)}s ({formatTime(durB)})
+                위치: {formatTime(currentMasterStartB)} ── {formatTime(currentMasterEndB)} (Offset: {currentEffectiveOffset.toFixed(2)}s)
               </span>
             </div>
           </div>
@@ -247,45 +273,111 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <button
               type="button"
               onClick={() => setViewportShift(prev => prev - 600)}
-              className="h-7 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
+              className="h-8 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
               title="타임라인 구간을 10분 앞으로 이동 (-10분)"
             >
               <ChevronLeft className="w-3.5 h-3.5 text-twice-magenta group-hover:-translate-x-0.5 transition-transform" />
               <span className="hidden sm:inline font-mono text-[9px] mr-0.5">-10m</span>
             </button>
 
-            {/* Draggable Track Container */}
+            {/* Draggable Track Container (contains all segments of Deck B) */}
             <div
               ref={trackContainerRef}
               onPointerDown={handlePointerDown}
               onPointerMove={handlePointerMove}
               onPointerUp={handlePointerUp}
               onPointerCancel={handlePointerUp}
-              className={`flex-1 h-7 bg-slate-900 rounded-lg overflow-hidden relative select-none cursor-grab active:cursor-grabbing border ${
+              className={`flex-1 h-8 bg-slate-900 rounded-lg overflow-hidden relative select-none cursor-grab active:cursor-grabbing border ${
                 isDragging ? 'border-twice-magenta ring-2 ring-twice-magenta/40' : 'border-twice-magenta/30 hover:border-twice-magenta/60'
               } transition-colors`}
               title="마우스 또는 터치로 바를 좌우로 드래그하여 싱크를 미세 조정하세요 (0.05초 단위)"
             >
-              <div
-                className="h-full rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
-                style={{
-                  marginLeft: `${Math.max(0, Math.min(96, ((startB - timelineMin) / timelineSpan) * 100))}%`,
-                  width: `${Math.max(4, Math.min(100, (durB / timelineSpan) * 100))}%`
-                }}
-              >
-                <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
-                <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
-                  {isDragging ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` : activeSegment ? `구간 드래그 싱크 (${activeSegment.label || `#${activeSegment.id}`})` : '드래그하여 싱크 조절 (Drag to Sync)'}
-                </span>
-                <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
-              </div>
+              {/* If split video, render all segments in the viewport */}
+              {isSplitVideo && videoB.segments ? (
+                videoB.segments.map((seg) => {
+                  const isActive = activeSegment?.id === seg.id;
+                  const segMasterStart = isActive ? currentMasterStartB : seg.master_start;
+                  const segMasterEnd = isActive ? currentMasterEndB : seg.master_end;
+
+                  // Check visibility in current timelineMin ~ timelineMax window
+                  const visibleStart = Math.max(timelineMin, segMasterStart);
+                  const visibleEnd = Math.min(timelineMax, segMasterEnd);
+                  if (visibleEnd <= visibleStart) return null;
+
+                  const leftPct = Math.max(0, Math.min(100, ((visibleStart - timelineMin) / timelineSpan) * 100));
+                  const rightPct = Math.max(0, Math.min(100, ((visibleEnd - timelineMin) / timelineSpan) * 100));
+                  const widthPct = Math.max(2, rightPct - leftPct);
+
+                  if (isActive) {
+                    return (
+                      <div
+                        key={seg.id}
+                        className="absolute top-0 bottom-0 rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10"
+                        style={{
+                          left: `${leftPct}%`,
+                          width: `${widthPct}%`
+                        }}
+                        title={`현재 편집 중인 구간: ${seg.label || `#${seg.id}`} (${formatTime(segMasterStart)} ~ ${formatTime(segMasterEnd)})`}
+                      >
+                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                        <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                          {isDragging 
+                            ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` 
+                            : `${seg.label || `구간 #${seg.id}`} (드래그 조절)`}
+                        </span>
+                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                      </div>
+                    );
+                  }
+
+                  // Non-active other split segments (styled distinctively to show surrounding segments)
+                  return (
+                    <div
+                      key={seg.id}
+                      className="absolute top-0.5 bottom-0.5 rounded-md flex items-center px-1.5 bg-pink-900/60 hover:bg-pink-800/80 border border-pink-500/40 opacity-75 hover:opacity-100 transition-opacity z-0"
+                      style={{
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`
+                      }}
+                      title={`구간: ${seg.label || `#${seg.id}`} (${formatTime(segMasterStart)} ~ ${formatTime(segMasterEnd)})`}
+                    >
+                      <span className="text-[8px] font-bold text-pink-200 truncate drop-shadow">
+                        {seg.label || `구간 #${seg.id}`}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                /* Continuous video (single bar) */
+                (() => {
+                  const leftPct = Math.max(0, Math.min(96, ((currentMasterStartB - timelineMin) / timelineSpan) * 100));
+                  const widthPct = Math.max(4, Math.min(100, (durB / timelineSpan) * 100));
+                  return (
+                    <div
+                      className="absolute top-0 bottom-0 rounded-md flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
+                      style={{
+                        left: `${leftPct}%`,
+                        width: `${widthPct}%`
+                      }}
+                    >
+                      <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                      <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                        {isDragging 
+                          ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` 
+                          : '드래그하여 싱크 조절 (Drag to Sync)'}
+                      </span>
+                      <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                    </div>
+                  );
+                })()
+              )}
             </div>
 
             {/* Shift viewport right by 10 minutes (+600s) */}
             <button
               type="button"
               onClick={() => setViewportShift(prev => prev + 600)}
-              className="h-7 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
+              className="h-8 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
               title="타임라인 구간을 10분 뒤로 이동 (+10분)"
             >
               <span className="hidden sm:inline font-mono text-[9px] ml-0.5">+10m</span>
