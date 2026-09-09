@@ -218,7 +218,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           }}
                           onMouseEnter={() => onHoverVideo(cam)}
                           onMouseLeave={() => onHoverVideo(null)}
-                          className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                          className={`absolute inset-x-0 rounded-[2px] border transition-all cursor-pointer flex items-center justify-center ${
                             isDeckB
                               ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-magenta shadow-lg shadow-amber-500/50 z-20'
                               : isDeckA
@@ -230,7 +230,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}] - 세그먼트`}
                         >
                           <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
-                            {isDeckA ? 'A' : isDeckB ? 'B' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                            {isDeckA ? 'A' : isDeckB ? 'B' : seg.members?.[0]?.slice(0, 2) || cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                           </span>
                         </div>
                       );
@@ -248,7 +248,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                       }}
                       onMouseEnter={() => onHoverVideo(cam)}
                       onMouseLeave={() => onHoverVideo(null)}
-                      className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                      className={`absolute inset-x-0 rounded-[2px] border transition-all cursor-pointer flex items-center justify-center ${
                         isDeckB
                           ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-magenta shadow-lg shadow-twice-magenta/50 z-20'
                           : isDeckA

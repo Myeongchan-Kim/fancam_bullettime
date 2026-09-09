@@ -4,6 +4,7 @@ import {
   X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2, GitBranch
 } from 'lucide-react';
 import { Video, VideoSyncSegment } from '../types';
+import { TWICE_MEMBERS } from '../constants';
 
 interface SegmentTimelineCalibratorModalProps {
   video: Video;
@@ -88,6 +89,21 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
     setSegments(updated);
   };
 
+  // Handle Toggle Member for a Segment
+  const handleToggleMember = (index: number, memberName: string) => {
+    const updated = [...segments];
+    const seg = updated[index];
+    const currentMembers = seg.members || (video.members || []);
+    let newMembers: string[];
+    if (currentMembers.includes(memberName)) {
+      newMembers = currentMembers.filter(m => m !== memberName);
+    } else {
+      newMembers = [...currentMembers, memberName];
+    }
+    updated[index] = { ...seg, members: newMembers };
+    setSegments(updated);
+  };
+
   // Handle Delete Segment
   const handleDeleteSegment = (index: number) => {
     const updated = segments.filter((_, i) => i !== index);
@@ -107,6 +123,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
         master_end_time: Number(s.master_end_time),
         sync_offset: Number(s.sync_offset),
         label: s.label || null,
+        members: s.members && s.members.length > 0 ? s.members : null,
         is_verified: Boolean(s.is_verified)
       }));
 
@@ -376,11 +393,34 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
                   <div className="col-span-3">
                     <input 
                       type="text"
-                      className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-twice-magenta"
+                      className="w-full bg-slate-950 border border-slate-700/80 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-twice-magenta mb-1.5"
                       value={seg.label || ''}
                       placeholder="곡명 또는 멘트"
                       onChange={(e) => handleUpdateField(idx, 'label', e.target.value)}
                     />
+                    {/* Segment Members Tagging */}
+                    <div className="flex flex-wrap items-center gap-1">
+                      <span className="text-[10px] text-gray-500 font-bold mr-0.5">멤버:</span>
+                      {TWICE_MEMBERS.map((m) => {
+                        const effectiveMembers = seg.members || (video.members || []);
+                        const isSelected = effectiveMembers.includes(m);
+                        return (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => handleToggleMember(idx, m)}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all border ${
+                              isSelected
+                                ? 'bg-twice-magenta text-white border-pink-400 shadow-sm'
+                                : 'bg-slate-950 text-gray-400 border-slate-800 hover:text-gray-200 hover:border-slate-700'
+                            }`}
+                            title={`${m} 태그 토글`}
+                          >
+                            {m}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
 
                   <div className="col-span-2 flex items-center gap-1 font-mono">

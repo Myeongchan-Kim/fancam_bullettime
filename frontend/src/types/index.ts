@@ -40,6 +40,7 @@ export interface VideoSyncSegment {
   master_end_time: number;
   sync_offset: number;
   label?: string | null;
+  members?: string[] | null;
   is_verified?: boolean;
   created_at?: string;
   setlist?: ConcertSetlist;
@@ -129,6 +130,7 @@ export interface SyncGraphVideoNode {
     master_end: number;
     sync_offset: number;
     label?: string | null;
+    members?: string[];
     is_verified?: boolean;
   }[];
   songs: {

@@ -123,6 +123,7 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
                         "master_end": seg.master_end_time,
                         "sync_offset": seg.sync_offset,
                         "label": seg.label,
+                        "members": seg.members or [],
                         "is_verified": seg.is_verified
                     })
                 
