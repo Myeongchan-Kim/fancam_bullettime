@@ -1,4 +1,4 @@
-import { Music, Sparkles } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 import { SyncGraphSetlistItem, SyncGraphVideoNode } from '../../types';
 
 interface TimelineLanesCanvasProps {
@@ -88,7 +88,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
         {/* 1. Left Time Scale Axis & Song Bookmarks */}
         <div 
           style={{ width: `${TIME_AXIS_WIDTH}px` }}
-          className="relative h-full flex-shrink-0 border-r border-slate-800/80 overflow-hidden"
+          className="relative h-full flex-shrink-0 border-r border-slate-800/80 overflow-hidden bg-slate-950/40"
         >
           {/* Subtle Song Background Blocks & Labels on Left Axis */}
           {setlist.map((item, sIdx) => {
@@ -96,18 +96,22 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
             if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
             const topPx = timeToY(item.start_time);
             const duration = (item.end_time && item.end_time > item.start_time) ? (item.end_time - item.start_time) : 180;
-            const heightPx = Math.max(16, (duration / timeSpan) * canvasHeight);
+            const heightPx = Math.max(18, (duration / timeSpan) * canvasHeight);
 
             return (
               <div
                 key={`song-axis-${item.id || sIdx}`}
                 style={{ top: `${topPx}px`, height: `${heightPx}px` }}
-                className="absolute left-0 right-0 border-t border-purple-500/20 bg-purple-500/[0.04] px-1 pointer-events-none group"
+                className="absolute left-0 right-0 border-t border-purple-500/30 bg-purple-950/20 px-1 pointer-events-none group"
                 title={`${item.name} (${formatTime(item.start_time)})`}
               >
-                <div className="flex items-center gap-0.5 pt-0.5 truncate">
-                  <Music className="w-2.5 h-2.5 text-purple-400/40 shrink-0" />
-                  <span className="text-[8.5px] font-sans font-bold text-purple-300/60 truncate leading-none">
+                <div className="flex flex-col justify-start pt-0.5 truncate leading-tight">
+                  <div className="flex items-center gap-1 truncate">
+                    <span className="text-[7px] font-mono text-purple-400/80 font-bold">
+                      {formatTime(item.start_time)}
+                    </span>
+                  </div>
+                  <span className="text-[8px] font-sans font-black text-purple-200 truncate drop-shadow-sm">
                     {item.name}
                   </span>
                 </div>
@@ -126,7 +130,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                 style={{ top: `${topPx}px` }}
                 className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none z-10"
               >
-                <span className="text-[9px] font-mono text-gray-500 -mt-2 bg-slate-900/80 px-0.5 rounded">
+                <span className="text-[8px] font-mono font-bold text-gray-500 -mt-2 bg-slate-900/90 px-0.5 border border-slate-800/60">
                   {formatTime(sec)}
                 </span>
               </div>
@@ -265,7 +269,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           }}
                           onMouseEnter={() => onHoverVideo(cam)}
                           onMouseLeave={() => onHoverVideo(null)}
-                          className={`absolute inset-x-0 rounded-[2px] border transition-all cursor-pointer flex items-center justify-center ${
+                          className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                             isDeckB
                               ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-magenta shadow-lg shadow-amber-500/50 z-20'
                               : isDeckA
@@ -295,7 +299,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                       }}
                       onMouseEnter={() => onHoverVideo(cam)}
                       onMouseLeave={() => onHoverVideo(null)}
-                      className={`absolute inset-x-0 rounded-[2px] border transition-all cursor-pointer flex items-center justify-center ${
+                      className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                         isDeckB
                           ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-magenta shadow-lg shadow-twice-magenta/50 z-20'
                           : isDeckA

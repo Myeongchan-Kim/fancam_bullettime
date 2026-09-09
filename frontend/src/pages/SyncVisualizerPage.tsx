@@ -95,7 +95,7 @@ export default function SyncVisualizerPage() {
   const [scaleFactor, setScaleFactor] = useState<number>(10);
   const LANE_WIDTH = 13;
   const LANE_GAP = 5;
-  const TIME_AXIS_WIDTH = 48;
+  const TIME_AXIS_WIDTH = 88;
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
