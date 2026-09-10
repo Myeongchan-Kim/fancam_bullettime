@@ -16,10 +16,12 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'In my room', 
     subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
     img: '/images/featured_cam01_inmyroom.jpg',
-    angleCount: 3,
+    angleCount: 5,
     extraImgs: [
       '/images/featured_cam02_inmyroom.jpg',
-      '/images/featured_cam03_inmyroom.jpg'
+      '/images/featured_cam03_inmyroom.jpg',
+      '/images/featured_cam04_inmyroom.jpg',
+      '/images/featured_cam05_inmyroom.jpg'
     ]
   },
   { 
