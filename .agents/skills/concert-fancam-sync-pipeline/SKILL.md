@@ -37,11 +37,12 @@ description: >-
 
 ## 🛠️ 세부 실행 절차 (Pass 0 ~ Pass 5)
 
-### 📌 Pass 0. 불변 참값 고정 (Zero Phase)
-- **목적**: 사용자가 직접 검증하거나 수동 확정한 참값 보존.
+### 📌 Pass 0. 검증용 수동 참값 격리 (Ground Truth Isolation)
+- **목적**: 사람이 검증한 정답 데이터셋을 알고리즘 튜닝/치팅에 쓰지 않고, 순수 알고리즘 결과의 '독립 평가셋(Evaluation Set)'으로 완전히 분리.
 - **규칙**:
-  - `calibration_status == "manually_verified"` 또는 `calibration_method == "manual_studio"`인 영상(예: #1714 `-11.73s`)은 **덮어쓰기 금지(Freeze)**.
-  - 마스터 풀캠 영상(`Video.duration >= 7200s`, e.g. #1094)의 셋리스트 챕터 시작점을 Ground Truth 타임라인 축으로 로드.
+  - `calibration_status == "manual_calibrated"`인 영상(총 15개, #1714 `-11.73s` 등)은 **알고리즘 입력/실행 과정에서 100% 배제(Isolate)**.
+  - 알고리즘은 오직 마스터 풀캠 영상(`Video.duration >= 7200s`, e.g. #1094)의 공식 셋리스트 챕터와 오디오 파형만으로 순수하게 계산.
+  - 알고리즘 실행이 모두 끝난 뒤, 독립된 평가 단계에서만 `manual_calibrated` 참값과 비교하여 오차(Accuracy/Delta)를 측정.
 
 ### 📌 Pass 1. 선제적 연속성 검사 & Split 분할 (Split-First)
 - **목적**: 2~3곡이 섞여 있는 메들리/다곡 영상을 사전 분할하여, 단일 곡 군집 매칭 시 발생하는 연산 낭비와 오류 원천 차단.
