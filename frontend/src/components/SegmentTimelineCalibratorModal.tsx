@@ -210,7 +210,9 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
     setIsAutoAligning(true);
     setStatusMessage({ type: 'info', text: '🎧 AI 오디오 핑거프린트 및 양끝 프로브(Boundary Probe)로 콘서트 타임라인 자동 정렬 중...' });
     try {
-      const res = await axios.post(`${API_BASE_URL}/videos/${video.id}/auto-align-segments`);
+      const res = await axios.post(`${API_BASE_URL}/videos/${video.id}/auto-align-segments`, {}, {
+        headers: { 'x-admin-key': 'twice360-admin-secret-key' }
+      });
       if (res.data && res.data.success) {
         setStatusMessage({
           type: 'success',
@@ -223,9 +225,10 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
       }
     } catch (err: any) {
       console.error('Auto-align failed:', err);
+      const msg = (typeof err.response?.data === 'string' ? err.response?.data : err.response?.data?.detail) || 'AI 자동 정렬 중 오류가 발생했습니다.';
       setStatusMessage({
         type: 'error',
-        text: err.response?.data?.detail || 'AI 자동 정렬 중 오류가 발생했습니다.'
+        text: msg
       });
     } finally {
       setIsAutoAligning(false);
@@ -246,7 +249,9 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
         ? `${API_BASE_URL}/videos/${video.id}/recursive-segment-align?segment_id=${targetSegmentId}`
         : `${API_BASE_URL}/videos/${video.id}/recursive-segment-align`;
       
-      const res = await axios.post(url);
+      const res = await axios.post(url, {}, {
+        headers: { 'x-admin-key': 'twice360-admin-secret-key' }
+      });
       if (res.data && res.data.success) {
         setStatusMessage({
           type: 'success',
@@ -259,9 +264,10 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
       }
     } catch (err: any) {
       console.error('Recursive split failed:', err);
+      const msg = (typeof err.response?.data === 'string' ? err.response?.data : err.response?.data?.detail) || '재귀 분할 처리 중 오류가 발생했습니다.';
       setStatusMessage({
         type: 'error',
-        text: err.response?.data?.detail || '재귀 분할 처리 중 오류가 발생했습니다.'
+        text: msg
       });
     } finally {
       setIsRecursiveSplitting(null);

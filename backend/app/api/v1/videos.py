@@ -369,6 +369,13 @@ def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
     """
     양끝 프로브(Boundary Probe) 및 오디오 교차 상관을 이용한 자동 타임라인 세그먼트 정렬
     """
+    import shutil
+    if not shutil.which("ffmpeg") or not (shutil.which("yt-dlp") or os.path.exists("/opt/homebrew/bin/yt-dlp")):
+        raise HTTPException(
+            status_code=400,
+            detail="서버리스(Vercel) 환경에서는 대용량 오디오 DSP 연산(FFmpeg/yt-dlp)이 지원되지 않습니다. CLI 스크립트(run_recursive_segmentation_v63.py 등)를 통해 로컬 환경에서 실행해주세요."
+        )
+
     from app.crawler.timeline_aligner import probe_video_boundaries_and_align
     try:
         res = probe_video_boundaries_and_align(video_id, db)
@@ -390,6 +397,13 @@ def trigger_recursive_segment_alignment(
     오디오 3-Point 교차 상관 및 재귀 분할(Recursive Piecewise Segmentation) 알고리즘
     설명란이나 챕터가 없는 편집 영상도 오디오 파형 상관분석으로 내부 편집점(Cut)을 스스로 찾아내어 분할
     """
+    import shutil
+    if not shutil.which("ffmpeg") or not (shutil.which("yt-dlp") or os.path.exists("/opt/homebrew/bin/yt-dlp")):
+        raise HTTPException(
+            status_code=400,
+            detail="서버리스(Vercel) 환경에서는 대용량 오디오 DSP 연산(FFmpeg/yt-dlp)이 지원되지 않습니다. CLI 스크립트(run_recursive_segmentation_v63.py 등)를 통해 로컬 환경에서 실행해주세요."
+        )
+
     from app.crawler.recursive_segment_calibrator import calibrate_video_recursive_segments
     try:
         res = calibrate_video_recursive_segments(video_id, db, target_segment_id=segment_id)
