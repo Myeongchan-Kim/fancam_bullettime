@@ -17,23 +17,32 @@ const FEATURED_SYNC_VIDEOS = [
     subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
     img: '/images/featured_cam01_inmyroom.jpg',
     angleCount: 3,
-    extraImgs: ['https://i.ytimg.com/vi/UAE2ZC3ADSs/hqdefault.jpg'] // 46번 영상(UAE2ZC3ADSs) 썸네일로 교체
+    extraImgs: [
+      '/images/featured_cam02_inmyroom.jpg',
+      '/images/featured_cam03_inmyroom.jpg'
+    ]
   },
   { 
     id: 215, 
     title: 'MOVE LIKE THAT', 
     subtitle: 'Incheon 20250719 (Momo Solo)', 
-    img: 'https://i.ytimg.com/vi/jDc_VSUS3AI/hqdefault.jpg',
-    angleCount: 5,
-    extraImgs: ['https://i.ytimg.com/vi/jDc_VSUS3AI/1.jpg', 'https://i.ytimg.com/vi/jDc_VSUS3AI/2.jpg']
+    img: '/images/featured_cam01_movelikethat.jpg',
+    angleCount: 3,
+    extraImgs: [
+      '/images/featured_cam02_movelikethat.jpg',
+      '/images/featured_cam03_movelikethat.jpg'
+    ]
   },
   { 
     id: 597, 
     title: 'CHESS', 
     subtitle: 'Incheon 20250719 (Dahyun Solo)', 
-    img: 'https://i.ytimg.com/vi/FGhOm91Zjvw/hqdefault.jpg',
-    angleCount: 4,
-    extraImgs: ['https://i.ytimg.com/vi/FGhOm91Zjvw/1.jpg']
+    img: '/images/featured_cam01_chess.jpg',
+    angleCount: 3,
+    extraImgs: [
+      '/images/featured_cam02_chess.jpg',
+      '/images/featured_cam03_chess.jpg'
+    ]
   },
 ];
 
