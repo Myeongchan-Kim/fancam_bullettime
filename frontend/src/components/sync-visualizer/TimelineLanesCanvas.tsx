@@ -269,7 +269,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           }}
                           onMouseEnter={() => onHoverVideo(cam)}
                           onMouseLeave={() => onHoverVideo(null)}
-                          className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
+                          className={`absolute inset-x-0 rounded-[2.5px] border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                             isDeckB
                               ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-magenta shadow-lg shadow-amber-500/50 z-20'
                               : isDeckA
@@ -299,7 +299,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                       }}
                       onMouseEnter={() => onHoverVideo(cam)}
                       onMouseLeave={() => onHoverVideo(null)}
-                      className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
+                      className={`absolute inset-x-0 rounded-[2.5px] border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                         isDeckB
                           ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-magenta shadow-lg shadow-twice-magenta/50 z-20'
                           : isDeckA
