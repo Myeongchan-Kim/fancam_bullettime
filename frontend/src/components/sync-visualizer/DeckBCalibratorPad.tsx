@@ -236,7 +236,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 const widthPct = Math.max(0.5, rightPct - leftPct);
                 return (
                   <div
-                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-[3px] border-x-2 border-white/60 shadow-sm transition-all flex items-center px-2"
+                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-[5px] border-x-2 border-white/60 shadow-sm transition-all flex items-center px-2"
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`
@@ -323,7 +323,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                     return (
                       <div
                         key={seg.id}
-                        className="absolute top-0 bottom-0 rounded-[3px] border-x-2 border-white flex items-center justify-between px-1.5 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10"
+                        className="absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white flex items-center justify-between px-1.5 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10"
                         style={{
                           left: `${leftPct}%`,
                           width: `${widthPct}%`
@@ -345,7 +345,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                   return (
                     <div
                       key={seg.id}
-                      className="absolute top-0.5 bottom-0.5 rounded-[3px] border-l-2 border-pink-400 flex items-center px-1 bg-pink-900/60 hover:bg-pink-800/80 border-y border-r border-pink-500/40 opacity-75 hover:opacity-100 transition-opacity z-0"
+                      className="absolute top-0.5 bottom-0.5 rounded-[5px] border-l-2 border-pink-400 flex items-center px-1 bg-pink-900/60 hover:bg-pink-800/80 border-y border-r border-pink-500/40 opacity-75 hover:opacity-100 transition-opacity z-0"
                       style={{
                         left: `${leftPct}%`,
                         width: `${widthPct}%`
@@ -365,7 +365,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                   const widthPct = Math.max(4, Math.min(100, (durB / timelineSpan) * 100));
                   return (
                     <div
-                      className="absolute top-0 bottom-0 rounded-[3px] border-x-2 border-white/80 flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
+                      className="absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white/80 flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
                       style={{
                         left: `${leftPct}%`,
                         width: `${widthPct}%`
