@@ -19,11 +19,14 @@ from scripts.precision_sync_calibrator import download_audio_slice, cross_correl
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("recursive_v63")
 
+import json
+
 PROBE_DUR = 10.0
 SEARCH_WINDOW = 60.0
 DRIFT_THRESHOLD = 1.5
-MIN_SEG_DUR = 35.0
+MIN_SEG_DUR = 50.0
 MAX_DEPTH = 3
+PROGRESS_FILE = "scratch/recursive_v63_progress.json"
 
 def probe_point(yt_target: str, yt_master: str, t_tgt: float, est_off: float, label: str = "") -> Dict[str, Any]:
     est_m = max(0.0, t_tgt + est_off)
@@ -36,10 +39,14 @@ def probe_point(yt_target: str, yt_master: str, t_tgt: float, est_off: float, la
     m_wav = download_audio_slice(yt_master, m_start, SEARCH_WINDOW, m_name)
 
     m_sec, conf = cross_correlate(tgt_wav, m_wav, m_start)
-    if conf < 0.07 or m_sec < 0:
+    if conf < 0.11 or m_sec < 0:
         return {"success": False, "offset": est_off, "confidence": conf, "tgt": t_tgt}
 
     off = m_sec - t_tgt
+    # Discard wild spurious correlation jumps (>25s) from search window edge
+    if abs(off - est_off) > 25.0:
+        return {"success": False, "offset": est_off, "confidence": conf, "tgt": t_tgt}
+
     return {
         "success": True,
         "offset": round(off, 2),
@@ -157,9 +164,24 @@ def run_recursive_calibration():
         ).order_by(VideoSyncSegment.video_start_time).all()
 
         logger.info(f"Loaded {len(existing_segs)} initial coarse cuts for Video #63.")
+        checkpoint = {}
+        if os.path.exists(PROGRESS_FILE):
+            try:
+                with open(PROGRESS_FILE, "r") as pf:
+                    checkpoint = json.load(pf)
+                logger.info(f"Loaded existing checkpoint with {len(checkpoint)} completed cuts.")
+            except Exception as e:
+                logger.warning(f"Could not load checkpoint: {e}")
+
         all_refined = []
 
         for seg in existing_segs:
+            seg_key = f"{int(seg.video_start_time)}_{int(seg.video_end_time)}"
+            if seg_key in checkpoint:
+                logger.info(f"\n{'='*80}\n⚡ [CHECKPOINT HIT] Coarse Cut [{seg.video_start_time:.1f}s ~ {seg.video_end_time:.1f}s] loaded ({len(checkpoint[seg_key])} segments).")
+                all_refined.extend(checkpoint[seg_key])
+                continue
+
             logger.info(f"\n{'='*80}\nProcessing Coarse Cut: [{seg.video_start_time:.1f}s ~ {seg.video_end_time:.1f}s] (prior: {seg.sync_offset:+.2f}s, label: {seg.label})")
             leafs = recursive_split_range(
                 v63.youtube_id,
@@ -168,6 +190,9 @@ def run_recursive_calibration():
                 seg.video_end_time,
                 seg.sync_offset
             )
+            checkpoint[seg_key] = leafs
+            with open(PROGRESS_FILE, "w") as pf:
+                json.dump(checkpoint, pf, indent=2)
             all_refined.extend(leafs)
 
         # Merge adjacent segments if their offsets are virtually identical (diff <= 0.3s)
