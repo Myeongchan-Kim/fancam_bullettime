@@ -1,3 +1,4 @@
+import React, { useMemo } from 'react';
 import { Sparkles } from 'lucide-react';
 import { SyncGraphSetlistItem, SyncGraphVideoNode } from '../../types';
 
@@ -51,6 +52,12 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
   const actualMaxTime = maxMasterTime !== undefined ? maxMasterTime : totalDuration;
   const timeSpan = Math.max(1, actualMaxTime - minMasterTime);
 
+  const validSetlist = useMemo(() => {
+    return [...setlist]
+      .filter(item => item.start_time !== null && item.start_time !== undefined && item.start_time >= minMasterTime && item.start_time <= actualMaxTime)
+      .sort((a, b) => ((a.start_time ?? 0) - (b.start_time ?? 0)));
+  }, [setlist, minMasterTime, actualMaxTime]);
+
   const timeToY = (sec: number) => {
     return ((sec - minMasterTime) / timeSpan) * canvasHeight;
   };
@@ -91,33 +98,41 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
           className="relative h-full flex-shrink-0 border-r border-slate-800/80 overflow-hidden bg-slate-950/40"
         >
           {/* Subtle Song Background Blocks & Labels on Left Axis */}
-          {setlist.map((item, sIdx) => {
-            if (item.start_time === null || item.start_time === undefined) return null;
-            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
-            const topPx = timeToY(item.start_time);
-            const duration = (item.end_time && item.end_time > item.start_time) ? (item.end_time - item.start_time) : 180;
-            const heightPx = Math.max(18, (duration / timeSpan) * canvasHeight);
+          {(() => {
+            let lastRenderedTextY = -999;
+            const MIN_LABEL_GAP_PX = 20;
 
-            return (
-              <div
-                key={`song-axis-${item.id || sIdx}`}
-                style={{ top: `${topPx}px`, height: `${heightPx}px` }}
-                className="absolute left-0 right-0 border-t border-purple-500/30 bg-purple-950/20 px-1 pointer-events-none group"
-                title={`${item.name} (${formatTime(item.start_time)})`}
-              >
-                <div className="flex flex-col justify-start pt-0.5 truncate leading-tight">
-                  <div className="flex items-center gap-1 truncate">
-                    <span className="text-[7px] font-mono text-purple-400/80 font-bold">
-                      {formatTime(item.start_time)}
-                    </span>
-                  </div>
-                  <span className="text-[8px] font-sans font-black text-purple-200 truncate drop-shadow-sm">
-                    {item.name}
-                  </span>
+            return validSetlist.map((item, sIdx) => {
+              const topPx = timeToY(item.start_time!);
+              const duration = (item.end_time && item.end_time > item.start_time!) ? (item.end_time - item.start_time!) : 180;
+              const heightPx = Math.max(4, (duration / timeSpan) * canvasHeight);
+              const canRenderText = (topPx - lastRenderedTextY) >= MIN_LABEL_GAP_PX;
+
+              if (canRenderText) {
+                lastRenderedTextY = topPx;
+              }
+
+              return (
+                <div
+                  key={`song-axis-${item.id || sIdx}`}
+                  style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                  className="absolute left-0 right-0 border-t border-purple-500/15 bg-purple-950/10 px-1 pointer-events-none overflow-hidden opacity-35 hover:opacity-100 transition-opacity group"
+                  title={`${item.name} (${formatTime(item.start_time!)})`}
+                >
+                  {canRenderText && (
+                    <div className="flex flex-col justify-start pt-0.5 truncate leading-tight select-none">
+                      <span className="text-[6.5px] font-mono text-purple-400/50 font-normal">
+                        {formatTime(item.start_time!)}
+                      </span>
+                      <span className="text-[7.5px] font-sans font-medium text-purple-300/40 truncate">
+                        {item.name}
+                      </span>
+                    </div>
+                  )}
                 </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
 
           {/* Regular 15-minute Time Scale Marks */}
           {Array.from({ length: Math.ceil((actualMaxTime - minMasterTime) / 900) + 1 }).map((_, gIdx) => {
@@ -144,10 +159,8 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
           style={{ height: `${canvasHeight}px` }}
         >
           {/* Faint Horizontal Song Start Guidelines across timeline */}
-          {setlist.map((item, sIdx) => {
-            if (item.start_time === null || item.start_time === undefined) return null;
-            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
-            const y = timeToY(item.start_time);
+          {validSetlist.map((item, sIdx) => {
+            const y = timeToY(item.start_time!);
             return (
               <line
                 key={`song-line-${item.id || sIdx}`}
@@ -156,9 +169,9 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                 x2={totalCanvasWidth}
                 y2={y}
                 stroke="#a855f7"
-                strokeWidth="1"
-                strokeDasharray="3 3"
-                strokeOpacity="0.15"
+                strokeWidth="0.75"
+                strokeDasharray="2 4"
+                strokeOpacity="0.06"
               />
             );
           })}
