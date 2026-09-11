@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch, Loader2, Sparkles, Youtube } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
@@ -15,6 +15,7 @@ const VideoDetailPage = () => {
   const navigate = useNavigate();
   const playerRef = React.useRef<MultiAnglePlayerRef>(null);
   const [video, setVideo] = useState<Video | null>(null);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [relatedVideos, setRelatedVideos] = useState<Video[]>([]);
   const [songs, setSongs] = useState<Song[]>([]);
   const [concerts, setConcerts] = useState<Concert[]>([]);
@@ -50,11 +51,13 @@ const VideoDetailPage = () => {
 
   useEffect(() => {
     setVideo(null); // Reset state when switching videos
+    setFetchError(null);
     fetchFullData();
   }, [id]);
 
   const fetchFullData = async () => {
     try {
+      setFetchError(null);
       const res = await axios.get(`${API_BASE_URL}/videos/${id}/full`);
       const { video: videoData, related_videos: relatedData, songs: songsData, concerts: concertsData, contributions: contribsData } = res.data;
       
@@ -77,8 +80,9 @@ const VideoDetailPage = () => {
         suggested_start_time: '',
         suggested_event_name: ''
       });
-    } catch (err) { 
-      console.error("Error fetching full video data", err); 
+    } catch (err: any) { 
+      console.error("Error fetching full video data", err);
+      setFetchError(err.response?.data?.detail || "비디오 데이터를 불러오는 중 오류가 발생했습니다.");
     }
   };
 
@@ -168,7 +172,93 @@ const VideoDetailPage = () => {
     }));
   };
 
-  if (!video) return <div className="text-center py-20 text-white">Loading video...</div>;
+  if (!video) {
+    if (fetchError) {
+      return (
+        <div className="space-y-8 text-white pb-20">
+          <div className="flex justify-between items-center">
+            <button onClick={() => navigate(-1)} className="flex items-center text-gray-400 hover:text-white transition-colors">
+              <ChevronLeft className="h-5 w-5" />
+              <span>Back to Gallery</span>
+            </button>
+          </div>
+
+          <div className="bg-slate-900/60 border border-red-500/30 rounded-3xl p-12 flex flex-col items-center justify-center min-h-[420px] text-center space-y-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+            <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-lg shadow-red-500/10">
+              <Info className="w-8 h-8" />
+            </div>
+            <div className="space-y-2 max-w-md">
+              <h3 className="text-xl font-bold text-white">직캠 데이터를 불러올 수 없습니다</h3>
+              <p className="text-sm text-gray-400">{fetchError}</p>
+            </div>
+            <button
+              onClick={() => navigate('/')}
+              className="px-6 py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl text-xs uppercase tracking-wider transition-all border border-slate-700"
+            >
+              갤러리로 돌아가기
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-8 text-white pb-20">
+        <div className="flex justify-between items-center">
+          <button onClick={() => navigate(-1)} className="flex items-center text-gray-400 hover:text-white transition-colors">
+            <ChevronLeft className="h-5 w-5" />
+            <span>Back to Gallery</span>
+          </button>
+        </div>
+
+        {/* Ambient Glowing Loading Card */}
+        <div className="bg-slate-900/60 border border-slate-800/80 rounded-3xl p-12 flex flex-col items-center justify-center min-h-[520px] text-center space-y-6 backdrop-blur-md shadow-2xl relative overflow-hidden">
+          {/* Ambient Glowing Background */}
+          <div className="absolute w-80 h-80 bg-gradient-to-tr from-twice-magenta/25 to-twice-apricot/25 rounded-full blur-3xl pointer-events-none animate-pulse -top-12 -left-12" />
+          <div className="absolute w-72 h-72 bg-gradient-to-br from-indigo-600/15 to-purple-600/15 rounded-full blur-2xl pointer-events-none animate-pulse -bottom-12 -right-12" />
+
+          {/* Icon Badge */}
+          <div className="relative">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-tr from-twice-magenta/20 via-purple-600/20 to-twice-apricot/20 border border-twice-magenta/30 flex items-center justify-center shadow-lg shadow-twice-magenta/20">
+              <Loader2 className="w-10 h-10 text-twice-magenta animate-spin" />
+            </div>
+            <div className="absolute -top-1 -right-1 flex h-4 w-4">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-twice-apricot opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-4 w-4 bg-twice-apricot"></span>
+            </div>
+          </div>
+
+          {/* Typography */}
+          <div className="space-y-2 max-w-md relative z-10">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-twice-magenta/10 border border-twice-magenta/30 text-twice-apricot text-xs font-black tracking-widest uppercase">
+              <Sparkles className="w-3.5 h-3.5 animate-bounce" />
+              <span>360° Bullet Time Fancam</span>
+            </div>
+            <h3 className="text-2xl font-black text-white tracking-tight">
+              직캠 동기화 데이터 로딩 중...
+            </h3>
+            <p className="text-sm text-gray-400 leading-relaxed">
+              무대 360° 공간 좌표 및 멀티앵글 오디오 타임라인을 동기화하고 있습니다.
+            </p>
+          </div>
+
+          {/* Skeleton Mockup of Video Player & Timeline */}
+          <div className="w-full max-w-xl pt-2 space-y-3 relative z-10">
+            <div className="aspect-video w-full rounded-2xl bg-slate-800/40 border border-slate-800/80 flex items-center justify-center animate-pulse">
+              <div className="w-14 h-14 rounded-full bg-slate-700/40 flex items-center justify-center text-slate-500">
+                <Youtube className="w-7 h-7 opacity-30" />
+              </div>
+            </div>
+            <div className="flex gap-2 justify-center pt-1">
+              <div className="h-2 w-28 bg-slate-800/80 rounded-full animate-pulse" />
+              <div className="h-2 w-16 bg-slate-800/80 rounded-full animate-pulse" />
+              <div className="h-2 w-24 bg-slate-800/80 rounded-full animate-pulse" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 text-white pb-20">

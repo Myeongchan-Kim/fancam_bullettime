@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { X, ShieldCheck, Check, Trash2, Youtube } from 'lucide-react';
+import { X, ShieldCheck, Check, Trash2, Youtube, Loader2 } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
 import { Contribution, Song, Concert } from '../types';
 
@@ -95,7 +95,10 @@ const AdminPendingContributionsModal: React.FC<Props> = ({ adminKey, songs, conc
         
         <div className="p-6 overflow-y-auto space-y-4 flex-1">
           {loading ? (
-            <p className="text-center text-gray-500 py-10">Loading...</p>
+            <div className="flex flex-col items-center justify-center py-12 space-y-3">
+              <Loader2 className="w-8 h-8 text-twice-magenta animate-spin" />
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-widest">제안 내역 불러오는 중...</p>
+            </div>
           ) : contributions.length === 0 ? (
             <p className="text-center text-gray-500 py-10">No pending contributions.</p>
           ) : (

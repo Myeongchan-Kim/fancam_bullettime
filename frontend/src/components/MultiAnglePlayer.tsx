@@ -226,7 +226,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   // Only show slave videos that are actually active at the CURRENT concert time
   const activeSlaveVideos = useMemo(() => {
     return slaveVideos.filter(v => {
-      return getLocalVideoTime(v, currentConcertTime, 0) !== null;
+      // 15s padding ensures fancams starting slightly after the intro are visible and pre-buffered from second 0
+      return getLocalVideoTime(v, currentConcertTime, 15) !== null;
     });
   }, [slaveVideos, currentConcertTime]);
 
@@ -277,7 +278,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             <div className="h-px flex-1 bg-slate-800"></div>
           </h3>
           
-          {activeSlaveVideos.slice(0, 3).map(video => (
+          {activeSlaveVideos.slice(0, 4).map(video => (
             <div 
               key={video.id} 
               className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"
@@ -319,15 +320,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
 
         {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
-        {activeSlaveVideos.length > 3 && (
+        {activeSlaveVideos.length > 4 && (
           <div className="xl:col-span-3 flex flex-col space-y-4">
             <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
               <div className="h-px flex-1 bg-slate-800"></div>
-              ADDITIONAL ANGLES ({activeSlaveVideos.length - 3})
+              ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})
               <div className="h-px flex-1 bg-slate-800"></div>
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {activeSlaveVideos.slice(3, 9).map(video => (
+              {activeSlaveVideos.slice(4, 12).map(video => (
                 <div 
                   key={video.id} 
                   className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"

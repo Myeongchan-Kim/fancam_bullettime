@@ -185,6 +185,7 @@ class VideoSyncSegment(Base):
     
     # Metadata / label (e.g., song title, act name, or note)
     label = Column(String, nullable=True)
+    members = Column(JSONEncodedList, nullable=True) # List of member names for this segment
     is_verified = Column(Boolean, default=False)
     
     created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))

@@ -95,7 +95,7 @@ export default function SyncVisualizerPage() {
   const [scaleFactor, setScaleFactor] = useState<number>(10);
   const LANE_WIDTH = 13;
   const LANE_GAP = 5;
-  const TIME_AXIS_WIDTH = 48;
+  const TIME_AXIS_WIDTH = 88;
 
   const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
@@ -129,8 +129,14 @@ export default function SyncVisualizerPage() {
   const initialVideoId = searchParams.get('video_id') ? parseInt(searchParams.get('video_id')!, 10) : null;
 
   // Load Graph Data
-  const loadSyncGraph = async (concertId: number, preserveVideoAId?: number, preserveVideoBId?: number) => {
-    setLoading(true);
+  const loadSyncGraph = async (
+    concertId: number, 
+    preserveVideoAId?: number, 
+    preserveVideoBId?: number,
+    silent: boolean = false,
+    preserveCursor: boolean = false
+  ) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const res = await axios.get(`${API_BASE_URL}/concerts/${concertId}/sync-graph`);
@@ -154,8 +160,8 @@ export default function SyncVisualizerPage() {
         if (targetBId) {
           const foundB = data.videos.find(v => v.id === targetBId);
           setVideoB(foundB || (data.videos.find(v => !v.is_master) || data.videos[0]));
-          // URL 파라미터로 진입 시 해당 직캠의 마스터 시작 지점으로 커서 자동 이동
-          if (foundB && foundB.master_start_time !== undefined && foundB.master_start_time !== null) {
+          // URL 파라미터로 진입 시 해당 직캠의 마스터 시작 지점으로 커서 자동 이동 (preserveCursor일 경우 보존)
+          if (!preserveCursor && foundB && foundB.master_start_time !== undefined && foundB.master_start_time !== null) {
             setSelectedTimeCursor(foundB.master_start_time);
           }
         } else if (!videoB) {
@@ -165,9 +171,9 @@ export default function SyncVisualizerPage() {
       }
     } catch (err: any) {
       console.error('Failed to load sync graph', err);
-      setError(err.response?.data?.detail || err.message || '데이터를 불러오는 데 실패했습니다.');
+      if (!silent) setError(err.response?.data?.detail || err.message || '데이터를 불러오는 데 실패했습니다.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
@@ -344,14 +350,37 @@ export default function SyncVisualizerPage() {
     isPlaybackTickRef.current = false;
     setSelectedTimeCursor(clamped);
 
-    const targetA = calculateLocalSeekTime(videoA, clamped);
-    const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
-    try {
-      playerA?.seekTo?.(targetA, true);
-    } catch (e) {}
-    try {
-      playerB?.seekTo?.(targetB, true);
-    } catch (e) {}
+    // Deck A
+    if (videoA && playerA) {
+      const insideA = isCursorInsideVideoRange(videoA, clamped);
+      const targetA = calculateLocalSeekTime(videoA, clamped);
+      try {
+        if (insideA) {
+          playerA.seekTo?.(targetA, true);
+          lastTimeRefA.current = targetA;
+        } else {
+          playerA.pauseVideo?.();
+          playerA.seekTo?.(targetA, true);
+          lastTimeRefA.current = targetA;
+        }
+      } catch (e) {}
+    }
+
+    // Deck B
+    if (videoB && playerB) {
+      const insideB = isCursorInsideVideoRange(videoB, clamped);
+      const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
+      try {
+        if (insideB) {
+          playerB.seekTo?.(targetB, true);
+          lastTimeRefB.current = targetB;
+        } else {
+          playerB.pauseVideo?.();
+          playerB.seekTo?.(targetB, true);
+          lastTimeRefB.current = targetB;
+        }
+      } catch (e) {}
+    }
   };
 
   const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
@@ -446,9 +475,10 @@ export default function SyncVisualizerPage() {
     try {
       let adminKey = localStorage.getItem('admin_key') || '';
       if (!adminKey) {
-        const inputKey = window.prompt('오프셋을 저장하려면 Admin Key가 필요합니다:');
+        const inputKey = window.prompt('오프셋을 영구 저장하려면 Admin Key를 입력해주세요 (기본 개발 키: 851212):');
         if (!inputKey) {
           setIsSavingOffset(false);
+          alert('Admin Key가 입력되지 않아 오프셋 저장이 취소되었습니다.');
           return;
         }
         adminKey = inputKey.trim();
@@ -468,12 +498,14 @@ export default function SyncVisualizerPage() {
           const vStart = s.video_start;
           const vEnd = s.video_end;
           return {
+            setlist_id: (s as any).setlist_id || null,
             video_start_time: vStart,
             video_end_time: vEnd,
             master_start_time: Math.round(vStart + off),
             master_end_time: Math.round(vEnd + off),
             sync_offset: off,
             label: s.label || null,
+            members: s.members && s.members.length > 0 ? s.members : null,
             is_verified: true
           };
         });
@@ -484,7 +516,39 @@ export default function SyncVisualizerPage() {
           { headers: { 'x-admin-key': adminKey } }
         );
 
-        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 오프셋이 성공적으로 저장되었습니다! (오프셋: +${newSegOffset}s)`);
+        // Optimistically update segment in local state
+        const updatedSegs = videoB.segments.map(s => {
+          if (s.id === activeSeg.id) {
+            const vStart = s.video_start;
+            const vEnd = s.video_end;
+            return {
+              ...s,
+              sync_offset: newSegOffset,
+              master_start: Math.round(vStart + newSegOffset),
+              master_end: Math.round(vEnd + newSegOffset),
+              is_verified: true
+            };
+          }
+          return s;
+        });
+
+        const updatedVideoB: SyncGraphVideoNode = {
+          ...videoB,
+          segments: updatedSegs,
+          status: 'segmented',
+          calibration_count: (videoB.calibration_count || 0) + 1
+        };
+        setVideoB(updatedVideoB);
+
+        setGraphData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            videos: prev.videos.map(v => v.id === videoB.id ? updatedVideoB : v)
+          };
+        });
+
+        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 오프셋이 성공적으로 저장되었습니다! (오프셋: ${newSegOffset > 0 ? `+${newSegOffset}` : newSegOffset}s)`);
       } else {
         const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(2));
         const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
@@ -502,18 +566,41 @@ export default function SyncVisualizerPage() {
           { headers: { 'x-admin-key': adminKey } }
         );
 
-        setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: +${newOffset}s, 기준: ${videoA ? `#${videoA.id}` : '마스터'}, 검증 카운트 증가)`);
+        // Optimistically update regular video in local state
+        const updatedVideoB: SyncGraphVideoNode = {
+          ...videoB,
+          sync_offset: newOffset,
+          master_start_time: newOffset,
+          master_end_time: newOffset + (videoB.duration || 0),
+          calibration_method: 'manual_studio',
+          calibration_status: 'manually_verified',
+          calibration_count: (videoB.calibration_count || 0) + 1,
+          status: 'verified',
+          status_reason: 'Verified manual sync'
+        };
+        setVideoB(updatedVideoB);
+
+        setGraphData(prev => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            videos: prev.videos.map(v => v.id === videoB.id ? updatedVideoB : v)
+          };
+        });
+
+        setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: ${newOffset > 0 ? `+${newOffset}` : newOffset}s, 검증 카운트 증가)`);
       }
 
       setFineTuneDelta(0);
-      loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id);
-      setTimeout(() => setSaveSuccessMsg(null), 3000);
+      // Silent background fetch to guarantee backend sync without tearing down players or jumping cursor
+      loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id, true, true);
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
     } catch (err: any) {
       console.error('Failed to save offset', err);
       if (err?.response?.status === 403) {
         localStorage.removeItem('admin_key');
         setIsAdminMode(false);
-        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요:');
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요 (기본 개발 키: 851212):');
         if (retryKey) {
           localStorage.setItem('admin_key', retryKey.trim());
           setIsAdminMode(true);
@@ -553,7 +640,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/ai-sync`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       setAiSyncResult(res.data);
@@ -601,7 +691,10 @@ export default function SyncVisualizerPage() {
       const res = await axios.post(
         `${API_BASE_URL}/videos/${targetVideo.id}/rough-sync-candidates`,
         {},
-        { headers: { 'x-admin-key': adminKey } }
+        { 
+          headers: { 'x-admin-key': adminKey },
+          timeout: 90000 
+        }
       );
 
       const candidates = res.data.candidates || [];
@@ -796,7 +889,7 @@ export default function SyncVisualizerPage() {
 
         // --- Both paused: Detect user seeking on native YouTube seekbar ---
         if (stateA !== 1 && stateB !== 1) {
-          if (videoA && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
+          if (videoA && isCursorInsideVideoRange(videoA, selectedTimeCursor) && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
             isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration, 0, minMasterTime);
             setSelectedTimeCursor(masterTime);
@@ -805,7 +898,7 @@ export default function SyncVisualizerPage() {
               playerB.seekTo(expB, true);
             }
             setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          } else if (videoB && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
+          } else if (videoB && isCursorInsideVideoRange(videoB, selectedTimeCursor) && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
             isPlaybackTickRef.current = true;
             const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
             setSelectedTimeCursor(masterTime);
@@ -993,6 +1086,7 @@ export default function SyncVisualizerPage() {
             videoA={videoA}
             videoB={videoB}
             hoveredVideo={hoveredVideo}
+            setlist={graphData?.setlist}
             onTimelineMouseDown={handleTimelineMouseDown}
             onSelectVideo={handleSelectVideo}
             onHoverVideo={setHoveredVideo}

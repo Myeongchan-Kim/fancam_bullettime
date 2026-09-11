@@ -26,3 +26,11 @@ To achieve perfect "Bullet Time" multi-angle switching, all videos must align to
 - When working on API response logic or slider navigation, implement dynamic song ordering:
   - If a specific `concert_id` is supplied, order video contents by `display_order` from `ConcertSetlist`.
   - If no specific concert is selected, fall back dynamically to global `Song.order`.
+
+### 4. 🚨 Anti-Cheating & Zero-DB Simulation Mandate (CRITICAL)
+- **절대 금지 (Zero-Tolerance Anti-Cheating):**
+  1. 알고리즘/시뮬레이션 코드 내에서 평가 대상 비디오 ID(예: `vid == 1714`)를 하드코딩하는 행위 절대 금지.
+  2. 사용자가 조정한 수동 참값(`ground_truth`, `sync_offset`)을 사전에 보고 알고리즘의 앵커/후보군 윈도우를 수동으로 끼워 넣는 행위(Data Leakage) 절대 금지.
+  3. 시뮬레이션/벤치마크 단계에서 DB 라이브러리(`app.db`, `sqlalchemy`, `psycopg2`, `sqlite3`)를 직접 임포트하여 정답을 엿보는 행위 절대 금지.
+- **상시 감사(Audit) 의무:**
+  - 벤치마크 및 시뮬레이션 결과를 보고하기 전, 반드시 코드에 하드코딩된 ID나 누출된 파라미터가 있는지 자체 AST/코드 감사를 통과해야 하며, 감사 결과를 함께 명시한다.

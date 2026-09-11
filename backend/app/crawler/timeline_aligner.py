@@ -98,11 +98,13 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
     if not video.concert_id:
         return {"success": False, "error": f"Video {video_id} has no concert assigned"}
 
-    # Find reference full concert for this concert (e.g. Video 63 or video with highest segments)
+    # Find reference full concert for this concert (longest available master)
     ref_video = db.query(Video).filter(
         Video.concert_id == video.concert_id,
+        Video.id != video.id,
+        Video.is_unavailable == False,
         Video.duration > 3600
-    ).first()
+    ).order_by(Video.duration.desc()).first()
     
     # Fetch setlist landmarks
     setlist_items = db.query(ConcertSetlist).filter(

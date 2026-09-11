@@ -1,6 +1,5 @@
-import React from 'react';
 import { Sparkles } from 'lucide-react';
-import { SyncGraphVideoNode } from '../../types';
+import { SyncGraphSetlistItem, SyncGraphVideoNode } from '../../types';
 
 interface TimelineLanesCanvasProps {
   timelineRef: React.RefObject<HTMLDivElement | null>;
@@ -19,6 +18,7 @@ interface TimelineLanesCanvasProps {
   videoA: SyncGraphVideoNode | null;
   videoB: SyncGraphVideoNode | null;
   hoveredVideo: SyncGraphVideoNode | null;
+  setlist?: SyncGraphSetlistItem[];
   onTimelineMouseDown: (e: React.MouseEvent<HTMLDivElement>) => void;
   onSelectVideo: (video: SyncGraphVideoNode, preferredSeekTime?: number) => void;
   onHoverVideo: (video: SyncGraphVideoNode | null) => void;
@@ -42,6 +42,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
   videoA,
   videoB,
   hoveredVideo,
+  setlist = [],
   onTimelineMouseDown,
   onSelectVideo,
   onHoverVideo,
@@ -84,22 +85,52 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
         style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
         className="relative mt-3 mb-2 flex cursor-crosshair select-none"
       >
-        {/* 1. Left Time Scale Axis (Every 15 minutes) */}
+        {/* 1. Left Time Scale Axis & Song Bookmarks */}
         <div 
           style={{ width: `${TIME_AXIS_WIDTH}px` }}
-          className="relative h-full flex-shrink-0 border-r border-slate-800/80"
+          className="relative h-full flex-shrink-0 border-r border-slate-800/80 overflow-hidden bg-slate-950/40"
         >
+          {/* Subtle Song Background Blocks & Labels on Left Axis */}
+          {setlist.map((item, sIdx) => {
+            if (item.start_time === null || item.start_time === undefined) return null;
+            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
+            const topPx = timeToY(item.start_time);
+            const duration = (item.end_time && item.end_time > item.start_time) ? (item.end_time - item.start_time) : 180;
+            const heightPx = Math.max(18, (duration / timeSpan) * canvasHeight);
+
+            return (
+              <div
+                key={`song-axis-${item.id || sIdx}`}
+                style={{ top: `${topPx}px`, height: `${heightPx}px` }}
+                className="absolute left-0 right-0 border-t border-purple-500/30 bg-purple-950/20 px-1 pointer-events-none group"
+                title={`${item.name} (${formatTime(item.start_time)})`}
+              >
+                <div className="flex flex-col justify-start pt-0.5 truncate leading-tight">
+                  <div className="flex items-center gap-1 truncate">
+                    <span className="text-[7px] font-mono text-purple-400/80 font-bold">
+                      {formatTime(item.start_time)}
+                    </span>
+                  </div>
+                  <span className="text-[8px] font-sans font-black text-purple-200 truncate drop-shadow-sm">
+                    {item.name}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Regular 15-minute Time Scale Marks */}
           {Array.from({ length: Math.ceil((actualMaxTime - minMasterTime) / 900) + 1 }).map((_, gIdx) => {
             const sec = Math.floor(minMasterTime / 900) * 900 + gIdx * 900;
             if (sec < minMasterTime || sec > actualMaxTime) return null;
             const topPx = timeToY(sec);
             return (
               <div
-                key={gIdx}
+                key={`ruler-${gIdx}`}
                 style={{ top: `${topPx}px` }}
-                className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none"
+                className="absolute left-0 right-0 border-t border-slate-800 flex items-center pointer-events-none z-10"
               >
-                <span className="text-[9px] font-mono text-gray-500 -mt-2">
+                <span className="text-[8px] font-mono font-bold text-gray-500 -mt-2 bg-slate-900/90 px-0.5 border border-slate-800/60">
                   {formatTime(sec)}
                 </span>
               </div>
@@ -107,11 +138,31 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
           })}
         </div>
 
-        {/* 2. Background SVG for Locked Group Sync Tree Connection Lines */}
+        {/* 2. Background SVG for Faint Song Guide Lines and Group Sync Tree Connection Lines */}
         <svg 
           className="absolute inset-0 w-full h-full pointer-events-none z-0 overflow-visible"
           style={{ height: `${canvasHeight}px` }}
         >
+          {/* Faint Horizontal Song Start Guidelines across timeline */}
+          {setlist.map((item, sIdx) => {
+            if (item.start_time === null || item.start_time === undefined) return null;
+            if (item.start_time < minMasterTime || item.start_time > actualMaxTime) return null;
+            const y = timeToY(item.start_time);
+            return (
+              <line
+                key={`song-line-${item.id || sIdx}`}
+                x1={TIME_AXIS_WIDTH}
+                y1={y}
+                x2={totalCanvasWidth}
+                y2={y}
+                stroke="#a855f7"
+                strokeWidth="1"
+                strokeDasharray="3 3"
+                strokeOpacity="0.15"
+              />
+            );
+          })}
+
           {lanes.flatMap((laneVideos, lIdx) => {
             const targetLaneIdx = lIdx;
             const targetX = getLaneX(targetLaneIdx) + LANE_WIDTH / 2;
@@ -218,7 +269,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           }}
                           onMouseEnter={() => onHoverVideo(cam)}
                           onMouseLeave={() => onHoverVideo(null)}
-                          className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                          className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                             isDeckB
                               ? 'bg-amber-400 border-amber-300 ring-2 ring-twice-magenta shadow-lg shadow-amber-500/50 z-20'
                               : isDeckA
@@ -230,7 +281,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                           title={`#${cam.id} (${seg.label || `Part ${sIdx+1}`}) ${cam.title} [${formatTime(seg.master_start)} ~ ${formatTime(seg.master_end)}] - 세그먼트`}
                         >
                           <span className="text-[6px] font-mono font-black text-slate-950 px-0.5 truncate pointer-events-none">
-                            {isDeckA ? 'A' : isDeckB ? 'B' : cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
+                            {isDeckA ? 'A' : isDeckB ? 'B' : seg.members?.[0]?.slice(0, 2) || cam.members?.[0]?.slice(0, 2) || `#${cam.id}`}
                           </span>
                         </div>
                       );
@@ -248,7 +299,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
                       }}
                       onMouseEnter={() => onHoverVideo(cam)}
                       onMouseLeave={() => onHoverVideo(null)}
-                      className={`absolute inset-x-0 rounded-full border transition-all cursor-pointer flex items-center justify-center ${
+                      className={`absolute inset-x-0 rounded-none border-y border-x transition-all cursor-pointer flex items-center justify-center ${
                         isDeckB
                           ? 'bg-twice-magenta border-pink-300 ring-2 ring-twice-magenta shadow-lg shadow-twice-magenta/50 z-20'
                           : isDeckA

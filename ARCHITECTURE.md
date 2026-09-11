@@ -49,3 +49,10 @@ The project follows a standard decoupled frontend/backend architecture:
 - **Stack:** React 19 + TypeScript + Tailwind CSS v4.
 - **Dynamic Setlist Slider:** Adjusts its range and song names based on whether a specific concert (with a setlist) or a global view is selected. Includes "clamping" safety to prevent UI breakage from out-of-bounds URL params.
 - **Interactive Stage Map:** Maps (X, Y) coordinates to a 360° arena layout. Videos are pinned on the map for spatial discovery.
+
+## 6. Master Timeline & Sync Pipeline ⏱️
+- **Autonomous Master Replacement & Setlist Warping:** Full architecture documentation available at [docs/concert_timeline_and_sync_pipeline.md](./docs/concert_timeline_and_sync_pipeline.md).
+- **Core Modules:**
+  - `backend/app/services/master_timeline.py`: Domain orchestrator & `PiecewiseTimelineTransform`.
+  - `backend/app/crawler/recursive_segment_calibrator.py`: Low-level 3-point recursive acoustic sensor.
+  - `backend/app/services/calibration.py`: Relative sync tree & cascading offset updates.

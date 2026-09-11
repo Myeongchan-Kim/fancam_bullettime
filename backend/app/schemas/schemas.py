@@ -80,6 +80,7 @@ class VideoSyncSegmentBase(BaseModel):
     master_end_time: float
     sync_offset: float
     label: Optional[str] = None
+    members: Optional[List[str]] = None
     is_verified: bool = False
     created_at: datetime
     setlist: Optional[ConcertSetlistBase] = None
@@ -94,6 +95,7 @@ class VideoSyncSegmentCreate(BaseModel):
     master_end_time: float
     sync_offset: Optional[float] = None # If None, auto-calculated as master_start_time - video_start_time
     label: Optional[str] = None
+    members: Optional[List[str]] = None
     is_verified: Optional[bool] = False
 
 class VideoDetail(VideoBase):

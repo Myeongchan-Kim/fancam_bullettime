@@ -21,20 +21,7 @@ from app.models.models import Concert, Video, ConcertSetlist, VideoSyncSegment
 
 os.makedirs("scratch/precision_sync", exist_ok=True)
 
-def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str) -> str:
-    out_wav = f"scratch/precision_sync/{out_name}.wav"
-    if os.path.exists(out_wav):
-        return out_wav
-    cmd = [
-        "yt-dlp",
-        "--download-sections", f"*{max(0, start_s):.1f}-{start_s+dur_s:.1f}",
-        "-x", "--audio-format", "wav",
-        "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
-        "-o", f"scratch/precision_sync/{out_name}.%(ext)s",
-        f"https://www.youtube.com/watch?v={yt_id}"
-    ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    return out_wav
+from scripts.precision_sync_calibrator import download_audio_slice, cross_correlate
 
 def cross_correlate(ref_wav: str, tgt_wav: str, tgt_window_start: float) -> tuple[float, float]:
     if not os.path.exists(ref_wav) or not os.path.exists(tgt_wav):

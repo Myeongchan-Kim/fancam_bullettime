@@ -30,19 +30,63 @@ YT_DLP_EXE = (
     or "yt-dlp"
 )
 
+import glob
+
 def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str) -> str:
     out_wav = f"scratch/precision_sync/{out_name}.wav"
     if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
         return out_wav
+
+    # 1. Fast Path: If full audio is already cached locally, slice with local ffmpeg in ~0.05s
+    cached_candidates = [
+        f"scratch/audio_cache/{yt_id}.webm",
+        f"scratch/audio_cache/{yt_id}.m4a",
+        f"scratch/audio_cache/{yt_id}.mp4",
+        f"scratch/audio_cache/master_1094_{yt_id}.webm",
+        f"scratch/audio_cache/v63_{yt_id}.webm",
+    ]
+    for c in cached_candidates:
+        if os.path.exists(c) and os.path.getsize(c) > 10000:
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{max(0, start_s):.2f}",
+                "-t", f"{dur_s:.2f}",
+                "-i", c,
+                "-ar", "16000", "-ac", "1",
+                out_wav
+            ]
+            try:
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
+                    return out_wav
+            except Exception:
+                pass
+
+    # 2. Network Fallback: Download remote slice with strict timeouts
     cmd = [
         YT_DLP_EXE,
+        "--socket-timeout", "15",
+        "--retries", "3",
+        "--downloader-args", "ffmpeg_i:-timeout 15000000",
         "--download-sections", f"*{max(0, start_s):.1f}-{start_s+dur_s:.1f}",
         "-x", "--audio-format", "wav",
         "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
         "-o", f"scratch/precision_sync/{out_name}.%(ext)s",
         f"https://www.youtube.com/watch?v={yt_id}"
     ]
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    for attempt in range(2):
+        try:
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+            if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
+                return out_wav
+        except subprocess.TimeoutExpired:
+            # Kill any hanging process and clean up lingering part files
+            for p in glob.glob(f"scratch/precision_sync/{out_name}*"):
+                if not p.endswith(".wav"):
+                    try:
+                        os.remove(p)
+                    except Exception:
+                        pass
     return out_wav
 
 def cross_correlate(ref_wav: str, tgt_wav: str, tgt_window_start: float) -> tuple[float, float]:
