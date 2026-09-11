@@ -1,0 +1,440 @@
+{
+  "master": {
+    "id": 1094,
+    "youtube_id": "dxY6TEGf6fM",
+    "duration": 10998.0
+  },
+  "official_setlist": [
+    {
+      "order": 0,
+      "song_name": "FOUR (Intro)",
+      "title": "FOUR (Intro)",
+      "start_time": -3.0
+    },
+    {
+      "order": 1,
+      "song_name": "VCR 1",
+      "title": "VCR 1",
+      "start_time": 97.0
+    },
+    {
+      "order": 2,
+      "song_name": "THIS IS FOR",
+      "title": "THIS IS FOR",
+      "start_time": 220.0
+    },
+    {
+      "order": 3,
+      "song_name": "Strategy",
+      "title": "Strategy",
+      "start_time": 384.0
+    },
+    {
+      "order": 4,
+      "song_name": "MAKE ME GO",
+      "title": "MAKE ME GO",
+      "start_time": 551.0
+    },
+    {
+      "order": 5,
+      "song_name": "SET ME FREE",
+      "title": "SET ME FREE",
+      "start_time": 771.0
+    },
+    {
+      "order": 6,
+      "song_name": "I CAN'T STOP ME",
+      "title": "I CAN'T STOP ME",
+      "start_time": 957.0
+    },
+    {
+      "order": 7,
+      "song_name": "THIS IS FOR ONCE/TWICE I",
+      "title": "THIS IS FOR ONCE/TWICE I",
+      "start_time": 1184.0
+    },
+    {
+      "order": 8,
+      "song_name": "OPTIONS",
+      "title": "OPTIONS",
+      "start_time": 1204.0
+    },
+    {
+      "order": 9,
+      "song_name": "MOONLIGHT SUNRISE",
+      "title": "MOONLIGHT SUNRISE",
+      "start_time": 1394.0
+    },
+    {
+      "order": 10,
+      "song_name": "MARS",
+      "title": "MARS",
+      "start_time": 1600.0
+    },
+    {
+      "order": 11,
+      "song_name": "I GOT YOU",
+      "title": "I GOT YOU",
+      "start_time": 1759.0
+    },
+    {
+      "order": 12,
+      "song_name": "The Feels",
+      "title": "The Feels",
+      "start_time": 1940.0
+    },
+    {
+      "order": 13,
+      "song_name": "Special show: MINA & CHAEYOUNG",
+      "title": "Special show: MINA & CHAEYOUNG",
+      "start_time": 2139.0
+    },
+    {
+      "order": 14,
+      "song_name": "THIS IS FOR ONCE/TWICE II",
+      "title": "THIS IS FOR ONCE/TWICE II",
+      "start_time": 2170.0
+    },
+    {
+      "order": 15,
+      "song_name": "Gone",
+      "title": "Gone",
+      "start_time": 3616.0
+    },
+    {
+      "order": 16,
+      "song_name": "CRY FOR ME",
+      "title": "CRY FOR ME",
+      "start_time": 3855.0
+    },
+    {
+      "order": 17,
+      "song_name": "HELL IN HEAVEN",
+      "title": "HELL IN HEAVEN",
+      "start_time": 4061.0
+    },
+    {
+      "order": 18,
+      "song_name": "RIGHT HAND GIRL",
+      "title": "RIGHT HAND GIRL",
+      "start_time": 4249.0
+    },
+    {
+      "order": 19,
+      "song_name": "DIVE IN (Solo)",
+      "title": "DIVE IN (Solo)",
+      "start_time": 4688.0
+    },
+    {
+      "order": 20,
+      "song_name": "STONE COLD (Solo)",
+      "title": "STONE COLD (Solo)",
+      "start_time": 4796.0
+    },
+    {
+      "order": 21,
+      "song_name": "MEEEEEE (Solo)",
+      "title": "MEEEEEE (Solo)",
+      "start_time": 4918.0
+    },
+    {
+      "order": 22,
+      "song_name": "FIX A DRINK (Solo)",
+      "title": "FIX A DRINK (Solo)",
+      "start_time": 5053.0
+    },
+    {
+      "order": 23,
+      "song_name": "DAT AHH DAT OOH",
+      "title": "DAT AHH DAT OOH",
+      "start_time": 5160.0
+    },
+    {
+      "order": 24,
+      "song_name": "BATTITUDE",
+      "title": "BATTITUDE",
+      "start_time": 5323.0
+    },
+    {
+      "order": 25,
+      "song_name": "CHESS (Solo)",
+      "title": "CHESS (Solo)",
+      "start_time": 5489.0
+    },
+    {
+      "order": 26,
+      "song_name": "IN MY ROOM (Solo)",
+      "title": "IN MY ROOM (Solo)",
+      "start_time": 5622.0
+    },
+    {
+      "order": 27,
+      "song_name": "ATM (Solo)",
+      "title": "ATM (Solo)",
+      "start_time": 5717.0
+    },
+    {
+      "order": 28,
+      "song_name": "DECAFFEINATED (Solo)",
+      "title": "DECAFFEINATED (Solo)",
+      "start_time": 5824.0
+    },
+    {
+      "order": 29,
+      "song_name": "MOVE LIKE THAT (Solo)",
+      "title": "MOVE LIKE THAT (Solo)",
+      "start_time": 5908.0
+    },
+    {
+      "order": 30,
+      "song_name": "FANCY",
+      "title": "FANCY",
+      "start_time": 6613.0
+    },
+    {
+      "order": 31,
+      "song_name": "What Is Love?",
+      "title": "What Is Love?",
+      "start_time": 6834.0
+    },
+    {
+      "order": 32,
+      "song_name": "YES or YES",
+      "title": "YES or YES",
+      "start_time": 7044.0
+    },
+    {
+      "order": 33,
+      "song_name": "Dance the Night Away",
+      "title": "Dance the Night Away",
+      "start_time": 7291.0
+    },
+    {
+      "order": 34,
+      "song_name": "Special show: DAT AHH DAT OOH",
+      "title": "Special show: DAT AHH DAT OOH",
+      "start_time": 7482.0
+    },
+    {
+      "order": 35,
+      "song_name": "Special show: BATTITUDE",
+      "title": "Special show: BATTITUDE",
+      "start_time": 7558.0
+    },
+    {
+      "order": 36,
+      "song_name": "THIS IS FOR ONCE/TWICE III",
+      "title": "THIS IS FOR ONCE/TWICE III",
+      "start_time": 7586.0
+    },
+    {
+      "order": 37,
+      "song_name": "Feel Special",
+      "title": "Feel Special",
+      "start_time": 7603.0
+    },
+    {
+      "order": 38,
+      "song_name": "ONE SPARK",
+      "title": "ONE SPARK",
+      "start_time": 7818.0
+    },
+    {
+      "order": 39,
+      "song_name": "ONCE Random Dance",
+      "title": "ONCE Random Dance",
+      "start_time": 8050.0
+    },
+    {
+      "order": 40,
+      "song_name": "AFTER MOON",
+      "title": "AFTER MOON",
+      "start_time": 8560.0
+    },
+    {
+      "order": 41,
+      "song_name": "You In My Heart",
+      "title": "You In My Heart",
+      "start_time": 8770.0
+    },
+    {
+      "order": 42,
+      "song_name": "ONCE-made VCR: GIRLS LIKE US",
+      "title": "ONCE-made VCR: GIRLS LIKE US",
+      "start_time": 8983.0
+    },
+    {
+      "order": 43,
+      "song_name": "ONCE Sing along: DEPEND ON YOU",
+      "title": "ONCE Sing along: DEPEND ON YOU",
+      "start_time": 9131.0
+    },
+    {
+      "order": 44,
+      "song_name": "ONCE Sing along: One In A Million",
+      "title": "ONCE Sing along: One In A Million",
+      "start_time": 9191.0
+    },
+    {
+      "order": 45,
+      "song_name": "Grateful time",
+      "title": "Grateful time",
+      "start_time": 9320.0
+    },
+    {
+      "order": 46,
+      "song_name": "TZUYU to OVERSEA ONCE",
+      "title": "TZUYU to OVERSEA ONCE",
+      "start_time": 9536.0
+    },
+    {
+      "order": 47,
+      "song_name": "Encore Roulette",
+      "title": "Encore Roulette",
+      "start_time": 9787.0
+    },
+    {
+      "order": 48,
+      "song_name": "Talk that Talk (Encore)",
+      "title": "Talk that Talk (Encore)",
+      "start_time": 9959.0
+    },
+    {
+      "order": 49,
+      "song_name": "Do It Again (Encore)",
+      "title": "Do It Again (Encore)",
+      "start_time": 10208.0
+    },
+    {
+      "order": 50,
+      "song_name": "BDZ (Encore)",
+      "title": "BDZ (Encore)",
+      "start_time": 10446.0
+    },
+    {
+      "order": 51,
+      "song_name": "TWICE Song (Encore)",
+      "title": "TWICE Song (Encore)",
+      "start_time": 10705.0
+    },
+    {
+      "order": 52,
+      "song_name": "Ending",
+      "title": "Ending",
+      "start_time": 10837.0
+    },
+    {
+      "order": 53,
+      "song_name": "TWICE : ONE IN A MILLION Trailer",
+      "title": "TWICE : ONE IN A MILLION Trailer",
+      "start_time": 10993.0
+    }
+  ],
+  "fancams": [
+    {
+      "id": 46,
+      "youtube_id": "UAE2ZC3ADSs",
+      "title": "[20250720]TWICE Chaeyoung- In my room❤️",
+      "duration": 85.0,
+      "ground_truth_offset": 5625.2
+    },
+    {
+      "id": 47,
+      "youtube_id": "BjiqUKjZcuI",
+      "title": "[4k] 250720 TWICE Chaeyoung solo 'IN MY ROOM’ (FullCam) THIS IS FOR concert Incheon day2 채영 직캠",
+      "duration": 91.0,
+      "ground_truth_offset": 5626.0
+    },
+    {
+      "id": 58,
+      "youtube_id": "65jCQp3P954",
+      "title": "250720 TWICE - “Strategy” 360° STAGE |  THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 173.0,
+      "ground_truth_offset": 384.0
+    },
+    {
+      "id": 68,
+      "youtube_id": "hP2PGGbSAv4",
+      "title": "[TWICE] THIS IS FOR - RIGHT HAND GIRL (Tzuyu 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 154.0,
+      "ground_truth_offset": 4238.45
+    },
+    {
+      "id": 73,
+      "youtube_id": "caY2Kpk5YcM",
+      "title": "250720 TWICE THIS IS FOR WORLD TOUR IN INCHEON THIS IS FOR MOMO Fancam 트와이스 콘서트 월드투어 인천 모모 디스이즈포 직캠",
+      "duration": 125.0,
+      "ground_truth_offset": 246.78
+    },
+    {
+      "id": 639,
+      "youtube_id": "qfpAKBXnu8g",
+      "title": "250720 TWICE CHAEYOUNG - “In My Room” Solo Stage | THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 91.0,
+      "ground_truth_offset": 5626.5
+    },
+    {
+      "id": 640,
+      "youtube_id": "71Ogfg0Zp-c",
+      "title": "[Jihyo 지효 focus] 250720 MAKE ME GO Twice THIS IS FOR World Tour in Incheon",
+      "duration": 127.0,
+      "ground_truth_offset": 641.35
+    },
+    {
+      "id": 654,
+      "youtube_id": "ANPBtzXpYCA",
+      "title": "[4k] 250720 THIS IS FOR 트와이스 채영 Gone 직캠｜ TWICE CHAEYOUNG fancam",
+      "duration": 200.0,
+      "ground_truth_offset": 3649.55
+    },
+    {
+      "id": 1661,
+      "youtube_id": "xcLe-Cwggeo",
+      "title": "[TWICE] THIS IS FOR - IN MY ROOM (Chaeyoung 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 95.0,
+      "ground_truth_offset": 5621.83
+    },
+    {
+      "id": 1678,
+      "youtube_id": "SYvuUzbaGZ8",
+      "title": "250720 TWICE WORLD TOUR \"THIS IS FOR\" (DAT AHH DAT OOH, BATTITUDE) INCHEON",
+      "duration": 316.0,
+      "ground_truth_offset": 5160.0
+    },
+    {
+      "id": 1681,
+      "youtube_id": "l__c3Cfwa8g",
+      "title": "250720 \"THIS IS FOR+Strategy+SET ME FREE+I CAN'T STOP ME\" 트와이스 콘서트 TWICE〈THIS IS FOR〉TOUR IN INCHEON",
+      "duration": 689.0,
+      "ground_truth_offset": 242.15
+    },
+    {
+      "id": 1687,
+      "youtube_id": "_RfF-dxosfM",
+      "title": "[TWICE] THIS IS FOR - Chess (Dahyun 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 125.0,
+      "ground_truth_offset": 5489.25
+    },
+    {
+      "id": 1713,
+      "youtube_id": "Ip8KiBfhDuw",
+      "title": "[4K] TWICE【THIS IS FOR IN INCHEON DAY 2】PART 1｜250720 ｜全場飯拍 Full Concert｜ [FanCam]",
+      "duration": 2131.0,
+      "ground_truth_offset": -9.1
+    },
+    {
+      "id": 1714,
+      "youtube_id": "3OJnpZ5qprU",
+      "title": "250720 TWICE WORLD TOUR \"THIS IS FOR\" (FOUR, THIS IS FOR, STRATEGY) INCHEON",
+      "duration": 564.0,
+      "ground_truth_offset": -11.73
+    },
+    {
+      "id": 1720,
+      "youtube_id": "Cvm1LXiGBeg",
+      "title": "[4K Full Focus] 250720 트와이스 GONE 직캠｜TWICE THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 234.0,
+      "ground_truth_offset": 3616.0
+    }
+  ]
+}

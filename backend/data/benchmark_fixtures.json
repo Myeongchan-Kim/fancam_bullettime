@@ -1,0 +1,115 @@
+{
+  "master": {
+    "id": 1094,
+    "youtube_id": "dxY6TEGf6fM",
+    "title": "TWICE 250720 트와이스〈THIS IS FOR〉WORLD TOUR IN INCHEON Day 2 full",
+    "duration": 10998.0
+  },
+  "fancams": [
+    {
+      "id": 46,
+      "youtube_id": "UAE2ZC3ADSs",
+      "title": "[20250720]TWICE Chaeyoung- In my room❤️",
+      "duration": 85.0,
+      "manual_ground_truth": 5625.2
+    },
+    {
+      "id": 47,
+      "youtube_id": "BjiqUKjZcuI",
+      "title": "[4k] 250720 TWICE Chaeyoung solo 'IN MY ROOM’ (FullCam) THIS IS FOR concert Incheon day2 채영 직캠",
+      "duration": 91.0,
+      "manual_ground_truth": 5626.0
+    },
+    {
+      "id": 58,
+      "youtube_id": "65jCQp3P954",
+      "title": "250720 TWICE - “Strategy” 360° STAGE |  THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 173.0,
+      "manual_ground_truth": 384.0
+    },
+    {
+      "id": 68,
+      "youtube_id": "hP2PGGbSAv4",
+      "title": "[TWICE] THIS IS FOR - RIGHT HAND GIRL (Tzuyu 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 154.0,
+      "manual_ground_truth": 4238.45
+    },
+    {
+      "id": 73,
+      "youtube_id": "caY2Kpk5YcM",
+      "title": "250720 TWICE THIS IS FOR WORLD TOUR IN INCHEON THIS IS FOR MOMO Fancam 트와이스 콘서트 월드투어 인천 모모 디스이즈포 직캠",
+      "duration": 125.0,
+      "manual_ground_truth": 246.78
+    },
+    {
+      "id": 639,
+      "youtube_id": "qfpAKBXnu8g",
+      "title": "250720 TWICE CHAEYOUNG - “In My Room” Solo Stage | THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 91.0,
+      "manual_ground_truth": 5626.5
+    },
+    {
+      "id": 640,
+      "youtube_id": "71Ogfg0Zp-c",
+      "title": "[Jihyo 지효 focus] 250720 MAKE ME GO Twice THIS IS FOR World Tour in Incheon",
+      "duration": 127.0,
+      "manual_ground_truth": 641.35
+    },
+    {
+      "id": 654,
+      "youtube_id": "ANPBtzXpYCA",
+      "title": "[4k] 250720 THIS IS FOR 트와이스 채영 Gone 직캠｜ TWICE CHAEYOUNG fancam",
+      "duration": 200.0,
+      "manual_ground_truth": 3649.55
+    },
+    {
+      "id": 1661,
+      "youtube_id": "xcLe-Cwggeo",
+      "title": "[TWICE] THIS IS FOR - IN MY ROOM (Chaeyoung 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 95.0,
+      "manual_ground_truth": 5621.83
+    },
+    {
+      "id": 1678,
+      "youtube_id": "SYvuUzbaGZ8",
+      "title": "250720 TWICE WORLD TOUR \"THIS IS FOR\" (DAT AHH DAT OOH, BATTITUDE) INCHEON",
+      "duration": 316.0,
+      "manual_ground_truth": 5160.0
+    },
+    {
+      "id": 1681,
+      "youtube_id": "l__c3Cfwa8g",
+      "title": "250720 \"THIS IS FOR+Strategy+SET ME FREE+I CAN'T STOP ME\" 트와이스 콘서트 TWICE〈THIS IS FOR〉TOUR IN INCHEON",
+      "duration": 689.0,
+      "manual_ground_truth": 242.15
+    },
+    {
+      "id": 1687,
+      "youtube_id": "_RfF-dxosfM",
+      "title": "[TWICE] THIS IS FOR - Chess (Dahyun 직캠) | WORLD TOUR IN INCHEON Day 2 [20250720]",
+      "duration": 125.0,
+      "manual_ground_truth": 5489.25
+    },
+    {
+      "id": 1713,
+      "youtube_id": "Ip8KiBfhDuw",
+      "title": "[4K] TWICE【THIS IS FOR IN INCHEON DAY 2】PART 1｜250720 ｜全場飯拍 Full Concert｜ [FanCam]",
+      "duration": 2131.0,
+      "manual_ground_truth": -9.1
+    },
+    {
+      "id": 1714,
+      "youtube_id": "3OJnpZ5qprU",
+      "title": "250720 TWICE WORLD TOUR \"THIS IS FOR\" (FOUR, THIS IS FOR, STRATEGY) INCHEON",
+      "duration": 564.0,
+      "manual_ground_truth": -11.73
+    },
+    {
+      "id": 1720,
+      "youtube_id": "Cvm1LXiGBeg",
+      "title": "[4K Full Focus] 250720 트와이스 GONE 직캠｜TWICE THIS IS FOR WORLD TOUR IN INCHEON",
+      "duration": 234.0,
+      "manual_ground_truth": 3616.0
+    }
+  ]
+}
