@@ -66,10 +66,18 @@ export default function SyncVisualizerPage() {
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
 
-  // In-Place Offset Fine-Tuning State (applied to Deck B)
+  // In-Place Offset Fine-Tuning & Segment Trim State (applied to Deck B)
   const [fineTuneDelta, setFineTuneDelta] = useState<number>(0);
+  const [trimStartDelta, setTrimStartDelta] = useState<number>(0);
+  const [trimEndDelta, setTrimEndDelta] = useState<number>(0);
   const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  const handleResetFineTune = () => {
+    setFineTuneDelta(0);
+    setTrimStartDelta(0);
+    setTrimEndDelta(0);
+  };
 
   // AI 2-Stage Sync Modal State
   const [isAiSyncModalOpen, setIsAiSyncModalOpen] = useState<boolean>(false);
@@ -449,6 +457,11 @@ export default function SyncVisualizerPage() {
     setActiveDeckSlot(prev => (prev === 'A' ? 'B' : 'A'));
   };
 
+  const handleSelectSegment = (seg: any) => {
+    handleResetFineTune();
+    seekToMasterTimeline(seg.master_start);
+  };
+
   const nudge = (seconds: number) => {
     setFineTuneDelta(prev => Number((prev + seconds).toFixed(2)));
   };
@@ -537,14 +550,14 @@ export default function SyncVisualizerPage() {
         const updatedPayload = videoB.segments.map(s => {
           const isTarget = s.id === activeSeg.id;
           const off = isTarget ? newSegOffset : s.sync_offset;
-          const vStart = s.video_start;
-          const vEnd = s.video_end;
+          const vStart = isTarget ? Math.max(0, s.video_start + trimStartDelta) : s.video_start;
+          const vEnd = isTarget ? Math.max(vStart + 0.5, s.video_end + trimEndDelta) : s.video_end;
           return {
             setlist_id: (s as any).setlist_id || null,
-            video_start_time: vStart,
-            video_end_time: vEnd,
-            master_start_time: Math.round(vStart + off),
-            master_end_time: Math.round(vEnd + off),
+            video_start_time: Math.round(vStart * 10) / 10,
+            video_end_time: Math.round(vEnd * 10) / 10,
+            master_start_time: Math.round((vStart + off) * 10) / 10,
+            master_end_time: Math.round((vEnd + off) * 10) / 10,
             sync_offset: off,
             label: s.label || null,
             members: s.members && s.members.length > 0 ? s.members : null,
@@ -561,13 +574,15 @@ export default function SyncVisualizerPage() {
         // Optimistically update segment in local state
         const updatedSegs = videoB.segments.map(s => {
           if (s.id === activeSeg.id) {
-            const vStart = s.video_start;
-            const vEnd = s.video_end;
+            const vStart = Math.max(0, s.video_start + trimStartDelta);
+            const vEnd = Math.max(vStart + 0.5, s.video_end + trimEndDelta);
             return {
               ...s,
+              video_start: Math.round(vStart * 10) / 10,
+              video_end: Math.round(vEnd * 10) / 10,
               sync_offset: newSegOffset,
-              master_start: Math.round(vStart + newSegOffset),
-              master_end: Math.round(vEnd + newSegOffset),
+              master_start: Math.round((vStart + newSegOffset) * 10) / 10,
+              master_end: Math.round((vEnd + newSegOffset) * 10) / 10,
               is_verified: true
             };
           }
@@ -590,7 +605,7 @@ export default function SyncVisualizerPage() {
           };
         });
 
-        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 오프셋이 성공적으로 저장되었습니다! (오프셋: ${newSegOffset > 0 ? `+${newSegOffset}` : newSegOffset}s)`);
+        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 저장 완료! (오프셋: ${newSegOffset > 0 ? `+${newSegOffset}` : newSegOffset}s)`);
       } else {
         const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(2));
         const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
@@ -633,7 +648,7 @@ export default function SyncVisualizerPage() {
         setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: ${newOffset > 0 ? `+${newOffset}` : newOffset}s, 검증 카운트 증가)`);
       }
 
-      setFineTuneDelta(0);
+      handleResetFineTune();
       // Silent background fetch to guarantee backend sync without tearing down players or jumping cursor
       loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id, true, true);
       setTimeout(() => setSaveSuccessMsg(null), 5000);
@@ -1175,6 +1190,8 @@ export default function SyncVisualizerPage() {
                 videoA={videoA}
                 videoB={videoB}
                 fineTuneDelta={fineTuneDelta}
+                trimStartDelta={trimStartDelta}
+                trimEndDelta={trimEndDelta}
                 selectedTimeCursor={selectedTimeCursor}
                 isSavingOffset={isSavingOffset}
                 saveSuccessMsg={saveSuccessMsg}
@@ -1182,14 +1199,19 @@ export default function SyncVisualizerPage() {
                 isRoughSyncing={isRoughSyncing}
                 isLoadingCalibrator={isLoadingCalibrator}
                 formatTime={formatTime}
-                onResetFineTune={() => setFineTuneDelta(0)}
+                onResetFineTune={handleResetFineTune}
                 onDeltaChange={setFineTuneDelta}
+                onTrimChange={(startDelta, endDelta) => {
+                  setTrimStartDelta(startDelta);
+                  setTrimEndDelta(endDelta);
+                }}
                 onNudge={nudge}
                 onSaveOffset={handleSaveFineTuneOffset}
                 onOpenCalibrator={handleOpenCalibrator}
                 onTriggerRoughSync={handleTriggerRoughSync}
                 onTriggerAiSync={handleTriggerAiSync}
                 onSeek={seekToMasterTimeline}
+                onSelectSegment={handleSelectSegment}
               />
             )}
 
