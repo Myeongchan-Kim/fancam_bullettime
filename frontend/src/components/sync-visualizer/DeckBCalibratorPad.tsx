@@ -128,11 +128,27 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
 
   const handleBarPointerDown = (
     e: React.PointerEvent<HTMLDivElement>,
-    mode: DragMode
+    requestedMode?: DragMode
   ) => {
     if (!trackContainerRef.current) return;
     e.preventDefault();
     e.stopPropagation();
+
+    // If mode is not explicitly passed (e.g. clicking directly on the bar body),
+    // detect if click is near the left border (resize-left) or right border (resize-right)
+    let mode: DragMode = requestedMode || 'move';
+    if (!requestedMode) {
+      const barRect = e.currentTarget.getBoundingClientRect();
+      const clickX = e.clientX - barRect.left;
+      const edgeThreshold = Math.min(10, Math.max(3, barRect.width * 0.35));
+      if (clickX <= edgeThreshold) {
+        mode = 'resize-left';
+      } else if (clickX >= barRect.width - edgeThreshold) {
+        mode = 'resize-right';
+      } else {
+        mode = 'move';
+      }
+    }
 
     const rect = trackContainerRef.current.getBoundingClientRect();
     dragRef.current = {
@@ -159,10 +175,17 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
       const newDelta = Math.round((dragRef.current.startDelta + deltaTime) * 20) / 20; // 0.05s snap step
       onDeltaChange(Number(newDelta.toFixed(2)));
     } else if (dragRef.current.mode === 'resize-left') {
-      const newTrimStart = Math.round((dragRef.current.startTrimStart + deltaTime) * 20) / 20;
+      // Left edge drag: adjust video start. Clamp so start does not exceed end - 0.5s and start >= 0
+      const maxTrimStart = (baseVideoEndB + dragRef.current.startTrimEnd) - baseVideoStartB - 0.5;
+      const minTrimStart = -baseVideoStartB;
+      const clampedTrimStart = Math.max(minTrimStart, Math.min(maxTrimStart, dragRef.current.startTrimStart + deltaTime));
+      const newTrimStart = Math.round(clampedTrimStart * 20) / 20;
       onTrimChange?.(Number(newTrimStart.toFixed(2)), trimEndDelta);
     } else if (dragRef.current.mode === 'resize-right') {
-      const newTrimEnd = Math.round((dragRef.current.startTrimEnd + deltaTime) * 20) / 20;
+      // Right edge drag: adjust video end. Clamp so end >= start + 0.5s
+      const minTrimEnd = (baseVideoStartB + dragRef.current.startTrimStart + 0.5) - baseVideoEndB;
+      const clampedTrimEnd = Math.max(minTrimEnd, dragRef.current.startTrimEnd + deltaTime);
+      const newTrimEnd = Math.round(clampedTrimEnd * 20) / 20;
       onTrimChange?.(trimStartDelta, Number(newTrimEnd.toFixed(2)));
     }
   };
@@ -448,32 +471,39 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                     return (
                       <div
                         key={seg.id}
-                        onPointerDown={(e) => handleBarPointerDown(e, 'move')}
-                        onPointerMove={handlePointerMove}
+                        onPointerDown={(e) => handleBarPointerDown(e)}
+                        onPointerMove={(e) => {
+                          if (isDragging) {
+                            handlePointerMove(e);
+                          } else {
+                            const barRect = e.currentTarget.getBoundingClientRect();
+                            const x = e.clientX - barRect.left;
+                            const edgeThreshold = Math.min(10, Math.max(3, barRect.width * 0.35));
+                            if (x <= edgeThreshold || x >= barRect.width - edgeThreshold) {
+                              e.currentTarget.style.cursor = 'ew-resize';
+                            } else {
+                              e.currentTarget.style.cursor = 'grab';
+                            }
+                          }
+                        }}
                         onPointerUp={handlePointerUp}
-                        className={`absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white flex items-center ${
-                          isNarrow ? 'justify-center px-1' : 'justify-between px-1.5'
+                        className={`absolute top-0 bottom-0 rounded-[5px] border-x-[3px] border-white flex items-center ${
+                          isNarrow ? 'justify-center px-0.5' : 'justify-between px-1.5'
                         } bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10 overflow-hidden cursor-grab active:cursor-grabbing select-none`}
                         style={{
                           left: `${leftPct}%`,
                           width: `${widthPct}%`
                         }}
-                        title={`현재 편집 중인 구간: ${seg.label || `#${seg.id}`} (바 드래그: 오프셋 조절, 양끝 드래그: 구간 조절)`}
+                        title={`현재 편집 중인 구간: ${seg.label || `#${seg.id}`} (바 드래그: 오프셋 조절, 맨끝 border 드래그: 구간 조절)`}
                       >
-                        {/* Left Resize Handle (늘리고 줄이기: 시작점) */}
-                        {widthPct >= 6 && (
-                          <div
-                            onPointerDown={(e) => handleBarPointerDown(e, 'resize-left')}
-                            onPointerMove={handlePointerMove}
-                            onPointerUp={handlePointerUp}
-                            className="absolute left-0 top-0 bottom-0 w-2.5 hover:w-3.5 bg-white/20 hover:bg-white/70 active:bg-white cursor-ew-resize z-30 transition-all flex items-center justify-center group"
-                            title="구간 시작점 늘리고 줄이기 (좌우 드래그)"
-                          >
-                            <div className="w-[2px] h-3.5 bg-white/90 group-hover:bg-slate-900 rounded-full" />
-                          </div>
-                        )}
+                        {/* Left Border Hit Zone (좌측 맨끝 border 반응) */}
+                        <div
+                          onPointerDown={(e) => handleBarPointerDown(e, 'resize-left')}
+                          className="absolute left-0 top-0 bottom-0 w-2.5 sm:w-3 max-w-[35%] cursor-ew-resize z-20 hover:bg-white/40 active:bg-white/70 transition-colors"
+                          title="시작 위치 늘리고 줄이기 (좌측 끝 border 드래그)"
+                        />
 
-                        {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow ml-1.5 pointer-events-none" />}
+                        {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow ml-1 pointer-events-none" />}
                         {!isVeryNarrow && (
                           <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-0.5 uppercase pointer-events-none">
                             {isDragging && dragMode === 'move'
@@ -487,24 +517,14 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                                     : `${seg.label || `구간 #${seg.id}`} (드래그 조절)`}
                           </span>
                         )}
-                        {isVeryNarrow ? (
-                          <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow pointer-events-none" />
-                        ) : !isNarrow ? (
-                          <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow mr-1.5 pointer-events-none" />
-                        ) : null}
+                        {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow mr-1 pointer-events-none" />}
 
-                        {/* Right Resize Handle (늘리고 줄이기: 끝점) */}
-                        {widthPct >= 6 && (
-                          <div
-                            onPointerDown={(e) => handleBarPointerDown(e, 'resize-right')}
-                            onPointerMove={handlePointerMove}
-                            onPointerUp={handlePointerUp}
-                            className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3.5 bg-white/20 hover:bg-white/70 active:bg-white cursor-ew-resize z-30 transition-all flex items-center justify-center group"
-                            title="구간 끝점 늘리고 줄이기 (좌우 드래그)"
-                          >
-                            <div className="w-[2px] h-3.5 bg-white/90 group-hover:bg-slate-900 rounded-full" />
-                          </div>
-                        )}
+                        {/* Right Border Hit Zone (우측 맨끝 border 반응) */}
+                        <div
+                          onPointerDown={(e) => handleBarPointerDown(e, 'resize-right')}
+                          className="absolute right-0 top-0 bottom-0 w-2.5 sm:w-3 max-w-[35%] cursor-ew-resize z-20 hover:bg-white/40 active:bg-white/70 transition-colors"
+                          title="끝 위치 늘리고 줄이기 (우측 끝 border 드래그)"
+                        />
                       </div>
                     );
                   }
@@ -540,30 +560,37 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                   const isNarrow = widthPct < 10;
                   return (
                     <div
-                      onPointerDown={(e) => handleBarPointerDown(e, 'move')}
-                      onPointerMove={handlePointerMove}
+                      onPointerDown={(e) => handleBarPointerDown(e)}
+                      onPointerMove={(e) => {
+                        if (isDragging) {
+                          handlePointerMove(e);
+                        } else {
+                          const barRect = e.currentTarget.getBoundingClientRect();
+                          const x = e.clientX - barRect.left;
+                          const edgeThreshold = Math.min(10, Math.max(3, barRect.width * 0.35));
+                          if (x <= edgeThreshold || x >= barRect.width - edgeThreshold) {
+                            e.currentTarget.style.cursor = 'ew-resize';
+                          } else {
+                            e.currentTarget.style.cursor = 'grab';
+                          }
+                        }
+                      }}
                       onPointerUp={handlePointerUp}
-                      className={`absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white/80 flex items-center ${
-                        isNarrow ? 'justify-center px-1' : 'justify-between px-2'
-                      } bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform overflow-hidden cursor-grab active:cursor-grabbing select-none`}
+                      className={`absolute top-0 bottom-0 rounded-[5px] border-x-[3px] border-white/90 flex items-center ${
+                        isNarrow ? 'justify-center px-0.5' : 'justify-between px-2'
+                      } bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/40 transition-transform overflow-hidden cursor-grab active:cursor-grabbing select-none`}
                       style={{
                         left: `${leftPct}%`,
                         width: `${widthPct}%`
                       }}
-                      title="바 드래그: 오프셋 이동, 양끝 드래그: 구간 조절"
+                      title="바 드래그: 오프셋 이동, 맨끝 border 드래그: 구간 조절"
                     >
-                      {/* Left Resize Handle */}
-                      {widthPct >= 6 && (
-                        <div
-                          onPointerDown={(e) => handleBarPointerDown(e, 'resize-left')}
-                          onPointerMove={handlePointerMove}
-                          onPointerUp={handlePointerUp}
-                          className="absolute left-0 top-0 bottom-0 w-2.5 hover:w-3.5 bg-white/20 hover:bg-white/70 active:bg-white cursor-ew-resize z-30 transition-all flex items-center justify-center group"
-                          title="시작 위치 늘리고 줄이기 (좌우 드래그)"
-                        >
-                          <div className="w-[2px] h-3.5 bg-white/90 group-hover:bg-slate-900 rounded-full" />
-                        </div>
-                      )}
+                      {/* Left Border Hit Zone (좌측 맨끝 border 반응) */}
+                      <div
+                        onPointerDown={(e) => handleBarPointerDown(e, 'resize-left')}
+                        className="absolute left-0 top-0 bottom-0 w-2.5 sm:w-3 max-w-[35%] cursor-ew-resize z-20 hover:bg-white/40 active:bg-white/70 transition-colors"
+                        title="시작 위치 늘리고 줄이기 (좌측 끝 border 드래그)"
+                      />
 
                       {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow ml-1 pointer-events-none" />}
                       {!isVeryNarrow && (
@@ -579,24 +606,14 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                                   : '드래그하여 싱크 조절 (Drag to Sync)'}
                         </span>
                       )}
-                      {isVeryNarrow ? (
-                        <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow pointer-events-none" />
-                      ) : !isNarrow ? (
-                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow mr-1 pointer-events-none" />
-                      ) : null}
+                      {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow mr-1 pointer-events-none" />}
 
-                      {/* Right Resize Handle */}
-                      {widthPct >= 6 && (
-                        <div
-                          onPointerDown={(e) => handleBarPointerDown(e, 'resize-right')}
-                          onPointerMove={handlePointerMove}
-                          onPointerUp={handlePointerUp}
-                          className="absolute right-0 top-0 bottom-0 w-2.5 hover:w-3.5 bg-white/20 hover:bg-white/70 active:bg-white cursor-ew-resize z-30 transition-all flex items-center justify-center group"
-                          title="끝 위치 늘리고 줄이기 (좌우 드래그)"
-                        >
-                          <div className="w-[2px] h-3.5 bg-white/90 group-hover:bg-slate-900 rounded-full" />
-                        </div>
-                      )}
+                      {/* Right Border Hit Zone (우측 맨끝 border 반응) */}
+                      <div
+                        onPointerDown={(e) => handleBarPointerDown(e, 'resize-right')}
+                        className="absolute right-0 top-0 bottom-0 w-2.5 sm:w-3 max-w-[35%] cursor-ew-resize z-20 hover:bg-white/40 active:bg-white/70 transition-colors"
+                        title="끝 위치 늘리고 줄이기 (우측 끝 border 드래그)"
+                      />
                     </div>
                   );
                 })()
@@ -692,7 +709,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           <span className="text-gray-600">│</span>
           <span className="text-twice-magenta">바 드래그: 오프셋 이동</span>
           <span className="text-gray-600">│</span>
-          <span className="text-amber-400">양끝 핸들: 구간 조절</span>
+          <span className="text-amber-400">양끝 border 드래그: 구간 조절</span>
           <span className="text-gray-600">│</span>
           <span className="text-pink-300">다른 바 클릭: 구간 이동</span>
         </div>
