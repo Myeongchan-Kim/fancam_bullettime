@@ -136,6 +136,10 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
     }
   };
 
+  // Current playback position vertical cursor in calibrator window
+  const cursorPct = ((selectedTimeCursor - timelineMin) / timelineSpan) * 100;
+  const isCursorVisible = cursorPct >= 0 && cursorPct <= 100;
+
   return (
     <div className="bg-slate-900/95 border border-twice-magenta/40 rounded-2xl p-4 shadow-xl space-y-3 backdrop-blur-sm ring-1 ring-twice-magenta/20">
       {/* Calibrator Header & Offset / Delta Badge */}
@@ -157,6 +161,9 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/30 text-[10px] font-bold">
                   <Scissors className="w-2.5 h-2.5" />
                   선택 구간: {activeSegment.label || `#${activeSegment.id}`}
+                </span>
+                <span className="text-[10px] text-gray-400 font-mono">
+                  ({formatTime(activeSegment.video_start)} ~ {formatTime(activeSegment.video_end)})
                 </span>
                 {activeSegment.members && activeSegment.members.length > 0 && (
                   <div className="flex items-center gap-1">
@@ -203,9 +210,27 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <Layers className="w-3 h-3 text-twice-apricot" />
             2-Track 타임라인 바 비교 {isSplitVideo && <span className="text-amber-400 font-bold">({videoB.segments.length}개 Split 구간 표시)</span>}
           </span>
-          <span className="text-[9px] text-gray-500">
-            타임라인 윈도우: {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
-          </span>
+          <div className="flex items-center gap-2">
+            {isCursorVisible ? (
+              <span className="text-[10px] font-bold text-red-400 bg-red-950/70 border border-red-500/40 px-2 py-0.5 rounded-md flex items-center gap-1 shadow-sm">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+                재생: {formatTime(selectedTimeCursor)}
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setViewportShift(Math.round(selectedTimeCursor - baseMasterStartB))}
+                className="text-[10px] font-bold text-red-400/90 hover:text-red-300 bg-red-950/40 hover:bg-red-950/80 border border-red-500/30 px-2 py-0.5 rounded-md flex items-center gap-1 transition-all"
+                title="재생 위치로 타임라인 뷰 이동"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-red-500/60" />
+                재생 위치로 이동 ({formatTime(selectedTimeCursor)})
+              </button>
+            )}
+            <span className="text-[9px] text-gray-500">
+              타임라인 윈도우: {formatTime(timelineMin)} ─── {formatTime(timelineMax)}
+            </span>
+          </div>
         </div>
 
         {/* Row 1: Deck A Reference Bar (Fixed) */}
@@ -249,6 +274,16 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                   </div>
                 );
               })()}
+
+              {/* Playback Position Vertical Needle */}
+              {isCursorVisible && (
+                <div
+                  className="absolute top-0 bottom-0 w-[2px] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)] z-20 pointer-events-none transition-[left] duration-100 ease-linear"
+                  style={{ left: `${cursorPct}%` }}
+                >
+                  <div className="absolute -top-1 -left-[3px] w-2 h-2 bg-red-500 rotate-45 rounded-[1px] shadow-sm" />
+                </div>
+              )}
             </div>
 
             {/* Spacer matching Row 2 right button */}
@@ -381,6 +416,16 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                     </div>
                   );
                 })()
+              )}
+
+              {/* Playback Position Vertical Needle */}
+              {isCursorVisible && (
+                <div
+                  className="absolute top-0 bottom-0 w-[2px] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)] z-20 pointer-events-none transition-[left] duration-100 ease-linear"
+                  style={{ left: `${cursorPct}%` }}
+                >
+                  <div className="absolute -bottom-1 -left-[3px] w-2 h-2 bg-red-500 rotate-45 rounded-[1px] shadow-sm" />
+                </div>
               )}
             </div>
 

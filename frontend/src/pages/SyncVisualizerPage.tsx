@@ -828,7 +828,7 @@ export default function SyncVisualizerPage() {
           isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
           
-          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
             setSelectedTimeCursor(masterTime);
           }
 
@@ -861,7 +861,7 @@ export default function SyncVisualizerPage() {
           isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
           
-          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
             setSelectedTimeCursor(masterTime);
           }
 
