@@ -3,7 +3,8 @@ import {
   calculateLocalSeekTime, 
   calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange,
-  getActiveSegment
+  getActiveSegment,
+  splitVideoSegmentAtCursor
 } from './syncGraphCalculations';
 import { SyncGraphVideoNode } from '../types';
 
@@ -161,4 +162,126 @@ describe('syncGraphCalculations Unit Tests', () => {
       expect(seg?.id).toBe(3);
     });
   });
+
+  describe('splitVideoSegmentAtCursor', () => {
+    it('fails if video is master or invalid', () => {
+      const master = { ...continuousVideo, is_master: true };
+      const res = splitVideoSegmentAtCursor({ video: master, cursorTime: 1050 });
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('마스터');
+    });
+
+    it('splits a continuous video into 2 parts', () => {
+      // continuousVideo: offset = 1000, duration = 200 (range: 1000 ~ 1200)
+      // Cut at master time 1050 => local video cut time = 50.0
+      const res = splitVideoSegmentAtCursor({
+        video: continuousVideo,
+        cursorTime: 1050
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.cutVideoTime).toBe(50.0);
+      expect(res.newSegments).toHaveLength(2);
+
+      const [left, right] = res.newSegments!;
+      expect(left.video_start_time).toBe(0);
+      expect(left.video_end_time).toBe(50.0);
+      expect(left.master_start_time).toBe(1000);
+      expect(left.master_end_time).toBe(1050);
+      expect(left.sync_offset).toBe(1000);
+      expect(left.label).toBe('Part 1 (앞)');
+
+      expect(right.video_start_time).toBe(50.0);
+      expect(right.video_end_time).toBe(200);
+      expect(right.master_start_time).toBe(1050);
+      expect(right.master_end_time).toBe(1200);
+      expect(right.sync_offset).toBe(1000);
+      expect(right.label).toBe('Part 2 (뒤)');
+    });
+
+    it('accounts for fineTuneDelta when splitting continuous video', () => {
+      // fineTuneDelta = +10 => effective offset = 1010
+      // Cut at cursor 1060 => local video time = 1060 - 1010 = 50.0
+      const res = splitVideoSegmentAtCursor({
+        video: continuousVideo,
+        cursorTime: 1060,
+        fineTuneDelta: 10
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.cutVideoTime).toBe(50.0);
+      const [left, right] = res.newSegments!;
+      expect(left.sync_offset).toBe(1010);
+      expect(left.master_start_time).toBe(1010);
+      expect(left.master_end_time).toBe(1060);
+      expect(right.sync_offset).toBe(1010);
+      expect(right.master_start_time).toBe(1060);
+      expect(right.master_end_time).toBe(1210);
+    });
+
+    it('splits an existing segment within a multi-segment video', () => {
+      // splitVideo Part 1: video 0~231, master 0~231, offset 0
+      // Cut at cursor 100 => local cut 100
+      const res = splitVideoSegmentAtCursor({
+        video: splitVideo,
+        cursorTime: 100
+      });
+
+      expect(res.success).toBe(true);
+      expect(res.cutVideoTime).toBe(100);
+      // Original had 3 segments, Part 1 splits into 2, total 4
+      expect(res.newSegments).toHaveLength(4);
+
+      const [seg1, seg2, seg3, seg4] = res.newSegments!;
+      expect(seg1.label).toBe('Part 1 (FOUR) (앞)');
+      expect(seg1.video_start_time).toBe(0);
+      expect(seg1.video_end_time).toBe(100);
+      expect(seg1.sync_offset).toBe(0);
+
+      expect(seg2.label).toBe('Part 1 (FOUR) (뒤)');
+      expect(seg2.video_start_time).toBe(100);
+      expect(seg2.video_end_time).toBe(231);
+      expect(seg2.sync_offset).toBe(0);
+
+      // Other segments remain untouched
+      expect(seg3.video_start_time).toBe(231);
+      expect(seg3.video_end_time).toBe(394);
+      expect(seg3.sync_offset).toBe(69);
+
+      expect(seg4.video_start_time).toBe(394);
+      expect(seg4.video_end_time).toBe(564);
+    });
+
+    it('rejects cut if cursor is too close to boundary (<0.5s)', () => {
+      // splitVideo Part 1: video 0~231, offset 0.
+      // Cursor 0.2s is too close to start (0s)
+      const res = splitVideoSegmentAtCursor({
+        video: splitVideo,
+        cursorTime: 0.2
+      });
+
+      expect(res.success).toBe(false);
+      expect(res.error).toContain('경계');
+    });
+
+    it('preserves trimStartDelta and trimEndDelta when splitting', () => {
+      // continuousVideo: dur=200, offset=1000
+      // trimStart = +10, trimEnd = -20 => video start = 10, video end = 180
+      // cursorTime = 1050 => local = 50.0
+      const res = splitVideoSegmentAtCursor({
+        video: continuousVideo,
+        cursorTime: 1050,
+        trimStartDelta: 10,
+        trimEndDelta: -20
+      });
+
+      expect(res.success).toBe(true);
+      const [left, right] = res.newSegments!;
+      expect(left.video_start_time).toBe(10);
+      expect(left.video_end_time).toBe(50.0);
+      expect(right.video_start_time).toBe(50.0);
+      expect(right.video_end_time).toBe(180);
+    });
+  });
 });
+
