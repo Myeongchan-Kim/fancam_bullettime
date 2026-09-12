@@ -83,12 +83,12 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   const currentMasterStartB = baseMasterStartB + fineTuneDelta;
   const currentMasterEndB = currentMasterStartB + durB;
 
-  // Viewport window offset shift (allows scrolling the comparison window by ±10 minutes)
+  // Viewport window offset shift (allows scrolling the comparison window by ±5 minutes)
   const [viewportShift, setViewportShift] = useState<number>(0);
 
-  // Timeline view window: Deck B active bar length + margin of ±10 minutes (600s left, 600s right)
-  const MARGIN_SECONDS = 600; // 10 minutes
-  const timelineSpan = durB + MARGIN_SECONDS * 2; // Total width = bar length + 20 minutes
+  // Timeline view window: Deck B active bar length + margin of ±5 minutes (300s left, 300s right)
+  const MARGIN_SECONDS = 300; // 5 minutes
+  const timelineSpan = durB + MARGIN_SECONDS * 2; // Total width = bar length + 10 minutes
 
   // The base reference position for the window is the saved base master start + viewportShift.
   // CRITICAL: We DO NOT add fineTuneDelta to the window anchor!
@@ -315,15 +315,15 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
-            {/* Shift viewport left by 10 minutes (-600s) */}
+            {/* Shift viewport left by 5 minutes (-300s) */}
             <button
               type="button"
-              onClick={() => setViewportShift(prev => prev - 600)}
+              onClick={() => setViewportShift(prev => prev - 300)}
               className="h-8 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
-              title="타임라인 구간을 10분 앞으로 이동 (-10분)"
+              title="타임라인 구간을 5분 앞으로 이동 (-5분)"
             >
               <ChevronLeft className="w-3.5 h-3.5 text-twice-magenta group-hover:-translate-x-0.5 transition-transform" />
-              <span className="hidden sm:inline font-mono text-[9px] mr-0.5">-10m</span>
+              <span className="hidden sm:inline font-mono text-[9px] mr-0.5">-5m</span>
             </button>
 
             {/* Draggable Track Container (contains all segments of Deck B) */}
@@ -429,14 +429,14 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               )}
             </div>
 
-            {/* Shift viewport right by 10 minutes (+600s) */}
+            {/* Shift viewport right by 5 minutes (+300s) */}
             <button
               type="button"
-              onClick={() => setViewportShift(prev => prev + 600)}
+              onClick={() => setViewportShift(prev => prev + 300)}
               className="h-8 px-1.5 bg-slate-800 hover:bg-slate-700 text-gray-300 hover:text-white rounded-lg border border-slate-700 transition-all flex items-center justify-center text-[10px] font-bold shrink-0 shadow-sm active:scale-95 group"
-              title="타임라인 구간을 10분 뒤로 이동 (+10분)"
+              title="타임라인 구간을 5분 뒤로 이동 (+5분)"
             >
-              <span className="hidden sm:inline font-mono text-[9px] ml-0.5">+10m</span>
+              <span className="hidden sm:inline font-mono text-[9px] ml-0.5">+5m</span>
               <ChevronRight className="w-3.5 h-3.5 text-twice-magenta group-hover:translate-x-0.5 transition-transform" />
             </button>
           </div>
