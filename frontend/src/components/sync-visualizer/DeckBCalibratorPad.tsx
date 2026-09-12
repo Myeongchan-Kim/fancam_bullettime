@@ -352,26 +352,38 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
 
                   const leftPct = Math.max(0, Math.min(100, ((visibleStart - timelineMin) / timelineSpan) * 100));
                   const rightPct = Math.max(0, Math.min(100, ((visibleEnd - timelineMin) / timelineSpan) * 100));
-                  const widthPct = Math.max(2, rightPct - leftPct);
+                  const widthPct = Math.max(1.5, rightPct - leftPct);
+                  const isVeryNarrow = widthPct < 5;
+                  const isNarrow = widthPct < 10;
 
                   if (isActive) {
                     return (
                       <div
                         key={seg.id}
-                        className="absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white flex items-center justify-between px-1.5 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10"
+                        className={`absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white flex items-center ${
+                          isNarrow ? 'justify-center px-1' : 'justify-between px-1.5'
+                        } bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-2 ring-white/60 transition-transform z-10 overflow-hidden`}
                         style={{
                           left: `${leftPct}%`,
                           width: `${widthPct}%`
                         }}
                         title={`현재 편집 중인 구간: ${seg.label || `#${seg.id}`} (${formatTime(segMasterStart)} ~ ${formatTime(segMasterEnd)})`}
                       >
-                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
-                        <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
-                          {isDragging 
-                            ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` 
-                            : `${seg.label || `구간 #${seg.id}`} (드래그 조절)`}
-                        </span>
-                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                        {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />}
+                        {!isVeryNarrow && (
+                          <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-0.5 uppercase">
+                            {isDragging 
+                              ? `Offset: ${currentEffectiveOffset.toFixed(2)}s` 
+                              : isNarrow 
+                                ? `${seg.label || `#${seg.id}`}` 
+                                : `${seg.label || `구간 #${seg.id}`} (드래그 조절)`}
+                          </span>
+                        )}
+                        {isVeryNarrow ? (
+                          <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow" />
+                        ) : !isNarrow ? (
+                          <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                        ) : null}
                       </div>
                     );
                   }
@@ -380,7 +392,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                   return (
                     <div
                       key={seg.id}
-                      className="absolute top-0.5 bottom-0.5 rounded-[5px] border-l-2 border-pink-400 flex items-center px-1 bg-pink-900/60 hover:bg-pink-800/80 border-y border-r border-pink-500/40 opacity-75 hover:opacity-100 transition-opacity z-0"
+                      className="absolute top-0.5 bottom-0.5 rounded-[5px] border-l-2 border-pink-400 flex items-center px-1 bg-pink-900/60 hover:bg-pink-800/80 border-y border-r border-pink-500/40 opacity-75 hover:opacity-100 transition-opacity z-0 overflow-hidden"
                       style={{
                         left: `${leftPct}%`,
                         width: `${widthPct}%`
@@ -397,22 +409,34 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 /* Continuous video (single bar) */
                 (() => {
                   const leftPct = Math.max(0, Math.min(96, ((currentMasterStartB - timelineMin) / timelineSpan) * 100));
-                  const widthPct = Math.max(4, Math.min(100, (durB / timelineSpan) * 100));
+                  const widthPct = Math.max(2, Math.min(100, (durB / timelineSpan) * 100));
+                  const isVeryNarrow = widthPct < 5;
+                  const isNarrow = widthPct < 10;
                   return (
                     <div
-                      className="absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white/80 flex items-center justify-between px-2 bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform"
+                      className={`absolute top-0 bottom-0 rounded-[5px] border-x-2 border-white/80 flex items-center ${
+                        isNarrow ? 'justify-center px-1' : 'justify-between px-2'
+                      } bg-gradient-to-r from-twice-magenta to-pink-500 shadow-md ring-1 ring-white/30 transition-transform overflow-hidden`}
                       style={{
                         left: `${leftPct}%`,
                         width: `${widthPct}%`
                       }}
                     >
-                      <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
-                      <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
-                        {isDragging 
-                          ? `Offset: ${currentEffectiveOffset.toFixed(2)}s (${fineTuneDelta >= 0 ? `+${fineTuneDelta.toFixed(2)}` : fineTuneDelta.toFixed(2)}s)` 
-                          : '드래그하여 싱크 조절 (Drag to Sync)'}
-                      </span>
-                      <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                      {!isNarrow && <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />}
+                      {!isVeryNarrow && (
+                        <span className="text-[9px] font-black tracking-wider text-white drop-shadow truncate mx-1 uppercase">
+                          {isDragging 
+                            ? `Offset: ${currentEffectiveOffset.toFixed(2)}s` 
+                            : isNarrow 
+                              ? '드래그 조절' 
+                              : '드래그하여 싱크 조절 (Drag to Sync)'}
+                        </span>
+                      )}
+                      {isVeryNarrow ? (
+                        <GripVertical className="h-3 w-3 text-white/90 shrink-0 drop-shadow" />
+                      ) : !isNarrow ? (
+                        <GripVertical className="h-3.5 w-3.5 text-white/90 shrink-0 drop-shadow" />
+                      ) : null}
                     </div>
                   );
                 })()
