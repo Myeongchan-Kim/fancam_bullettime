@@ -26,6 +26,8 @@ interface DeckBCalibratorPadProps {
   onTriggerAiSync: (video: SyncGraphVideoNode) => void;
   onSeek?: (masterSec: number) => void;
   onSelectSegment?: (segment: any) => void;
+  onSplitAtCursor?: () => void;
+  isSplitting?: boolean;
 }
 
 export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
@@ -50,7 +52,9 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   onTriggerRoughSync,
   onTriggerAiSync,
   onSeek,
-  onSelectSegment
+  onSelectSegment,
+  onSplitAtCursor,
+  isSplitting = false
 }) => {
   if (videoB.is_master) return null;
 
@@ -87,6 +91,16 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   // Current active Deck B segment's live master start position (shifted by fineTuneDelta & trim)
   const currentMasterStartB = currentVideoStartB + currentEffectiveOffset;
   const currentMasterEndB = currentVideoEndB + currentEffectiveOffset;
+
+  // Calculate local video playback time at current cursor
+  const rawCutVideoTime = selectedTimeCursor - currentEffectiveOffset;
+  const cutVideoTime = Math.round(rawCutVideoTime * 10) / 10;
+
+  // The cut point is valid if it lies strictly inside the current active segment (or video duration)
+  // with at least 0.5s margin from both ends.
+  const isCutPointValid = 
+    cutVideoTime >= (currentVideoStartB + 0.5) && 
+    cutVideoTime <= (currentVideoEndB - 0.5);
 
   // Viewport window offset shift (allows scrolling the comparison window by ±5 minutes)
   const [viewportShift, setViewportShift] = useState<number>(0);
@@ -273,6 +287,18 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                       </span>
                     ))}
                   </div>
+                )}
+                {isCutPointValid && onSplitAtCursor && (
+                  <button
+                    type="button"
+                    onClick={onSplitAtCursor}
+                    disabled={isSplitting}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] font-bold transition-all active:scale-95 shadow-sm"
+                    title={`현재 재생 위치(${formatTime(cutVideoTime)}) 기준으로 이 구간을 자릅니다.`}
+                  >
+                    <Scissors className="w-2.5 h-2.5 text-rose-400" />
+                    <span>자르기 ({formatTime(cutVideoTime)})</span>
+                  </button>
                 )}
               </div>
             )}
@@ -738,6 +764,41 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
               )}
             </button>
           )}
+          {/* ✂️ 이 지점에서 자르기 (Cut at this point) Button */}
+          {onSplitAtCursor && (
+            <button
+              onClick={onSplitAtCursor}
+              disabled={!isCutPointValid || isSplitting}
+              className={`px-3 py-1.5 rounded-xl font-bold flex items-center gap-1.5 text-xs transition-all shadow-md ${
+                isCutPointValid && !isSplitting
+                  ? 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950/40 hover:scale-105 active:scale-95'
+                  : 'bg-slate-800 text-gray-500 border border-slate-700/60 cursor-not-allowed opacity-60'
+              }`}
+              title={
+                isCutPointValid
+                  ? `현재 재생 위치(${formatTime(cutVideoTime)}) 기준으로 이 구간을 좌우 두 조각으로 분할합니다.`
+                  : `현재 재생 위치가 선택된 구간 범위(${formatTime(currentVideoStartB)} ~ ${formatTime(currentVideoEndB)}) 내에 있지 않거나 경계(0.5초)와 너무 가깝습니다.`
+              }
+            >
+              {isSplitting ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>분할 처리 중...</span>
+                </>
+              ) : (
+                <>
+                  <Scissors className="w-3.5 h-3.5" />
+                  <span>이 지점에서 자르기</span>
+                  {isCutPointValid && (
+                    <span className="text-[10px] font-mono text-rose-200 bg-rose-950/60 px-1.5 py-0.2 rounded border border-rose-500/30">
+                      {formatTime(cutVideoTime)}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
+          )}
+
           <button
             onClick={() => onOpenCalibrator(videoB, !!(videoB.segments && videoB.segments.length > 0))}
             disabled={isLoadingCalibrator}

@@ -13,7 +13,8 @@ import {
   calculateLocalSeekTime, 
   calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange,
-  getActiveSegment
+  getActiveSegment,
+  splitVideoSegmentAtCursor
 } from '../utils/syncGraphCalculations';
 import { ActionToolbar, StatusFilterTabs, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
@@ -71,6 +72,7 @@ export default function SyncVisualizerPage() {
   const [trimStartDelta, setTrimStartDelta] = useState<number>(0);
   const [trimEndDelta, setTrimEndDelta] = useState<number>(0);
   const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
+  const [isSplitting, setIsSplitting] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
   const handleResetFineTune = () => {
@@ -671,6 +673,101 @@ export default function SyncVisualizerPage() {
     }
   };
 
+  // Split Active Segment at Current Playback Cursor
+  const handleSplitAtCursor = async () => {
+    if (!videoB) return;
+
+    const splitResult = splitVideoSegmentAtCursor({
+      video: videoB,
+      cursorTime: selectedTimeCursor,
+      fineTuneDelta,
+      trimStartDelta,
+      trimEndDelta,
+      setlistItems: graphData?.setlist
+    });
+
+    if (!splitResult.success || !splitResult.newSegments) {
+      alert(splitResult.error || '구간을 분할할 수 없습니다.');
+      return;
+    }
+
+    const cutTimeStr = formatTime(splitResult.cutVideoTime || 0);
+    const confirmMsg = `현재 재생 위치(${cutTimeStr})를 기준으로 이 구간을 좌우 2개로 분할하시겠습니까?\n\n` +
+      `분할 후 각 구간의 싱크 오프셋과 길이를 독립적으로 조절할 수 있습니다.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsSplitting(true);
+    try {
+      const adminKey = localStorage.getItem('admin_key') || localStorage.getItem('twice_admin_key') || 'twice360-admin-secret-key';
+
+      const res = await axios.post(
+        `${API_BASE_URL}/videos/${videoB.id}/segments/bulk`,
+        splitResult.newSegments,
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      const newSegs = res.data.map((s: any) => ({
+        id: s.id,
+        video_start: s.video_start_time,
+        video_end: s.video_end_time,
+        master_start: s.master_start_time,
+        master_end: s.master_end_time,
+        sync_offset: s.sync_offset,
+        label: s.label,
+        members: s.members || [],
+        is_verified: s.is_verified
+      }));
+
+      const minMaster = newSegs.length > 0 ? Math.min(...newSegs.map((s: any) => s.master_start)) : videoB.master_start_time;
+      const maxMaster = newSegs.length > 0 ? Math.max(...newSegs.map((s: any) => s.master_end)) : videoB.master_end_time;
+
+      const updatedVideoB: SyncGraphVideoNode = {
+        ...videoB,
+        segments: newSegs,
+        master_start_time: minMaster,
+        master_end_time: maxMaster,
+        status: 'segmented',
+        status_reason: `Split into ${newSegs.length} segments`,
+        calibration_count: (videoB.calibration_count || 0) + 1
+      };
+
+      setVideoB(updatedVideoB);
+
+      setGraphData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          videos: prev.videos.map(v => v.id === videoB.id ? updatedVideoB : v)
+        };
+      });
+
+      // Reset in-flight deltas since they are now committed to the split segments
+      handleResetFineTune();
+
+      setSaveSuccessMsg(`✂️ 성공적으로 잘렸습니다! (${cutTimeStr} 기준 좌우 2조각 분할 완료, 총 ${newSegs.length}개 구간)`);
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
+
+      // Silent sync with backend
+      loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id, true, true);
+    } catch (err: any) {
+      console.error('Failed to split segment:', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요 (기본 개발 키: 851212):');
+        if (retryKey) {
+          localStorage.setItem('admin_key', retryKey.trim());
+          setIsAdminMode(true);
+          handleSplitAtCursor();
+          return;
+        }
+      }
+      alert(`구간 분할 실패: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsSplitting(false);
+    }
+  };
+
   // AI 2-Stage Multi-Modal Precision Sync Trigger Handler
   const handleTriggerAiSync = async (targetVideo: SyncGraphVideoNode | null) => {
     if (!targetVideo || targetVideo.is_master) return;
@@ -1212,6 +1309,8 @@ export default function SyncVisualizerPage() {
                 onTriggerAiSync={handleTriggerAiSync}
                 onSeek={seekToMasterTimeline}
                 onSelectSegment={handleSelectSegment}
+                onSplitAtCursor={handleSplitAtCursor}
+                isSplitting={isSplitting}
               />
             )}
 
