@@ -344,11 +344,16 @@ export default function SyncVisualizerPage() {
     return graphData.videos.filter(v => isCursorInsideVideoRange(v, selectedTimeCursor));
   }, [graphData, selectedTimeCursor]);
 
-  // User Timeline Seeking (Click & Drag)
+  // User Timeline Seeking (Click & Drag & Arrow Keys)
   const seekToMasterTimeline = (masterSec: number) => {
     const clamped = Math.max(minMasterTime, Math.min(maxMasterTime, masterSec));
     isPlaybackTickRef.current = false;
     setSelectedTimeCursor(clamped);
+
+    // Check if either player is currently playing
+    const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+    const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+    const isPlaying = stateA === 1 || stateB === 1;
 
     // Deck A
     if (videoA && playerA) {
@@ -357,6 +362,9 @@ export default function SyncVisualizerPage() {
       try {
         if (insideA) {
           playerA.seekTo?.(targetA, true);
+          if (isPlaying && stateA !== 1) {
+            playerA.playVideo?.();
+          }
           lastTimeRefA.current = targetA;
         } else {
           playerA.pauseVideo?.();
@@ -373,6 +381,9 @@ export default function SyncVisualizerPage() {
       try {
         if (insideB) {
           playerB.seekTo?.(targetB, true);
+          if (isPlaying && stateB !== 1) {
+            playerB.playVideo?.();
+          }
           lastTimeRefB.current = targetB;
         } else {
           playerB.pauseVideo?.();
@@ -381,6 +392,9 @@ export default function SyncVisualizerPage() {
         }
       } catch (e) {}
     }
+
+    lastSeekTimeARef.current = Date.now();
+    lastSeekTimeBRef.current = Date.now();
   };
 
   const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
@@ -439,23 +453,51 @@ export default function SyncVisualizerPage() {
     setFineTuneDelta(prev => Number((prev + seconds).toFixed(2)));
   };
 
-  // Keyboard Nudge Shortcuts
+  // Keyboard Shortcuts: Arrow keys for synchronized playback seek (±5s), Shift/Alt for calibration nudge, Space for Play/Pause
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (playerMode !== 'DUAL' || !videoB) return;
 
+      // Space: Synchronized Play / Pause toggle
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+        const isPlaying = stateA === 1 || stateB === 1;
+        if (isPlaying) {
+          playerA?.pauseVideo?.();
+          playerB?.pauseVideo?.();
+        } else {
+          playerA?.playVideo?.();
+          playerB?.playVideo?.();
+        }
+        return;
+      }
+
+      // Left / Right Arrow: Synchronized Playback Seek (±5s) or Nudge
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        nudge(e.shiftKey ? -0.1 : -0.5);
+        if (e.shiftKey && videoB) {
+          nudge(-0.1);
+        } else if (e.altKey && videoB) {
+          nudge(-0.5);
+        } else {
+          seekToMasterTimeline(selectedTimeCursor - 5);
+        }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        nudge(e.shiftKey ? 0.1 : 0.5);
+        if (e.shiftKey && videoB) {
+          nudge(0.1);
+        } else if (e.altKey && videoB) {
+          nudge(0.5);
+        } else {
+          seekToMasterTimeline(selectedTimeCursor + 5);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playerMode, videoB]);
+  }, [playerA, playerB, videoA, videoB, selectedTimeCursor, minMasterTime, maxMasterTime, fineTuneDelta]);
 
   // Real-time synchronization when fineTuneDelta changes
   useEffect(() => {

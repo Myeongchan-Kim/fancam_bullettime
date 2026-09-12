@@ -497,12 +497,14 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
 
       {/* Keyboard shortcuts hints & Action Buttons */}
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5">
+        <div className="text-[10px] text-gray-500 font-mono flex items-center gap-1.5 flex-wrap">
           <span>💡 단축키:</span>
           <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded border border-slate-700 text-[9px]">←</kbd>
-          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded border border-slate-700 text-[9px]">→</kbd> (0.5s)
+          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded border border-slate-700 text-[9px]">→</kbd> (5초 재생 이동)
           <span className="text-gray-600">│</span>
-          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> + 방향키 (0.1s)
+          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Shift</kbd> + 방향키 (0.1s 오프셋)
+          <span className="text-gray-600">│</span>
+          <kbd className="px-1 py-0.5 bg-slate-800 text-gray-300 rounded text-[9px]">Space</kbd> (동시 재생/정지)
         </div>
 
         <div className="flex items-center gap-2">
