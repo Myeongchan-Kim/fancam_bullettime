@@ -1151,7 +1151,7 @@ export default function SyncVisualizerPage() {
           />
 
           {/* Right Multi-Angle Deck & Calibration Studio */}
-          <div className="lg:col-span-8 xl:col-span-9 lg:sticky lg:top-4 space-y-4">
+          <div className="lg:col-span-8 xl:col-span-9 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:overflow-y-auto overscroll-contain space-y-4 pr-1.5 custom-scrollbar min-w-0">
             <DeckStudioHeader
               playerMode={playerMode}
               activeDeckSlot={activeDeckSlot}

@@ -1,5 +1,5 @@
-import React, { useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
+import React, { useMemo, useRef } from 'react';
+import { Sparkles, Crosshair } from 'lucide-react';
 import { SyncGraphSetlistItem, SyncGraphVideoNode } from '../../types';
 
 interface TimelineLanesCanvasProps {
@@ -72,26 +72,54 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
     return TIME_AXIS_WIDTH + 8 + laneIdx * (LANE_WIDTH + LANE_GAP);
   };
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  const scrollToCursor = () => {
+    if (!scrollContainerRef.current) return;
+    const targetY = timeToY(selectedTimeCursor);
+    const containerH = scrollContainerRef.current.clientHeight;
+    scrollContainerRef.current.scrollTo({
+      top: Math.max(0, targetY - containerH / 2),
+      behavior: 'smooth'
+    });
+  };
+
   return (
-    <div className="lg:col-span-4 xl:col-span-3 bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-4 pb-6 shadow-2xl backdrop-blur-md overflow-x-auto overflow-y-hidden">
+    <div className="lg:col-span-4 xl:col-span-3 lg:sticky lg:top-4 bg-slate-900/90 border border-slate-800 rounded-3xl p-3 sm:p-4 shadow-2xl backdrop-blur-md flex flex-col h-[650px] lg:h-[calc(100vh-2rem)] min-w-0">
       {/* Unified Track Header */}
-      <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-xs font-mono sticky top-0 bg-slate-900/95 z-20 backdrop-blur">
+      <div className="flex items-center justify-between pb-2.5 border-b border-slate-800 text-xs font-mono shrink-0 bg-slate-900/95 z-20 backdrop-blur">
         <div className="flex items-center gap-2">
           <span className="w-12 text-gray-500 font-bold text-[10px]">시간</span>
           <span className="text-purple-400 font-bold flex items-center gap-1 text-[11px]">
             <Sparkles className="w-3 h-3" /> 타임라인 ({lanes.length}T)
           </span>
         </div>
-        <span className="text-gray-500 text-[9px] font-mono">{allVisibleVideos.length}개</span>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={scrollToCursor}
+            title="현재 재생 커서 위치로 타임라인 스크롤"
+            className="text-[10px] text-twice-magenta hover:text-white bg-twice-magenta/10 hover:bg-twice-magenta/20 px-2 py-0.5 rounded-lg border border-twice-magenta/30 flex items-center gap-1 transition-all font-sans font-bold"
+          >
+            <Crosshair className="w-3 h-3" />
+            <span>현재 위치</span>
+          </button>
+          <span className="text-gray-500 text-[9px] font-mono">{allVisibleVideos.length}개</span>
+        </div>
       </div>
 
-      {/* Continuous Vertical Canvas Container with SVG Background Sync Connection Lines */}
+      {/* Scrollable Container for Continuous Vertical & Horizontal Canvas */}
       <div 
-        ref={timelineRef}
-        onMouseDown={onTimelineMouseDown}
-        style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
-        className="relative mt-3 mb-2 flex cursor-crosshair select-none"
+        ref={scrollContainerRef}
+        className="flex-1 overflow-x-auto overflow-y-auto overscroll-contain min-h-0 relative mt-3 mb-1 pr-1 custom-scrollbar"
       >
+        {/* Continuous Vertical Canvas Container with SVG Background Sync Connection Lines */}
+        <div 
+          ref={timelineRef}
+          onMouseDown={onTimelineMouseDown}
+          style={{ height: `${canvasHeight}px`, width: `${totalCanvasWidth}px` }} 
+          className="relative flex cursor-crosshair select-none"
+        >
         {/* 1. Left Time Scale Axis & Song Bookmarks */}
         <div 
           style={{ width: `${TIME_AXIS_WIDTH}px` }}
@@ -364,6 +392,7 @@ export const TimelineLanesCanvas: React.FC<TimelineLanesCanvasProps> = ({
             ⏱️ {formatTime(selectedTimeCursor)}
           </span>
         </div>
+      </div>
       </div>
     </div>
   );
