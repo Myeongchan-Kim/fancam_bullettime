@@ -21,6 +21,7 @@ interface DeckBCalibratorPadProps {
   onOpenCalibrator: (video: SyncGraphVideoNode, hasSegments: boolean) => void;
   onTriggerRoughSync: (video: SyncGraphVideoNode) => void;
   onTriggerAiSync: (video: SyncGraphVideoNode) => void;
+  onSeek?: (masterSec: number) => void;
 }
 
 export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
@@ -40,7 +41,8 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
   onSaveOffset,
   onOpenCalibrator,
   onTriggerRoughSync,
-  onTriggerAiSync
+  onTriggerAiSync,
+  onSeek
 }) => {
   if (videoB.is_master) return null;
 
@@ -133,6 +135,30 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
       try {
         (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       } catch (err) {}
+    }
+  };
+
+  // Pointer Seeking on Deck A Reference Track
+  const seekFromPointerA = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!onSeek) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const clickX = e.clientX - rect.left;
+    const clickPct = Math.max(0, Math.min(1, clickX / rect.width));
+    const targetTime = timelineMin + clickPct * timelineSpan;
+    onSeek(targetTime);
+  };
+
+  const handleTrackAPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!onSeek) return;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (_) {}
+    seekFromPointerA(e);
+  };
+
+  const handleTrackAPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.buttons === 1 && onSeek) {
+      seekFromPointerA(e);
     }
   };
 
@@ -233,12 +259,13 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           </div>
         </div>
 
-        {/* Row 1: Deck A Reference Bar (Fixed) */}
+        {/* Row 1: Deck A Reference Bar (Fixed - Click to Seek) */}
         <div className="space-y-1">
           <div className="flex items-center justify-between text-[10px] text-gray-400 font-mono">
-            <span className="text-sky-300 font-bold flex items-center gap-1 truncate max-w-[340px]">
+            <span className="text-sky-300 font-bold flex items-center gap-1 truncate max-w-[360px]">
               <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
               [Deck A 기준] #{videoA?.id || '?'} {videoA?.title || '기준 영상'}
+              <span className="text-[9px] text-sky-400/80 font-normal ml-1">· 바 클릭 시 재생 위치 이동</span>
             </span>
             <span className="text-[10px] text-gray-400 shrink-0">
               위치: {formatTime(startA)} ── {formatTime(endA)} ({formatTime(durA)})
@@ -249,7 +276,12 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
             <div className="w-[43px] shrink-0" aria-hidden="true" />
 
             {/* Deck A Track Container */}
-            <div className="flex-1 h-5 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20">
+            <div 
+              onPointerDown={handleTrackAPointerDown}
+              onPointerMove={handleTrackAPointerMove}
+              className="flex-1 h-5 bg-slate-900 rounded-lg overflow-hidden relative border border-sky-500/20 hover:border-sky-400/60 hover:ring-1 hover:ring-sky-400/30 cursor-pointer transition-all select-none"
+              title="클릭 또는 드래그하여 해당 위치로 재생 이동 (Click/Drag to Seek)"
+            >
               {(() => {
                 // Deck A bar covers [startA, endA] on master timeline
                 // If Deck A is full concert covering the window, it spans smoothly across
@@ -261,7 +293,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                 const widthPct = Math.max(0.5, rightPct - leftPct);
                 return (
                   <div
-                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-[5px] border-x-2 border-white/60 shadow-sm transition-all flex items-center px-2"
+                    className="absolute top-0 bottom-0 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-[5px] border-x-2 border-white/60 shadow-sm transition-all flex items-center px-2 pointer-events-none"
                     style={{
                       left: `${leftPct}%`,
                       width: `${widthPct}%`

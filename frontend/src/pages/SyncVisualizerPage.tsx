@@ -1189,6 +1189,7 @@ export default function SyncVisualizerPage() {
                 onOpenCalibrator={handleOpenCalibrator}
                 onTriggerRoughSync={handleTriggerRoughSync}
                 onTriggerAiSync={handleTriggerAiSync}
+                onSeek={seekToMasterTimeline}
               />
             )}
 
