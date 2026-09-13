@@ -124,3 +124,174 @@ export function getActiveSegment(
 
   return video.segments[0];
 }
+
+export interface SplitSegmentResult {
+  success: boolean;
+  error?: string;
+  cutVideoTime?: number;
+  newSegments?: {
+    setlist_id: number | null;
+    video_start_time: number;
+    video_end_time: number;
+    master_start_time: number;
+    master_end_time: number;
+    sync_offset: number;
+    label: string | null;
+    members: string[] | null;
+    is_verified: boolean;
+  }[];
+}
+
+/**
+ * Splits a continuous video or an existing active segment into two pieces (left & right)
+ * at the exact playback position corresponding to cursorTime in the master timeline.
+ */
+export function splitVideoSegmentAtCursor(params: {
+  video: SyncGraphVideoNode;
+  cursorTime: number;
+  fineTuneDelta?: number;
+  trimStartDelta?: number;
+  trimEndDelta?: number;
+  setlistItems?: { id: number; start_time: number | null; end_time: number | null }[];
+}): SplitSegmentResult {
+  const { video, cursorTime, fineTuneDelta = 0, trimStartDelta = 0, trimEndDelta = 0, setlistItems } = params;
+
+  if (!video || video.is_master) {
+    return { success: false, error: '마스터 영상은 분할할 수 없습니다.' };
+  }
+
+  const isSplitVideo = !!(video.segments && video.segments.length > 0);
+  const activeSeg = isSplitVideo ? getActiveSegment(video, cursorTime) : null;
+
+  const baseOffset = activeSeg ? activeSeg.sync_offset : (video.sync_offset || 0);
+  const currentEffectiveOffset = Number((baseOffset + fineTuneDelta).toFixed(2));
+
+  const baseVideoStart = activeSeg ? activeSeg.video_start : 0;
+  const baseVideoEnd = activeSeg ? activeSeg.video_end : (video.duration || 240);
+
+  const currentVideoStart = Math.max(0, baseVideoStart + trimStartDelta);
+  const currentVideoEnd = Math.max(currentVideoStart + 0.5, baseVideoEnd + trimEndDelta);
+
+  const rawCutVideoTime = cursorTime - currentEffectiveOffset;
+  const cutVideoTime = Math.round(rawCutVideoTime * 10) / 10;
+
+  const MIN_MARGIN = 0.5;
+  if (cutVideoTime < currentVideoStart + MIN_MARGIN || cutVideoTime > currentVideoEnd - MIN_MARGIN) {
+    return {
+      success: false,
+      error: `자르려는 위치(${cutVideoTime.toFixed(1)}s)가 구간 범위(${currentVideoStart.toFixed(1)}s ~ ${currentVideoEnd.toFixed(1)}s)를 벗어났거나 경계(0.5s)와 너무 가깝습니다.`,
+      cutVideoTime
+    };
+  }
+
+  const findSetlistId = (mStart: number, fallbackId?: number | null) => {
+    if (!setlistItems || setlistItems.length === 0) return fallbackId || null;
+    const match = setlistItems.find(
+      s => s.start_time !== null && s.start_time <= mStart && (s.end_time ? s.end_time >= mStart : true)
+    );
+    return match ? match.id : (fallbackId || null);
+  };
+
+  const newSegments: Array<{
+    setlist_id: number | null;
+    video_start_time: number;
+    video_end_time: number;
+    master_start_time: number;
+    master_end_time: number;
+    sync_offset: number;
+    label: string | null;
+    members: string[] | null;
+    is_verified: boolean;
+  }> = [];
+
+  if (!isSplitVideo) {
+    const leftMasterStart = Math.round((currentVideoStart + currentEffectiveOffset) * 10) / 10;
+    const leftMasterEnd = Math.round((cutVideoTime + currentEffectiveOffset) * 10) / 10;
+    const rightMasterStart = Math.round((cutVideoTime + currentEffectiveOffset) * 10) / 10;
+    const rightMasterEnd = Math.round((currentVideoEnd + currentEffectiveOffset) * 10) / 10;
+
+    newSegments.push({
+      setlist_id: findSetlistId(leftMasterStart),
+      video_start_time: currentVideoStart,
+      video_end_time: cutVideoTime,
+      master_start_time: leftMasterStart,
+      master_end_time: leftMasterEnd,
+      sync_offset: currentEffectiveOffset,
+      label: 'Part 1 (앞)',
+      members: video.members && video.members.length > 0 ? video.members : null,
+      is_verified: true
+    });
+
+    newSegments.push({
+      setlist_id: findSetlistId(rightMasterStart),
+      video_start_time: cutVideoTime,
+      video_end_time: currentVideoEnd,
+      master_start_time: rightMasterStart,
+      master_end_time: rightMasterEnd,
+      sync_offset: currentEffectiveOffset,
+      label: 'Part 2 (뒤)',
+      members: video.members && video.members.length > 0 ? video.members : null,
+      is_verified: true
+    });
+  } else {
+    for (let i = 0; i < video.segments.length; i++) {
+      const s = video.segments[i];
+      if (s.id === activeSeg?.id) {
+        const leftMasterStart = Math.round((currentVideoStart + currentEffectiveOffset) * 10) / 10;
+        const leftMasterEnd = Math.round((cutVideoTime + currentEffectiveOffset) * 10) / 10;
+        const rightMasterStart = Math.round((cutVideoTime + currentEffectiveOffset) * 10) / 10;
+        const rightMasterEnd = Math.round((currentVideoEnd + currentEffectiveOffset) * 10) / 10;
+
+        const origLabel = s.label || `구간 ${i + 1}`;
+        const baseName = origLabel.replace(/\s*\((앞|뒤|\d+)\)$/, '');
+        const leftLabel = `${baseName} (앞)`;
+        const rightLabel = `${baseName} (뒤)`;
+
+        newSegments.push({
+          setlist_id: findSetlistId(leftMasterStart, (s as any).setlist_id),
+          video_start_time: currentVideoStart,
+          video_end_time: cutVideoTime,
+          master_start_time: leftMasterStart,
+          master_end_time: leftMasterEnd,
+          sync_offset: currentEffectiveOffset,
+          label: leftLabel,
+          members: s.members && s.members.length > 0 ? s.members : (video.members || null),
+          is_verified: true
+        });
+
+        newSegments.push({
+          setlist_id: findSetlistId(rightMasterStart, (s as any).setlist_id),
+          video_start_time: cutVideoTime,
+          video_end_time: currentVideoEnd,
+          master_start_time: rightMasterStart,
+          master_end_time: rightMasterEnd,
+          sync_offset: currentEffectiveOffset,
+          label: rightLabel,
+          members: s.members && s.members.length > 0 ? s.members : (video.members || null),
+          is_verified: true
+        });
+      } else {
+        newSegments.push({
+          setlist_id: (s as any).setlist_id || null,
+          video_start_time: s.video_start,
+          video_end_time: s.video_end,
+          master_start_time: s.master_start,
+          master_end_time: s.master_end,
+          sync_offset: s.sync_offset,
+          label: s.label || null,
+          members: s.members && s.members.length > 0 ? s.members : null,
+          is_verified: s.is_verified ?? true
+        });
+      }
+    }
+  }
+
+  newSegments.sort((a, b) => a.video_start_time - b.video_start_time);
+
+  return {
+    success: true,
+    cutVideoTime,
+    newSegments
+  };
+}
+

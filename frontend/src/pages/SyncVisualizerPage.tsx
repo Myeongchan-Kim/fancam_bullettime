@@ -13,7 +13,8 @@ import {
   calculateLocalSeekTime, 
   calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange,
-  getActiveSegment
+  getActiveSegment,
+  splitVideoSegmentAtCursor
 } from '../utils/syncGraphCalculations';
 import { ActionToolbar, StatusFilterTabs, SearchFilterBar } from '../components/sync-visualizer/SyncVisualizerToolbar';
 import { TimelineLanesCanvas } from '../components/sync-visualizer/TimelineLanesCanvas';
@@ -66,10 +67,19 @@ export default function SyncVisualizerPage() {
   // Studio Player View Mode: 'DUAL' (2-Cam Deck A vs B), 'QUAD' (4-Cam Multi-Angle Wall), 'SINGLE' (1-Cam Focus)
   const [playerMode, setPlayerMode] = useState<'DUAL' | 'QUAD' | 'SINGLE'>('DUAL');
 
-  // In-Place Offset Fine-Tuning State (applied to Deck B)
+  // In-Place Offset Fine-Tuning & Segment Trim State (applied to Deck B)
   const [fineTuneDelta, setFineTuneDelta] = useState<number>(0);
+  const [trimStartDelta, setTrimStartDelta] = useState<number>(0);
+  const [trimEndDelta, setTrimEndDelta] = useState<number>(0);
   const [isSavingOffset, setIsSavingOffset] = useState<boolean>(false);
+  const [isSplitting, setIsSplitting] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
+
+  const handleResetFineTune = () => {
+    setFineTuneDelta(0);
+    setTrimStartDelta(0);
+    setTrimEndDelta(0);
+  };
 
   // AI 2-Stage Sync Modal State
   const [isAiSyncModalOpen, setIsAiSyncModalOpen] = useState<boolean>(false);
@@ -344,11 +354,16 @@ export default function SyncVisualizerPage() {
     return graphData.videos.filter(v => isCursorInsideVideoRange(v, selectedTimeCursor));
   }, [graphData, selectedTimeCursor]);
 
-  // User Timeline Seeking (Click & Drag)
+  // User Timeline Seeking (Click & Drag & Arrow Keys)
   const seekToMasterTimeline = (masterSec: number) => {
     const clamped = Math.max(minMasterTime, Math.min(maxMasterTime, masterSec));
     isPlaybackTickRef.current = false;
     setSelectedTimeCursor(clamped);
+
+    // Check if either player is currently playing
+    const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+    const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+    const isPlaying = stateA === 1 || stateB === 1;
 
     // Deck A
     if (videoA && playerA) {
@@ -357,6 +372,9 @@ export default function SyncVisualizerPage() {
       try {
         if (insideA) {
           playerA.seekTo?.(targetA, true);
+          if (isPlaying && stateA !== 1) {
+            playerA.playVideo?.();
+          }
           lastTimeRefA.current = targetA;
         } else {
           playerA.pauseVideo?.();
@@ -373,6 +391,9 @@ export default function SyncVisualizerPage() {
       try {
         if (insideB) {
           playerB.seekTo?.(targetB, true);
+          if (isPlaying && stateB !== 1) {
+            playerB.playVideo?.();
+          }
           lastTimeRefB.current = targetB;
         } else {
           playerB.pauseVideo?.();
@@ -381,6 +402,9 @@ export default function SyncVisualizerPage() {
         }
       } catch (e) {}
     }
+
+    lastSeekTimeARef.current = Date.now();
+    lastSeekTimeBRef.current = Date.now();
   };
 
   const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
@@ -435,27 +459,60 @@ export default function SyncVisualizerPage() {
     setActiveDeckSlot(prev => (prev === 'A' ? 'B' : 'A'));
   };
 
+  const handleSelectSegment = (seg: any) => {
+    handleResetFineTune();
+    seekToMasterTimeline(seg.master_start);
+  };
+
   const nudge = (seconds: number) => {
     setFineTuneDelta(prev => Number((prev + seconds).toFixed(2)));
   };
 
-  // Keyboard Nudge Shortcuts
+  // Keyboard Shortcuts: Arrow keys for synchronized playback seek (±5s), Shift/Alt for calibration nudge, Space for Play/Pause
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) return;
-      if (playerMode !== 'DUAL' || !videoB) return;
 
+      // Space: Synchronized Play / Pause toggle
+      if (e.code === 'Space' || e.key === ' ') {
+        e.preventDefault();
+        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
+        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
+        const isPlaying = stateA === 1 || stateB === 1;
+        if (isPlaying) {
+          playerA?.pauseVideo?.();
+          playerB?.pauseVideo?.();
+        } else {
+          playerA?.playVideo?.();
+          playerB?.playVideo?.();
+        }
+        return;
+      }
+
+      // Left / Right Arrow: Synchronized Playback Seek (±5s) or Nudge
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
-        nudge(e.shiftKey ? -0.1 : -0.5);
+        if (e.shiftKey && videoB) {
+          nudge(-0.1);
+        } else if (e.altKey && videoB) {
+          nudge(-0.5);
+        } else {
+          seekToMasterTimeline(selectedTimeCursor - 5);
+        }
       } else if (e.key === 'ArrowRight') {
         e.preventDefault();
-        nudge(e.shiftKey ? 0.1 : 0.5);
+        if (e.shiftKey && videoB) {
+          nudge(0.1);
+        } else if (e.altKey && videoB) {
+          nudge(0.5);
+        } else {
+          seekToMasterTimeline(selectedTimeCursor + 5);
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [playerMode, videoB]);
+  }, [playerA, playerB, videoA, videoB, selectedTimeCursor, minMasterTime, maxMasterTime, fineTuneDelta]);
 
   // Real-time synchronization when fineTuneDelta changes
   useEffect(() => {
@@ -495,14 +552,14 @@ export default function SyncVisualizerPage() {
         const updatedPayload = videoB.segments.map(s => {
           const isTarget = s.id === activeSeg.id;
           const off = isTarget ? newSegOffset : s.sync_offset;
-          const vStart = s.video_start;
-          const vEnd = s.video_end;
+          const vStart = isTarget ? Math.max(0, s.video_start + trimStartDelta) : s.video_start;
+          const vEnd = isTarget ? Math.max(vStart + 0.5, s.video_end + trimEndDelta) : s.video_end;
           return {
             setlist_id: (s as any).setlist_id || null,
-            video_start_time: vStart,
-            video_end_time: vEnd,
-            master_start_time: Math.round(vStart + off),
-            master_end_time: Math.round(vEnd + off),
+            video_start_time: Math.round(vStart * 10) / 10,
+            video_end_time: Math.round(vEnd * 10) / 10,
+            master_start_time: Math.round((vStart + off) * 10) / 10,
+            master_end_time: Math.round((vEnd + off) * 10) / 10,
             sync_offset: off,
             label: s.label || null,
             members: s.members && s.members.length > 0 ? s.members : null,
@@ -519,13 +576,15 @@ export default function SyncVisualizerPage() {
         // Optimistically update segment in local state
         const updatedSegs = videoB.segments.map(s => {
           if (s.id === activeSeg.id) {
-            const vStart = s.video_start;
-            const vEnd = s.video_end;
+            const vStart = Math.max(0, s.video_start + trimStartDelta);
+            const vEnd = Math.max(vStart + 0.5, s.video_end + trimEndDelta);
             return {
               ...s,
+              video_start: Math.round(vStart * 10) / 10,
+              video_end: Math.round(vEnd * 10) / 10,
               sync_offset: newSegOffset,
-              master_start: Math.round(vStart + newSegOffset),
-              master_end: Math.round(vEnd + newSegOffset),
+              master_start: Math.round((vStart + newSegOffset) * 10) / 10,
+              master_end: Math.round((vEnd + newSegOffset) * 10) / 10,
               is_verified: true
             };
           }
@@ -548,7 +607,7 @@ export default function SyncVisualizerPage() {
           };
         });
 
-        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 오프셋이 성공적으로 저장되었습니다! (오프셋: ${newSegOffset > 0 ? `+${newSegOffset}` : newSegOffset}s)`);
+        setSaveSuccessMsg(`구간 [${activeSeg.label || `#${activeSeg.id}`}] 저장 완료! (오프셋: ${newSegOffset > 0 ? `+${newSegOffset}` : newSegOffset}s)`);
       } else {
         const newOffset = Number((videoB.sync_offset + fineTuneDelta).toFixed(2));
         const parentId = videoA && videoA.id !== videoB.id ? videoA.id : null;
@@ -591,7 +650,7 @@ export default function SyncVisualizerPage() {
         setSaveSuccessMsg(`성공적으로 저장되었습니다! (오프셋: ${newOffset > 0 ? `+${newOffset}` : newOffset}s, 검증 카운트 증가)`);
       }
 
-      setFineTuneDelta(0);
+      handleResetFineTune();
       // Silent background fetch to guarantee backend sync without tearing down players or jumping cursor
       loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id, true, true);
       setTimeout(() => setSaveSuccessMsg(null), 5000);
@@ -611,6 +670,101 @@ export default function SyncVisualizerPage() {
       alert(`저장 실패: ${err?.response?.data?.detail || err.message}`);
     } finally {
       setIsSavingOffset(false);
+    }
+  };
+
+  // Split Active Segment at Current Playback Cursor
+  const handleSplitAtCursor = async () => {
+    if (!videoB) return;
+
+    const splitResult = splitVideoSegmentAtCursor({
+      video: videoB,
+      cursorTime: selectedTimeCursor,
+      fineTuneDelta,
+      trimStartDelta,
+      trimEndDelta,
+      setlistItems: graphData?.setlist
+    });
+
+    if (!splitResult.success || !splitResult.newSegments) {
+      alert(splitResult.error || '구간을 분할할 수 없습니다.');
+      return;
+    }
+
+    const cutTimeStr = formatTime(splitResult.cutVideoTime || 0);
+    const confirmMsg = `현재 재생 위치(${cutTimeStr})를 기준으로 이 구간을 좌우 2개로 분할하시겠습니까?\n\n` +
+      `분할 후 각 구간의 싱크 오프셋과 길이를 독립적으로 조절할 수 있습니다.`;
+    if (!window.confirm(confirmMsg)) return;
+
+    setIsSplitting(true);
+    try {
+      const adminKey = localStorage.getItem('admin_key') || localStorage.getItem('twice_admin_key') || 'twice360-admin-secret-key';
+
+      const res = await axios.post(
+        `${API_BASE_URL}/videos/${videoB.id}/segments/bulk`,
+        splitResult.newSegments,
+        { headers: { 'x-admin-key': adminKey } }
+      );
+
+      const newSegs = res.data.map((s: any) => ({
+        id: s.id,
+        video_start: s.video_start_time,
+        video_end: s.video_end_time,
+        master_start: s.master_start_time,
+        master_end: s.master_end_time,
+        sync_offset: s.sync_offset,
+        label: s.label,
+        members: s.members || [],
+        is_verified: s.is_verified
+      }));
+
+      const minMaster = newSegs.length > 0 ? Math.min(...newSegs.map((s: any) => s.master_start)) : videoB.master_start_time;
+      const maxMaster = newSegs.length > 0 ? Math.max(...newSegs.map((s: any) => s.master_end)) : videoB.master_end_time;
+
+      const updatedVideoB: SyncGraphVideoNode = {
+        ...videoB,
+        segments: newSegs,
+        master_start_time: minMaster,
+        master_end_time: maxMaster,
+        status: 'segmented',
+        status_reason: `Split into ${newSegs.length} segments`,
+        calibration_count: (videoB.calibration_count || 0) + 1
+      };
+
+      setVideoB(updatedVideoB);
+
+      setGraphData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          videos: prev.videos.map(v => v.id === videoB.id ? updatedVideoB : v)
+        };
+      });
+
+      // Reset in-flight deltas since they are now committed to the split segments
+      handleResetFineTune();
+
+      setSaveSuccessMsg(`✂️ 성공적으로 잘렸습니다! (${cutTimeStr} 기준 좌우 2조각 분할 완료, 총 ${newSegs.length}개 구간)`);
+      setTimeout(() => setSaveSuccessMsg(null), 5000);
+
+      // Silent sync with backend
+      loadSyncGraph(selectedConcertId, videoA?.id, videoB?.id, true, true);
+    } catch (err: any) {
+      console.error('Failed to split segment:', err);
+      if (err?.response?.status === 403) {
+        localStorage.removeItem('admin_key');
+        setIsAdminMode(false);
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요 (기본 개발 키: 851212):');
+        if (retryKey) {
+          localStorage.setItem('admin_key', retryKey.trim());
+          setIsAdminMode(true);
+          handleSplitAtCursor();
+          return;
+        }
+      }
+      alert(`구간 분할 실패: ${err?.response?.data?.detail || err.message}`);
+    } finally {
+      setIsSplitting(false);
     }
   };
 
@@ -828,7 +982,7 @@ export default function SyncVisualizerPage() {
           isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
           
-          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
             setSelectedTimeCursor(masterTime);
           }
 
@@ -861,7 +1015,7 @@ export default function SyncVisualizerPage() {
           isPlaybackTickRef.current = true;
           const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
           
-          if (Math.abs(masterTime - selectedTimeCursor) > 1.0) {
+          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
             setSelectedTimeCursor(masterTime);
           }
 
@@ -1094,7 +1248,7 @@ export default function SyncVisualizerPage() {
           />
 
           {/* Right Multi-Angle Deck & Calibration Studio */}
-          <div className="lg:col-span-8 xl:col-span-9 lg:sticky lg:top-4 space-y-4">
+          <div className="lg:col-span-8 xl:col-span-9 lg:sticky lg:top-4 lg:h-[calc(100vh-2rem)] lg:overflow-y-auto overscroll-contain space-y-4 pr-1.5 custom-scrollbar min-w-0">
             <DeckStudioHeader
               playerMode={playerMode}
               activeDeckSlot={activeDeckSlot}
@@ -1133,6 +1287,8 @@ export default function SyncVisualizerPage() {
                 videoA={videoA}
                 videoB={videoB}
                 fineTuneDelta={fineTuneDelta}
+                trimStartDelta={trimStartDelta}
+                trimEndDelta={trimEndDelta}
                 selectedTimeCursor={selectedTimeCursor}
                 isSavingOffset={isSavingOffset}
                 saveSuccessMsg={saveSuccessMsg}
@@ -1140,13 +1296,21 @@ export default function SyncVisualizerPage() {
                 isRoughSyncing={isRoughSyncing}
                 isLoadingCalibrator={isLoadingCalibrator}
                 formatTime={formatTime}
-                onResetFineTune={() => setFineTuneDelta(0)}
+                onResetFineTune={handleResetFineTune}
                 onDeltaChange={setFineTuneDelta}
+                onTrimChange={(startDelta, endDelta) => {
+                  setTrimStartDelta(startDelta);
+                  setTrimEndDelta(endDelta);
+                }}
                 onNudge={nudge}
                 onSaveOffset={handleSaveFineTuneOffset}
                 onOpenCalibrator={handleOpenCalibrator}
                 onTriggerRoughSync={handleTriggerRoughSync}
                 onTriggerAiSync={handleTriggerAiSync}
+                onSeek={seekToMasterTimeline}
+                onSelectSegment={handleSelectSegment}
+                onSplitAtCursor={handleSplitAtCursor}
+                isSplitting={isSplitting}
               />
             )}
 

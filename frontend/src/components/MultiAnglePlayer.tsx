@@ -254,6 +254,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 onPlay={handlePlay}
                 onPause={handlePause}
                 className="w-full h-full absolute inset-0"
+                iframeClassName="w-full h-full block"
               />
             )}
           </div>
@@ -271,46 +272,49 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
 
         {/* Side Slaves (Right Sidebar) - Spans the right-most 2 columns */}
-        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 max-h-[600px] xl:max-h-[850px] overflow-y-auto no-scrollbar min-w-0">
-          <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
+        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0">
+          <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
             <div className="h-px flex-1 bg-slate-800"></div>
             SIDE ANGLES
             <div className="h-px flex-1 bg-slate-800"></div>
           </h3>
           
-          {activeSlaveVideos.slice(0, 4).map(video => (
-            <div 
-              key={video.id} 
-              className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"
-              onClick={() => setAsMaster(video.id)}
-            >
-              <div className="aspect-video relative bg-black">
-                <YouTube 
-                  key={`slave-static-${video.id}`}
-                  videoId={video.youtube_id} 
-                  opts={getSlaveOpts(video)} 
-                  onReady={(e) => handleReady(e, video.id)}
-                  className="w-full h-full absolute inset-0 pointer-events-none"
-                />
-                <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
-                   <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-xs text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
-                     {video.title}
-                   </div>
-                   <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
-                     <Maximize2 className="w-3 h-3" /> SET AS MASTER
-                   </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
+            {activeSlaveVideos.slice(0, 4).map(video => (
+              <div 
+                key={video.id} 
+                className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0"
+                onClick={() => setAsMaster(video.id)}
+              >
+                <div className="aspect-video relative bg-black w-full">
+                  <YouTube 
+                    key={`slave-static-${video.id}`}
+                    videoId={video.youtube_id} 
+                    opts={getSlaveOpts(video)} 
+                    onReady={(e) => handleReady(e, video.id)}
+                    className="w-full h-full absolute inset-0 pointer-events-none"
+                    iframeClassName="w-full h-full block"
+                  />
+                  <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
+                     <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-xs text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
+                       {video.title}
+                     </div>
+                     <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
+                       <Maximize2 className="w-3 h-3" /> SET AS MASTER
+                     </div>
+                  </div>
+                </div>
+                <div className="p-3">
+                  <div className="flex justify-between items-start gap-2">
+                    <h4 className="text-[10px] font-bold text-white line-clamp-1 flex-1">{video.title}</h4>
+                    <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-gray-500 transition-colors">
+                      <ExternalLink className="h-3 w-3" />
+                    </Link>
+                  </div>
                 </div>
               </div>
-              <div className="p-3">
-                <div className="flex justify-between items-start gap-2">
-                  <h4 className="text-[10px] font-bold text-white line-clamp-1 flex-1">{video.title}</h4>
-                  <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-gray-500 transition-colors">
-                    <ExternalLink className="h-3 w-3" />
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
 
           {activeSlaveVideos.length === 0 && (
             <div className="py-10 text-center border-2 border-dashed border-slate-800 rounded-2xl">
@@ -322,7 +326,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
         {activeSlaveVideos.length > 4 && (
           <div className="xl:col-span-3 flex flex-col space-y-4">
-            <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2">
+            <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
               <div className="h-px flex-1 bg-slate-800"></div>
               ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})
               <div className="h-px flex-1 bg-slate-800"></div>
@@ -331,16 +335,17 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
               {activeSlaveVideos.slice(4, 12).map(video => (
                 <div 
                   key={video.id} 
-                  className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative"
+                  className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0"
                   onClick={() => setAsMaster(video.id)}
                 >
-                  <div className="aspect-video relative bg-black">
+                  <div className="aspect-video relative bg-black w-full">
                     <YouTube 
                       key={`slave-static-extra-${video.id}`}
                       videoId={video.youtube_id} 
                       opts={getSlaveOpts(video)} 
                       onReady={(e) => handleReady(e, video.id)}
                       className="w-full h-full absolute inset-0 pointer-events-none"
+                      iframeClassName="w-full h-full block"
                     />
                     <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
                        <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-[10px] text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
