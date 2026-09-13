@@ -265,7 +265,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           <div className="flex items-center gap-1.5">
             <Sliders className="w-4 h-4 text-twice-magenta" />
             <span className="text-xs font-black text-gray-200 uppercase tracking-wide">
-              Deck B 싱크 캘리브레이터
+              Deck B Sync
             </span>
             <span className="text-xs text-twice-magenta font-mono font-bold truncate max-w-[220px]">
               (#{videoB.id} {videoB.title})
