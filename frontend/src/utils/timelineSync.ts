@@ -41,22 +41,25 @@ export function getMasterConcertTime(video: Video, localTime: number): number {
 /**
  * Converts Master Concert Timeline time (T_master) into a video's local playback timestamp (t_video).
  * Returns null if the video does not cover the requested master concert time (e.g. cut/skipped/out of bounds).
+ * 
+ * leadPadding: Allows upcoming videos (starting within leadPadding seconds) to be discovered and pre-buffered at t=0.
+ * A video that has already finished its duration (local > duration) strictly returns null so it never bleeds into adjacent songs.
  */
 export function getLocalVideoTime(
   video: Video,
   masterConcertTime: number,
-  padding: number = 0
+  leadPadding: number = 0
 ): number | null {
   const duration = (video.duration && video.duration > 0) ? video.duration : 99999;
 
   if (video.sync_segments && video.sync_segments.length > 0) {
     const seg = video.sync_segments.find(
-      s => masterConcertTime >= (s.master_start_time - padding) &&
-           masterConcertTime <= (s.master_end_time + padding)
+      s => masterConcertTime >= (s.master_start_time - leadPadding) &&
+           masterConcertTime <= s.master_end_time
     );
     if (seg) {
       const local = masterConcertTime - seg.sync_offset;
-      return (local >= -padding && local <= duration + padding) ? Math.max(0, local) : null;
+      return (local >= -leadPadding && local <= duration) ? Math.max(0, local) : null;
     }
     return null;
   }
@@ -64,7 +67,7 @@ export function getLocalVideoTime(
   // Fallback to classic scalar sync_offset
   const offset = video.sync_offset || 0;
   const local = masterConcertTime - offset;
-  if (local >= -padding && local <= duration + padding) {
+  if (local >= -leadPadding && local <= duration) {
     return Math.max(0, local);
   }
   return null;
@@ -76,9 +79,9 @@ export function getLocalVideoTime(
 export function isVideoActiveAtConcertTime(
   video: Video,
   masterConcertTime: number,
-  padding: number = 30
+  leadPadding: number = 15
 ): boolean {
-  return getLocalVideoTime(video, masterConcertTime, padding) !== null;
+  return getLocalVideoTime(video, masterConcertTime, leadPadding) !== null;
 }
 
 /**

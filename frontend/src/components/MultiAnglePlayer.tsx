@@ -48,7 +48,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const slaveVideos = useMemo(() => {
     const filtered = videos.filter(v => {
       if (v.id === masterId) return false;
-      return isVideoActiveAtConcertTime(v, currentConcertTime, 30);
+      return isVideoActiveAtConcertTime(v, currentConcertTime, 15);
     });
 
     // Sort to prioritize shorter, specific fancams over massive full concerts if they overlap

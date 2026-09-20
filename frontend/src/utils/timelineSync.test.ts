@@ -66,6 +66,19 @@ describe('timelineSync legacy utilities tests', () => {
     expect(isVideoActiveAtConcertTime(mockVideo, 200)).toBe(false);
   });
 
+  it('strictly excludes finished videos and supports leadPadding only for upcoming videos', () => {
+    // mockVideo: sync_offset = 500, duration = 180 (runs from master 500 to 680)
+    // Upcoming video within leadPadding (master 490 -> 10s before start): returns 0
+    expect(getLocalVideoTime(mockVideo, 490, 15)).toBe(0);
+    // Upcoming video beyond leadPadding: returns null
+    expect(getLocalVideoTime(mockVideo, 480, 15)).toBeNull();
+    // Video currently playing at master 600: returns 100
+    expect(getLocalVideoTime(mockVideo, 600, 15)).toBe(100);
+    // Video has ended at master 685 (duration is 180, so 685 is 5s past end): must return null!
+    expect(getLocalVideoTime(mockVideo, 685, 15)).toBeNull();
+    expect(isVideoActiveAtConcertTime(mockVideo, 685, 15)).toBe(false);
+  });
+
   it('generates intervals', () => {
     const intervals = getConcertTimeIntervals(mockSegmentedVideo);
     expect(intervals.length).toBe(2);
