@@ -32,84 +32,14 @@ YT_DLP_EXE = (
 
 import glob
 
-def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str) -> str:
-    out_wav = f"scratch/precision_sync/{out_name}.wav"
-    if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
-        return out_wav
+from app.services.audio_dsp import (
+    download_audio_slice,
+    cross_correlate,
+    probe_acoustic_match,
+    AUDIO_CACHE_DIR,
+    YT_DLP_EXE
+)
 
-    # 1. Fast Path: If full audio is already cached locally, slice with local ffmpeg in ~0.05s
-    cached_candidates = [
-        f"scratch/audio_cache/{yt_id}.webm",
-        f"scratch/audio_cache/{yt_id}.m4a",
-        f"scratch/audio_cache/{yt_id}.mp4",
-        f"scratch/audio_cache/master_1094_{yt_id}.webm",
-        f"scratch/audio_cache/v63_{yt_id}.webm",
-    ]
-    for c in cached_candidates:
-        if os.path.exists(c) and os.path.getsize(c) > 10000:
-            cmd = [
-                "ffmpeg", "-y",
-                "-ss", f"{max(0, start_s):.2f}",
-                "-t", f"{dur_s:.2f}",
-                "-i", c,
-                "-ar", "16000", "-ac", "1",
-                out_wav
-            ]
-            try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-                if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
-                    return out_wav
-            except Exception:
-                pass
-
-    # 2. Network Fallback: Download remote slice with strict timeouts
-    cmd = [
-        YT_DLP_EXE,
-        "--socket-timeout", "15",
-        "--retries", "3",
-        "--downloader-args", "ffmpeg_i:-timeout 15000000",
-        "--download-sections", f"*{max(0, start_s):.1f}-{start_s+dur_s:.1f}",
-        "-x", "--audio-format", "wav",
-        "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
-        "-o", f"scratch/precision_sync/{out_name}.%(ext)s",
-        f"https://www.youtube.com/watch?v={yt_id}"
-    ]
-    for attempt in range(2):
-        try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
-            if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
-                return out_wav
-        except subprocess.TimeoutExpired:
-            # Kill any hanging process and clean up lingering part files
-            for p in glob.glob(f"scratch/precision_sync/{out_name}*"):
-                if not p.endswith(".wav"):
-                    try:
-                        os.remove(p)
-                    except Exception:
-                        pass
-    return out_wav
-
-def cross_correlate(ref_wav: str, tgt_wav: str, tgt_window_start: float) -> tuple[float, float]:
-    """Returns (best_matched_master_second, confidence_score)."""
-    if not os.path.exists(ref_wav) or not os.path.exists(tgt_wav):
-        return -1.0, 0.0
-    sr_ref, data_ref = wavfile.read(ref_wav)
-    sr_tgt, data_tgt = wavfile.read(tgt_wav)
-    
-    data_ref = data_ref.astype(np.float32) / 32768.0
-    data_tgt = data_tgt.astype(np.float32) / 32768.0
-    
-    if len(data_tgt) < len(data_ref):
-        return -1.0, 0.0
-        
-    corr = scipy.signal.correlate(data_tgt, data_ref, mode="valid")
-    best_lag = np.argmax(corr)
-    matched_sec = tgt_window_start + (best_lag / sr_ref)
-    
-    norm_ref = np.linalg.norm(data_ref)
-    norm_tgt = np.linalg.norm(data_tgt[best_lag : best_lag + len(data_ref)])
-    score = corr[best_lag] / (norm_ref * norm_tgt + 1e-9)
-    return float(matched_sec), float(score)
 
 def calibrate_video_3point(db, video: Video, master_video: Video, expected_master_center: float, search_radius: float = 400.0):
     """

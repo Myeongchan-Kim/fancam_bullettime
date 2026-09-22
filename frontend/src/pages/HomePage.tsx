@@ -12,6 +12,32 @@ import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
 
 const FEATURED_SYNC_VIDEOS = [
   { 
+    id: 1668, 
+    title: 'BATTITUDE', 
+    subtitle: 'Incheon 20250720 (Nayeon, Jeongyeon, Momo, Mina Unit)', 
+    img: '/images/featured_cam01_battitude.jpg',
+    angleCount: 5,
+    extraImgs: [
+      '/images/featured_cam02_battitude.jpg',
+      '/images/featured_cam03_battitude.jpg',
+      '/images/featured_cam04_battitude.jpg',
+      '/images/featured_cam05_battitude.jpg'
+    ]
+  },
+  { 
+    id: 1640, 
+    title: 'DAT AHH DAT OOH', 
+    subtitle: 'Incheon 20250720 (Sana, Jihyo, Dahyun, Chaeyoung, Tzuyu Unit)', 
+    img: '/images/featured_cam01_datahh.jpg',
+    angleCount: 5,
+    extraImgs: [
+      '/images/featured_cam02_datahh.jpg',
+      '/images/featured_cam03_datahh.jpg',
+      '/images/featured_cam04_datahh.jpg',
+      '/images/featured_cam05_datahh.jpg'
+    ]
+  },
+  { 
     id: 43, 
     title: 'In my room', 
     subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
@@ -22,6 +48,41 @@ const FEATURED_SYNC_VIDEOS = [
       '/images/featured_cam03_inmyroom.jpg',
       '/images/featured_cam04_inmyroom.jpg',
       '/images/featured_cam05_inmyroom.jpg'
+    ]
+  },
+  { 
+    id: 45, 
+    title: 'MAKE ME GO', 
+    subtitle: 'Incheon 20250720 (360° Stage)', 
+    img: '/images/featured_cam01_makemego.jpg',
+    angleCount: 4,
+    extraImgs: [
+      '/images/featured_cam02_makemego.jpg',
+      '/images/featured_cam03_makemego.jpg',
+      '/images/featured_cam04_makemego.jpg'
+    ]
+  },
+  { 
+    id: 1654, 
+    title: 'THIS IS FOR', 
+    subtitle: 'Incheon 20250720 (Opening 360° Stage)', 
+    img: '/images/featured_cam01_thisisfor.jpg',
+    angleCount: 4,
+    extraImgs: [
+      '/images/featured_cam02_thisisfor.jpg',
+      '/images/featured_cam03_thisisfor.jpg',
+      '/images/featured_cam04_thisisfor.jpg'
+    ]
+  },
+  { 
+    id: 1720, 
+    title: 'GONE', 
+    subtitle: 'Incheon 20250720 (Band Live Ver.)', 
+    img: '/images/featured_cam01_gone.jpg',
+    angleCount: 3,
+    extraImgs: [
+      '/images/featured_cam02_gone.jpg',
+      '/images/featured_cam03_gone.jpg'
     ]
   },
   { 
@@ -46,7 +107,31 @@ const FEATURED_SYNC_VIDEOS = [
       '/images/featured_cam03_chess.jpg'
     ]
   },
+  { 
+    id: 68, 
+    title: 'RIGHT HAND GIRL', 
+    subtitle: 'Incheon 20250720 (Tzuyu, Jihyo Focus)', 
+    img: '/images/featured_cam01_righthandgirl.jpg',
+    angleCount: 3,
+    extraImgs: [
+      '/images/featured_cam02_righthandgirl.jpg',
+      '/images/featured_cam03_righthandgirl.jpg'
+    ]
+  },
+  { 
+    id: 1696, 
+    title: 'CRY FOR ME', 
+    subtitle: 'Incheon 20250719 (Chaeyoung, Tzuyu Focus)', 
+    img: '/images/featured_cam01_cryforme.jpg',
+    angleCount: 3,
+    extraImgs: [
+      '/images/featured_cam02_cryforme.jpg',
+      '/images/featured_cam03_cryforme.jpg'
+    ]
+  },
 ];
+
+const MAX_FEATURED_DISPLAY = 8;
 
 const HomePage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -77,6 +162,16 @@ const HomePage = () => {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [offset, setOffset] = useState(0);
   const adminKey = localStorage.getItem('admin_key') || '';
+
+  // 🎲 Shuffle featured videos pool on visit and fix display to 8 items
+  const shuffledFeaturedVideos = useMemo(() => {
+    const list = [...FEATURED_SYNC_VIDEOS];
+    for (let i = list.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [list[i], list[j]] = [list[j], list[i]];
+    }
+    return list.slice(0, MAX_FEATURED_DISPLAY);
+  }, []);
 
   // Local state for the input field to make it snappy
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -277,7 +372,7 @@ const HomePage = () => {
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {FEATURED_SYNC_VIDEOS.map((featured) => (
+            {shuffledFeaturedVideos.map((featured) => (
               <Link to={`/video/${featured.id}`} key={featured.id} className="group relative transition-all duration-300 block">
                 {/* Neon Glow Hover Effect */}
                 <div className="absolute -inset-1 bg-gradient-to-r from-twice-magenta/40 to-twice-apricot/40 rounded-3xl blur-md opacity-0 group-hover:opacity-100 transition duration-500"></div>

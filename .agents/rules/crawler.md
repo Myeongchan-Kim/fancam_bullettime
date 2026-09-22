@@ -34,3 +34,10 @@ To achieve perfect "Bullet Time" multi-angle switching, all videos must align to
   3. 시뮬레이션/벤치마크 단계에서 DB 라이브러리(`app.db`, `sqlalchemy`, `psycopg2`, `sqlite3`)를 직접 임포트하여 정답을 엿보는 행위 절대 금지.
 - **상시 감사(Audit) 의무:**
   - 벤치마크 및 시뮬레이션 결과를 보고하기 전, 반드시 코드에 하드코딩된 ID나 누출된 파라미터가 있는지 자체 AST/코드 감사를 통과해야 하며, 감사 결과를 함께 명시한다.
+
+### 5. 🎯 Multi-Pass Sync Pipeline Hierarchy (1:1 Fast-Track vs Two-Pass Split Engine)
+- **1단계: 1:1 단일 직캠 동기화 선제 실행 (Fast-Track)**:
+  - 컷 없는 일반 단일 곡 직캠(길이 < 5분, 시작/끝 오프셋 편차 $\le 1.0\text{s}$)을 1:1 고속 동기화로 먼저 처리하여 마스터 타임라인 상에 곡별 고품질 피어 앵커(Peer Anchor)들을 선제적으로 확보한다.
+- **2단계: Two-Pass Calibrator 후속 투입 (Complex Split Engine)**:
+  - 1:1 단계에서 처리되지 않는 장시간 미분할 영상(> 5분), 메들리 직캠, 풀 콘서트 영상(#63, #65, #1715 등) 등 점프컷이 반복되는 복합 영상에 한하여 **Two-Pass Calibrator (Pass 1 매크로 랜드마크 생성 $\to$ Pass 2 바운디드 로컬 정밀 분할)**를 투입한다.
+

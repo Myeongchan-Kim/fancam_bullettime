@@ -25,7 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import Video, ConcertSetlist, VideoSyncSegment
 from app.services.calibration import record_video_calibration
-from scripts.precision_sync_calibrator import download_audio_slice, cross_correlate
+from app.services.audio_dsp import download_audio_slice, cross_correlate
 from app.crawler.recursive_segment_calibrator import (
     binary_search_cut_boundary,
     merge_adjacent_segments
@@ -168,7 +168,7 @@ def pass1_generate_coarse_frames(
         if p["success"] and abs(p["offset"] - curr_off) > DRIFT_THRESHOLD:
             # 2-step verification probe 10s ahead to avoid reverb / false correlation spikes
             p_verify = probe_local(
-                yt_tgt, yt_ref, min(total_dur - 10.0, t + 10.0), p["offset"], search_win=40.0
+                yt_tgt, yt_ref, max(0.0, min(total_dur - 8.0, t + 10.0)), p["offset"], search_win=40.0
             )
             if p_verify["success"] and abs(p_verify["offset"] - p["offset"]) <= 0.8:
                 frames.append({
@@ -190,7 +190,7 @@ def pass1_generate_coarse_frames(
             rec = find_setlist_landmark(yt_tgt, yt_ref, t, min_m, setlists, max_window=2700.0)
             if rec["success"] and abs(rec["offset"] - curr_off) > DRIFT_THRESHOLD:
                 p_verify = probe_local(
-                    yt_tgt, yt_ref, min(total_dur - 10.0, t + 10.0), rec["offset"], search_win=40.0
+                    yt_tgt, yt_ref, max(0.0, min(total_dur - 8.0, t + 10.0)), rec["offset"], search_win=40.0
                 )
                 if p_verify["success"] and abs(p_verify["offset"] - rec["offset"]) <= 1.0:
                     frames.append({
@@ -303,13 +303,14 @@ def pass2_refine_bounded_frame(
 
 
 def run_two_pass_pipeline(
-    yt_tgt: str,
-    yt_ref: str,
-    total_dur: float,
-    setlists: List[Dict[str, Any]],
+    yt_tgt: str = "",
+    yt_ref: str = "",
+    total_dur: float = 0.0,
+    setlists: Optional[List[Dict[str, Any]]] = None,
     coarse_frames: Optional[List[Dict[str, Any]]] = None,
     coarse_step: float = DEFAULT_COARSE_STEP,
-    search_win: float = DEFAULT_SEARCH_WINDOW
+    search_win: float = DEFAULT_SEARCH_WINDOW,
+    yt_target: Optional[str] = None
 ) -> List[Dict[str, Any]]:
     """
     Executes the end-to-end Two-Pass Segmentation Pipeline:
@@ -318,10 +319,13 @@ def run_two_pass_pipeline(
     - Executes Pass 2 on each bounded frame.
     - Automatically merges adjacent sub-segments with |delta_offset| <= 0.4s.
     """
+    target_yt = yt_target or yt_tgt
+    setlists = setlists or []
+
     # 1. Obtain coarse frames
     if coarse_frames is None:
         frames = pass1_generate_coarse_frames(
-            yt_tgt, yt_ref, total_dur, setlists, coarse_step=coarse_step
+            target_yt, yt_ref, total_dur, setlists, coarse_step=coarse_step
         )
     else:
         logger.info(f"📋 [Mode B] Utilizing {len(coarse_frames)} pre-defined bounded frames.")
@@ -335,7 +339,7 @@ def run_two_pass_pipeline(
         e_t = f["end"]
         b_off = f["offset"]
         segs = pass2_refine_bounded_frame(
-            yt_tgt, yt_ref, s_t, e_t, b_off,
+            target_yt, yt_ref, s_t, e_t, b_off,
             depth=0, max_depth=MAX_RECURSION_DEPTH, search_win=search_win
         )
         all_micro_segs.extend(segs)
@@ -353,7 +357,8 @@ def calibrate_video_with_two_pass(
     video_id: int,
     mode: str = "auto",
     custom_frames: Optional[List[Dict[str, Any]]] = None,
-    force: bool = False
+    force: bool = False,
+    commit: bool = True
 ) -> Dict[str, Any]:
     """
     Production entry point for Two-Pass calibration of a video.
@@ -378,7 +383,8 @@ def calibrate_video_with_two_pass(
     if not master_video:
         master_video = db.query(Video).filter(
             Video.concert_id == video.concert_id,
-            Video.id != video.id
+            Video.id != video.id,
+            Video.is_unavailable == False
         ).order_by(Video.duration.desc()).first()
 
     if not master_video:
@@ -405,7 +411,11 @@ def calibrate_video_with_two_pass(
     def find_setlist_match(m_start: float, m_end: float) -> Tuple[Optional[int], Optional[str]]:
         for s in setlists_dict:
             if s["start_time"] is not None:
-                if abs(s["start_time"] - m_start) < 45.0 or (s["start_time"] >= m_start - 10.0 and s["start_time"] <= m_end):
+                if (
+                    abs(s["start_time"] - m_start) < 45.0
+                    or (s["start_time"] >= m_start - 10.0 and s["start_time"] <= m_end)
+                    or (0.0 <= m_start - s["start_time"] <= 210.0)
+                ):
                     return s["id"], s["name"]
         return None, None
 
@@ -495,7 +505,10 @@ def calibrate_video_with_two_pass(
         status="split_segmented" if len(created_records) > 1 else "ai_calibrated",
         commit=False
     )
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
 
     return {
         "success": True,

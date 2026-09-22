@@ -18,11 +18,12 @@ def test_sync_case_incheon_day1_momo_solo():
     Should show video/215.
     
     Calculation:
-    Video 64 (Full Concert) offset: -237.0s
-    Concert Time = 5522 + (-237.0) = 5285.0s
+    Video 64 (Full Concert) offset: 0.0s (Master)
+    Video 64 at playback time 5522.0s
+    Concert Time = 5522.0 + v64.sync_offset = 5522.0s
     
-    Video 215 (Momo Solo) offset: 5277.0s
-    Relative Time in Video 215 = 5285.0 - 5277.0 = 8.0s
+    Video 215 (Momo Solo) offset: 5500.0s, duration: 111.0s
+    Relative Time in Video 215 = 5522.0 - 5500.0 = 22.0s
     """
     db = SessionLocal()
     try:
@@ -33,9 +34,8 @@ def test_sync_case_incheon_day1_momo_solo():
         assert v215 is not None, "Video 215 not found"
         assert v64.concert_id == v215.concert_id, "Concert IDs do not match"
         
-        # Verify offsets: Momo solo starts at 5277s
-        # At concert time 5285s, Momo solo is actively playing
-        concert_time = 5285.0 + v64.sync_offset
+        # At video 64 playback time 5522s, Momo solo is actively playing
+        concert_time = 5522.0 + v64.sync_offset
         assert concert_time >= v215.sync_offset, f"Video 215 has not started at concert time {concert_time}"
         duration = v215.duration if v215.duration > 0 else 180
         assert concert_time < v215.sync_offset + duration, f"Video 215 has already ended at concert time {concert_time}"
