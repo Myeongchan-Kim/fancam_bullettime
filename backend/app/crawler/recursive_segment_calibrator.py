@@ -339,9 +339,11 @@ def calibrate_video_recursive_segments(
         t_end = target_seg.video_end_time
         est_offset = target_seg.sync_offset
 
-        logger.info(f"🚀 Starting Recursive Segmentation on Segment #{target_segment_id} [{t_start}s ~ {t_end}s]...")
-        leaf_segments = recursive_segment_probe(
-            yt_target, yt_master, t_start, t_end, est_offset, setlists=setlists_dict
+        # Refine single segment using Pass 2 Bounded Refiner
+        from app.crawler.two_pass_calibrator import pass2_refine_bounded_frame
+        logger.info(f"🚀 Starting Bounded Refinement on Segment #{target_segment_id} [{t_start}s ~ {t_end}s]...")
+        leaf_segments = pass2_refine_bounded_frame(
+            yt_target, yt_master, t_start, t_end, est_offset
         )
         leaf_segments = merge_adjacent_segments(leaf_segments)
 
@@ -388,23 +390,24 @@ def calibrate_video_recursive_segments(
         }
 
     else:
-        # Check if video already has segments
+        # Refine whole video
         existing_segs = db.query(VideoSyncSegment).filter(
             VideoSyncSegment.video_id == video_id
         ).order_by(VideoSyncSegment.video_start_time).all()
 
         if existing_segs:
-            # SAFETY CHECK: Protect manually verified ground truth segments
-            if any(s.is_verified for s in existing_segs) and not force:
+            # Check if any segment is human-verified
+            has_verified = any(s.is_verified for s in existing_segs)
+            if has_verified and not force:
                 logger.warning(
-                    f"🛡️ Video #{video_id} contains verified Ground Truth segments. Skipping automatic overwrite."
+                    f"🛡️ Video #{video_id} has human-verified Ground Truth segments. Skipping overwrite to protect GT."
                 )
                 return {
                     "success": True,
                     "skipped": True,
-                    "message": f"Video #{video_id} contains verified Ground Truth segments. Automatic overwrite skipped to protect GT.",
+                    "message": f"Video #{video_id} contains verified Ground Truth segments. Skipping overwrite to protect GT.",
                     "video_id": video_id,
-                    "new_segments_count": len(existing_segs),
+                    "segments_count": len(existing_segs),
                     "segments": [
                         {
                             "video_start": s.video_start_time,
@@ -417,14 +420,14 @@ def calibrate_video_recursive_segments(
                     ]
                 }
 
-            logger.info(f"🚀 Refining {len(existing_segs)} existing segments for Video #{video_id}...")
+            from app.crawler.two_pass_calibrator import pass2_refine_bounded_frame
+            logger.info(f"🚀 Refining {len(existing_segs)} existing segments for Video #{video_id} via Pass 2 Bounded Refiner...")
             all_leafs = []
             for seg in existing_segs:
-                leafs = recursive_segment_probe(
+                leafs = pass2_refine_bounded_frame(
                     yt_target, yt_master,
                     seg.video_start_time, seg.video_end_time,
-                    seg.sync_offset,
-                    setlists=setlists_dict
+                    seg.sync_offset
                 )
                 all_leafs.extend(leafs)
             
@@ -458,7 +461,7 @@ def calibrate_video_recursive_segments(
                 db,
                 video,
                 sync_offset=created_records[0].sync_offset if created_records else 0.0,
-                method="ai_audio_recursive_piecewise",
+                method="two_pass_hybrid_bounded",
                 status="split_segmented",
                 commit=False
             )
@@ -480,16 +483,14 @@ def calibrate_video_recursive_segments(
             }
 
         else:
-            # Calibrate whole unsegmented video
-            t_start = 0.0
+            # Calibrate whole unsegmented video using the Two-Pass Pipeline
+            from app.crawler.two_pass_calibrator import run_two_pass_pipeline
             t_end = float(video.duration or 300.0)
-            est_offset = float(video.sync_offset or 0.0)
 
-            logger.info(f"🚀 Starting Recursive Segmentation on Entire Video #{video_id} [0.0s ~ {t_end}s]...")
-            leaf_segments = recursive_segment_probe(
-                yt_target, yt_master, t_start, t_end, est_offset, setlists=setlists_dict
+            logger.info(f"🚀 Starting Two-Pass Zero-Knowledge Segmentation on Entire Video #{video_id} [0.0s ~ {t_end}s]...")
+            leaf_segments = run_two_pass_pipeline(
+                yt_target, yt_master, t_end, setlists=setlists_dict
             )
-            leaf_segments = merge_adjacent_segments(leaf_segments)
 
             db.query(VideoSyncSegment).filter(VideoSyncSegment.video_id == video_id).delete()
             created_records = []

@@ -21,6 +21,9 @@ Antigravity 시스템에 의해 작업 상황(파일 확장자, 에이전트 판
    - 백엔드 코드 수정 시 자동으로 동작하며, 가상환경 활성화(`source .venv/bin/activate`) 및 `uv` 관리 강제.
 4. **[crawler.md](file:///Users/mckim/projects/tmp/twice_concert_crawling/.agents/rules/crawler.md) (Model Decision)**
    - 유튜브 크롤러 중복 방지를 위한 스크립트 인벤토리 확인 및 마스터 타임라인 `sync_offset` 보정 방향 정형화.
+5. **[communication.md](file:///Users/mckim/projects/tmp/twice_concert_crawling/.agents/rules/communication.md) (Always On)**
+   - 사용자 칭찬/아부성 감탄사 배제, 기술 분석 및 팩트 중심의 담백한 답변 유지.
+
 
 ---
 

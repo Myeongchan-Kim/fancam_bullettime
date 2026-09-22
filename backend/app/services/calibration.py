@@ -95,31 +95,59 @@ def estimate_video_rough_offset(db: Session, video: Video) -> tuple[Optional[flo
     setlists = db.query(ConcertSetlist).filter(ConcertSetlist.concert_id == video.concert_id).all()
     setlist_map = {}
     for it in setlists:
-        name = (it.song.name if it.song else it.event_name or '').strip()
-        if name and it.start_time is not None:
-            setlist_map[name.upper()] = it.start_time
+        raw_name = (it.song.name if it.song else it.event_name or '').strip().upper()
+        if raw_name and it.start_time is not None:
+            setlist_map[raw_name] = it.start_time
+            base = raw_name.split('(')[0].strip()
+            if base and base not in setlist_map:
+                setlist_map[base] = it.start_time
 
-    # 1. YouTube 메타데이터 (설명란) 가져오기
-    desc = ''
-    try:
-        ydl_opts = {'quiet': True, 'skip_download': True}
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(f'https://www.youtube.com/watch?v={video.youtube_id}', download=False)
-            desc = info.get('description', '') or ''
-            if not video.title and info.get('title'):
-                video.title = info.get('title')
-    except Exception as e:
-        pass
+    # 0. 풀 콘서트(Full Ver / Full Concert / 6000s 이상) 감지 -> 마스터 기준점 T=0
+    if video.duration and (video.duration >= 6000.0 or (video.duration >= 3600.0 and any(kw in (video.title or '').lower() for kw in ["full ver", "full concert", "전체", "전곡", "풀버전"]))):
+        return 0.0, "풀 콘서트 영상 → 마스터 타임라인 시작 기준점 (0.0s)", None
 
-    # 2. DB에 연결된 Video.songs 태그 확인 (가장 정확한 곡 분류)
-    if video.songs:
-        for s in video.songs:
-            s_upper = s.name.upper()
+    # 1. 영상 제목 기반 세트리스트 직접 매칭 (투어명 'THIS IS FOR' 제외, 긴 곡명 우선)
+    title_upper = (video.title or '').upper()
+    sorted_setlist_keys = sorted(
+        [k for k in setlist_map.keys() if k != 'THIS IS FOR' and len(k) >= 3],
+        key=len,
+        reverse=True
+    )
+    for s_key in sorted_setlist_keys:
+        if s_key in title_upper:
+            start_t = float(setlist_map[s_key])
+            return start_t, f"영상 제목 검색 [{s_key}] → 세트리스트 시작 시각 ({start_t}s)", None
+
+    # 2. DB에 연결된 Video.songs / Video.song 태그 확인 (풀네임 및 베이스네임)
+    v_songs = list(video.songs or [])
+    if video.song and video.song not in v_songs:
+        v_songs.append(video.song)
+
+    if v_songs:
+        for s in v_songs:
+            s_upper = s.name.upper().strip()
+            s_base = s_upper.split('(')[0].strip()
             if s_upper in setlist_map:
                 start_t = float(setlist_map[s_upper])
                 return start_t, f"등록된 곡 태그 [{s.name}] → 세트리스트 시작 시각 ({start_t}s)", None
+            if s_base in setlist_map:
+                start_t = float(setlist_map[s_base])
+                return start_t, f"등록된 곡 태그 베이스 [{s_base}] → 세트리스트 시작 시각 ({start_t}s)", None
 
-    # 3. 설명란 타임스탬프 파싱 (곡명 매칭, 단순 멤버명 오매칭 방지를 위해 4글자 초과 조건)
+    # 3. DB에 저장된 설명란(description) 우선 활용, 없을 때만 yt-dlp 추출
+    desc = video.description or ''
+    if not desc:
+        try:
+            ydl_opts = {'quiet': True, 'skip_download': True}
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(f'https://www.youtube.com/watch?v={video.youtube_id}', download=False)
+                desc = info.get('description', '') or ''
+                if not video.title and info.get('title'):
+                    video.title = info.get('title')
+        except Exception:
+            pass
+
+    # 4. 설명란 타임스탬프 파싱 (곡명 매칭, 단순 멤버명 오매칭 방지를 위해 4글자 초과 조건)
     pattern = re.compile(r'(?:(\d{1,2}):)?(\d{1,2}):(\d{2})\s+([^\n\r]+)')
     for line in desc.split('\n'):
         m = pattern.search(line)
@@ -134,7 +162,7 @@ def estimate_video_rough_offset(db: Session, video: Video) -> tuple[Optional[flo
                     approx = max(0.0, float(start_t) - local_sec)
                     return approx, f"유튜브 설명 타임스탬프 [{m.group(4).strip()}] @ {local_sec}s → 세트리스트 {s_name} ({start_t}s)", None
 
-    # 4. 영상 제목 및 설명란 AI 시맨틱 분석
+    # 5. 영상 제목 및 설명란 AI 시맨틱 분석
     parsed = parse_fancam_metadata(video.title or '', 'Channel', desc)
     if parsed and parsed.get('songs'):
         for song_title in parsed['songs']:
