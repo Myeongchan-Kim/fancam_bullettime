@@ -19,6 +19,30 @@ function ScrollToTop() {
   return null;
 }
 
+function MainContent() {
+  const { pathname } = useLocation();
+  const isVideoDetail = pathname.startsWith('/video/');
+
+  return (
+    <main
+      className={`flex-grow max-w-7xl mx-auto w-full ${
+        isVideoDetail
+          ? 'px-0 sm:px-6 lg:px-8 py-0 sm:py-8'
+          : 'px-4 sm:px-6 lg:px-8 py-8'
+      }`}
+    >
+      <Routes>
+        <Route path="/" element={<HomePage />} />
+        <Route path="/video/:id" element={<VideoDetailPage />} />
+        <Route path="/about" element={<AboutPage />} />
+        <Route path="/admin" element={<AdminDashboardPage />} />
+        <Route path="/presentation" element={<PresentationPage />} />
+        <Route path="/sync-tree" element={<SyncVisualizerPage />} />
+      </Routes>
+    </main>
+  );
+}
+
 function App() {
   const adminKey = localStorage.getItem('admin_key');
 
@@ -59,17 +83,8 @@ function App() {
             </div>
           </nav>
 
-        {/* Main Content */}
-        <main className="flex-grow max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
-          <Routes>
-            <Route path="/" element={<HomePage />} />
-            <Route path="/video/:id" element={<VideoDetailPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/admin" element={<AdminDashboardPage />} />
-            <Route path="/presentation" element={<PresentationPage />} />
-            <Route path="/sync-tree" element={<SyncVisualizerPage />} />
-          </Routes>
-        </main>
+          {/* Main Content */}
+          <MainContent />
 
         {/* Footer */}
         <footer className="bg-slate-900 border-t border-slate-700 py-12">
