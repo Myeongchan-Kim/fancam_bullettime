@@ -232,19 +232,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   }, [slaveVideos, currentConcertTime]);
 
   return (
-    <div className="w-full rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-950 p-4 xl:p-6">
+    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 sm:p-4 xl:p-6">
       {/* ㅢ Layout Container: Grid on XL, Flex on mobile */}
       <div className="grid grid-cols-1 xl:grid-cols-5 xl:grid-rows-[auto_1fr] gap-4 xl:gap-6">
         
         {/* Master View (Top-Left) - Spans 3 columns */}
         <div className="xl:col-span-3 flex flex-col min-w-0">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-black text-white flex items-center gap-2 truncate">
-              <span className="bg-twice-magenta text-white px-2 py-1 rounded text-xs shrink-0">MASTER</span>
+          <div className="flex items-center justify-between mb-2 sm:mb-4 px-4 sm:px-0 pt-2 sm:pt-0">
+            <h2 className="text-base sm:text-xl font-black text-white flex items-center gap-2 truncate">
+              <span className="bg-twice-magenta text-white px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs shrink-0">MASTER</span>
               <span className="truncate">{masterVideo?.title}</span>
             </h2>
           </div>
-          <div className="aspect-video rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border border-slate-800 relative group">
+          <div className="aspect-video w-full rounded-none sm:rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border-0 sm:border border-slate-800 relative group">
             {masterVideo && (
               <YouTube 
                 key={`master-${masterVideo.id}`}
@@ -258,7 +258,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
               />
             )}
           </div>
-          <div className="mt-4 flex flex-wrap gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
+          <div className="mt-3 sm:mt-4 px-4 sm:px-0 flex flex-wrap gap-2 sm:gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
             <span className="text-twice-magenta">{masterVideo?.members?.join(", ") || 'No Members Tagged'}</span>
             <span className="hidden sm:inline opacity-30">•</span>
             <span className="text-twice-apricot">
@@ -272,7 +272,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
 
         {/* Side Slaves (Right Sidebar) - Spans the right-most 2 columns */}
-        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0">
+        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0 px-4 sm:px-0 pb-4 sm:pb-0">
           <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
             <div className="h-px flex-1 bg-slate-800"></div>
             SIDE ANGLES
@@ -325,7 +325,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
         {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
         {activeSlaveVideos.length > 4 && (
-          <div className="xl:col-span-3 flex flex-col space-y-4">
+          <div className="xl:col-span-3 flex flex-col space-y-4 px-4 sm:px-0 pb-4 sm:pb-0">
             <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
               <div className="h-px flex-1 bg-slate-800"></div>
               ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})

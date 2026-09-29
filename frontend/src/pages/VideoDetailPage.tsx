@@ -261,8 +261,8 @@ const VideoDetailPage = () => {
   }
 
   return (
-    <div className="space-y-8 text-white pb-20">
-      <div className="flex justify-between items-center">
+    <div className="space-y-4 sm:space-y-8 text-white pb-20">
+      <div className="flex justify-between items-center px-4 sm:px-0 pt-3 sm:pt-0">
         <button onClick={() => navigate(-1)} className="flex items-center text-gray-400 hover:text-white transition-colors">
           <ChevronLeft className="h-5 w-5" />
           <span>Back to Gallery</span>
@@ -303,11 +303,11 @@ const VideoDetailPage = () => {
         <MultiAnglePlayer ref={playerRef} videos={[video, ...relatedVideos]} />
       </section>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 px-4 sm:px-0">
         <div className="lg:col-span-2 space-y-8">
           
           {/* Metadata Display / Official Editor */}
-          <div className="p-8 bg-slate-800/30 rounded-3xl border border-slate-800 space-y-6 relative shadow-xl">
+          <div className="p-5 sm:p-8 bg-slate-800/30 rounded-2xl sm:rounded-3xl border border-slate-800 space-y-6 relative shadow-xl">
             {!isEditing ? (
               <>
                 <div className="flex justify-between items-start gap-4">
