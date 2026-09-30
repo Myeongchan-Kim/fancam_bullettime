@@ -272,18 +272,20 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
 
         {/* Side Slaves (Right Sidebar) - Spans the right-most 2 columns */}
-        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0 px-4 sm:px-0 pb-4 sm:pb-0">
-          <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
-            <div className="h-px flex-1 bg-slate-800"></div>
-            SIDE ANGLES
-            <div className="h-px flex-1 bg-slate-800"></div>
-          </h3>
+        <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0 pb-4 sm:pb-0">
+          <div className="px-4 sm:px-0">
+            <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
+              <div className="h-px flex-1 bg-slate-800"></div>
+              SIDE ANGLES
+              <div className="h-px flex-1 bg-slate-800"></div>
+            </h3>
+          </div>
           
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
             {activeSlaveVideos.slice(0, 4).map(video => (
               <div 
                 key={video.id} 
-                className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0"
+                className="bg-slate-900 rounded-none sm:rounded-xl overflow-hidden border-x-0 border-y sm:border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0 w-full"
                 onClick={() => setAsMaster(video.id)}
               >
                 <div className="aspect-video relative bg-black w-full">
@@ -304,7 +306,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                      </div>
                   </div>
                 </div>
-                <div className="p-3">
+                <div className="p-3 px-4 sm:px-3">
                   <div className="flex justify-between items-start gap-2">
                     <h4 className="text-[10px] font-bold text-white line-clamp-1 flex-1">{video.title}</h4>
                     <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-gray-500 transition-colors">
@@ -317,7 +319,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           </div>
 
           {activeSlaveVideos.length === 0 && (
-            <div className="py-10 text-center border-2 border-dashed border-slate-800 rounded-2xl">
+            <div className="mx-4 sm:mx-0 py-10 text-center border-2 border-dashed border-slate-800 rounded-2xl">
               <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">No Live Angles</span>
             </div>
           )}
@@ -325,17 +327,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
         {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
         {activeSlaveVideos.length > 4 && (
-          <div className="xl:col-span-3 flex flex-col space-y-4 px-4 sm:px-0 pb-4 sm:pb-0">
-            <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
-              <div className="h-px flex-1 bg-slate-800"></div>
-              ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})
-              <div className="h-px flex-1 bg-slate-800"></div>
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="xl:col-span-3 flex flex-col space-y-4 pb-4 sm:pb-0">
+            <div className="px-4 sm:px-0">
+              <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
+                <div className="h-px flex-1 bg-slate-800"></div>
+                ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})
+                <div className="h-px flex-1 bg-slate-800"></div>
+              </h3>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               {activeSlaveVideos.slice(4, 12).map(video => (
                 <div 
                   key={video.id} 
-                  className="bg-slate-900 rounded-xl overflow-hidden border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0"
+                  className="bg-slate-900 rounded-none sm:rounded-xl overflow-hidden border-x-0 border-y sm:border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0 w-full"
                   onClick={() => setAsMaster(video.id)}
                 >
                   <div className="aspect-video relative bg-black w-full">
@@ -356,7 +360,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                        </div>
                     </div>
                   </div>
-                  <div className="p-2.5">
+                  <div className="p-2.5 px-4 sm:px-2.5">
                     <h4 className="text-[10px] font-bold text-white line-clamp-1 truncate">{video.title}</h4>
                   </div>
                 </div>
