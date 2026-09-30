@@ -60,6 +60,9 @@ class Video(Base):
     duration = Column(Float, default=9999.0, index=True) # in seconds
     is_shorts = Column(Boolean, default=False)
     is_unavailable = Column(Boolean, default=False, index=True)
+    width = Column(Integer, nullable=True) # in pixels
+    height = Column(Integer, nullable=True) # in pixels
+    aspect_ratio = Column(Float, nullable=True) # width / height ratio (e.g. 1.78 for 16:9, 0.56 for 9:16)
     
     # Sync Graph / Edge Hierarchy (Ref-Dest Anchor Relationship)
     parent_video_id = Column(Integer, ForeignKey("videos.id", ondelete="SET NULL"), nullable=True, index=True)

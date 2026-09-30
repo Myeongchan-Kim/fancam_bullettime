@@ -60,6 +60,9 @@ export interface Video {
   sync_offset: number;
   duration: number;
   is_shorts: boolean;
+  width?: number | null;
+  height?: number | null;
+  aspect_ratio?: number | null;
   calibration_count?: number;
   calibration_status?: string;
   calibrated_at?: string | null;

@@ -53,6 +53,9 @@ class VideoBase(BaseModel):
     duration: float
     is_shorts: bool = False
     is_unavailable: bool = False
+    width: Optional[int] = None
+    height: Optional[int] = None
+    aspect_ratio: Optional[float] = None
     
     # Sync Graph / Edge Hierarchy
     parent_video_id: Optional[int] = None
@@ -116,6 +119,9 @@ class VideoUpdate(BaseModel):
     sync_offset: Optional[float] = None
     duration: Optional[float] = None
     is_shorts: Optional[bool] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    aspect_ratio: Optional[float] = None
     calibration_method: Optional[str] = None
     calibration_status: Optional[str] = None
     parent_video_id: Optional[int] = None
