@@ -26,10 +26,16 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   const [masterId, setMasterId] = useState<number>(videos[0]?.id);
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
+  const playersRef = useRef<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
   const currentConcertTimeRef = useRef<number>(0);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Multi-Angle Barrier Synchronization States (Wait until all initial angles buffer)
+  const [readyVideoIds, setReadyVideoIds] = useState<Set<number>>(new Set());
+  const [isBarrierReleased, setIsBarrierReleased] = useState(false);
+  const isBarrierReleasedRef = useRef(false);
 
   // Responsive layout & Touch Immersive Mode states
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280);
@@ -85,6 +91,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     if (videos[0]?.id && videos[0].id !== masterId) {
       setMasterId(videos[0].id);
       setIsPlaying(false);
+      setReadyVideoIds(new Set());
+      isBarrierReleasedRef.current = false;
+      setIsBarrierReleased(false);
     }
   }, [videos[0]?.id]);
 
@@ -111,23 +120,103 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     slaveVideosRef.current = slaveVideos;
   }, [slaveVideos]);
 
+  // Target initial video IDs that must be ready before simultaneous start
+  const initialActiveSlaveIds = useMemo(() => {
+    const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
+    return videos
+      .filter(v => v.id !== masterId && isVideoActiveAtConcertTime(v, initConcertTime, 15))
+      .slice(0, 4)
+      .map(v => v.id);
+  }, [videos, masterId, masterVideo, initialTime]);
+
+  const targetVideoIds = useMemo(() => {
+    return masterId ? [masterId, ...initialActiveSlaveIds] : [];
+  }, [masterId, initialActiveSlaveIds]);
+
+  // Synchronously release all players to start playback in lockstep
+  const releaseBarrier = useCallback(() => {
+    if (isBarrierReleasedRef.current) return;
+    isBarrierReleasedRef.current = true;
+    setIsBarrierReleased(true);
+
+    const allPlayers = playersRef.current;
+    const masterPlayer = allPlayers[masterId];
+    if (masterPlayer && typeof masterPlayer.playVideo === 'function' && masterPlayer.getIframe()) {
+      try {
+        masterPlayer.playVideo();
+      } catch (err) {
+        console.warn('Error starting master player:', err);
+      }
+    }
+
+    Object.entries(allPlayers).forEach(([idStr, p]) => {
+      const id = parseInt(idStr, 10);
+      if (id !== masterId && p && typeof p.playVideo === 'function' && p.getIframe()) {
+        try {
+          p.playVideo();
+        } catch (err) {
+          console.warn(`Error starting slave player ${id}:`, err);
+        }
+      }
+    });
+
+    setIsPlaying(true);
+  }, [masterId]);
+
   const handleReady = (e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
+      playersRef.current[videoId] = e.target;
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
-      // Ensure all videos (master + slaves) start playback muted to satisfy mobile autoplay policies
+
+      // Ensure all videos start muted initially to satisfy mobile autoplay policies
       try {
         e.target.mute();
-        e.target.playVideo();
-      } catch (err) {
-        // Fallback if browser requires manual interaction
+      } catch (err) {}
+
+      // Keep paused if barrier has not yet been released
+      if (!isBarrierReleasedRef.current) {
+        try {
+          e.target.pauseVideo();
+        } catch (err) {}
+      } else {
+        if (isPlaying) {
+          try {
+            e.target.playVideo();
+          } catch (err) {}
+        }
       }
+
+      setReadyVideoIds(prev => {
+        const next = new Set(prev);
+        next.add(videoId);
+        return next;
+      });
     }
   };
 
-  // Stable sync loop
+  // Barrier check: release when all target initial videos are ready
+  useEffect(() => {
+    if (isBarrierReleasedRef.current) return;
+    if (targetVideoIds.length > 0 && targetVideoIds.every(id => readyVideoIds.has(id))) {
+      releaseBarrier();
+    }
+  }, [readyVideoIds, targetVideoIds, releaseBarrier]);
+
+  // Fallback safety timeout: max 3.5s wait so network jitter never stalls playback
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!isBarrierReleasedRef.current) {
+        releaseBarrier();
+      }
+    }, 3500);
+
+    return () => clearTimeout(timer);
+  }, [releaseBarrier]);
+
+  // Stable sync loop with Buffering Guard
   useEffect(() => {
     syncInterval.current = setInterval(() => {
-      const masterPlayer = players[masterId];
+      const masterPlayer = playersRef.current[masterId];
       if (!masterPlayer || typeof masterPlayer.getCurrentTime !== 'function' || !masterPlayer.getIframe()) return;
 
       const masterLocalTime = masterPlayer.getCurrentTime();
@@ -136,12 +225,21 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       currentConcertTimeRef.current = newConcertTime;
       setCurrentConcertTime(newConcertTime);
 
-      if (!isPlaying) return;
+      if (!isPlaying || !isBarrierReleasedRef.current) return;
 
       // Use the ref to get the latest visible slaves without restarting the interval
       slaveVideosRef.current.forEach(slave => {
-        const slavePlayer = players[slave.id];
+        const slavePlayer = playersRef.current[slave.id];
         if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
+          // Buffering Guard: If slave is currently buffering (state 3), do NOT seek!
+          // Let it finish downloading its buffer chunks to avoid thrashing.
+          if (typeof slavePlayer.getPlayerState === 'function') {
+            const state = slavePlayer.getPlayerState();
+            if (state === 3) { // 3 = BUFFERING
+              return;
+            }
+          }
+
           const targetSlaveTime = getLocalVideoTime(slave, newConcertTime, 0);
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
             const slaveTime = slavePlayer.getCurrentTime();
@@ -156,31 +254,36 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
     };
-  }, [players, isPlaying, masterId, masterVideo]);
+  }, [isPlaying, masterId, masterVideo]);
 
   // Handle player cleanup only on unmount
   useEffect(() => {
-    return () => { setPlayers({}); };
+    return () => { 
+      setPlayers({}); 
+      playersRef.current = {};
+    };
   }, []);
 
   const handlePlay = (e: YouTubeEvent) => {
     // Ensure we only process events from the master player
-    if (e.target === players[masterId]) {
+    if (e.target === playersRef.current[masterId]) {
       setIsPlaying(true);
-      slaveVideos.forEach(slave => {
-        const slavePlayer = players[slave.id];
-        if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
-          slavePlayer.playVideo();
-        }
-      });
+      if (isBarrierReleasedRef.current) {
+        slaveVideos.forEach(slave => {
+          const slavePlayer = playersRef.current[slave.id];
+          if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
+            slavePlayer.playVideo();
+          }
+        });
+      }
     }
   };
 
   const handlePause = (e: YouTubeEvent) => {
-    if (e.target === players[masterId]) {
+    if (e.target === playersRef.current[masterId]) {
       setIsPlaying(false);
       slaveVideos.forEach(slave => {
-        const slavePlayer = players[slave.id];
+        const slavePlayer = playersRef.current[slave.id];
         if (slavePlayer && typeof slavePlayer.pauseVideo === 'function' && slavePlayer.getIframe()) {
           slavePlayer.pauseVideo();
         }
@@ -197,9 +300,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   useEffect(() => {
     // Enforce audio routing: Only master player is unmuted (when !isMuted), all others always muted
-    Object.keys(players).forEach(idStr => {
+    Object.keys(playersRef.current).forEach(idStr => {
       const id = parseInt(idStr);
-      const player = players[id];
+      const player = playersRef.current[id];
       if (player && typeof player.mute === 'function' && player.getIframe()) {
         if (id === masterId) {
           if (isMuted) {
@@ -219,7 +322,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     triggerOverlay();
 
     // Pause current master to avoid overlapping audio
-    const oldMasterPlayer = players[masterId];
+    const oldMasterPlayer = playersRef.current[masterId];
     if (oldMasterPlayer && typeof oldMasterPlayer.pauseVideo === 'function' && oldMasterPlayer.getIframe()) {
       oldMasterPlayer.pauseVideo();
     }
@@ -283,7 +386,33 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   }, [masterVideo, activeSlaveVideos, isLandscape]);
 
   return (
-    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 sm:p-4 xl:p-6">
+    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 sm:p-4 xl:p-6 relative">
+      {/* Multi-Angle Barrier Sync Loading HUD */}
+      {!isBarrierReleased && (
+        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none transition-opacity duration-500">
+          <div className="relative flex items-center justify-center mb-4">
+            <div className="w-14 h-14 rounded-full border-2 border-twice-magenta/20 border-t-twice-magenta animate-spin"></div>
+            <Sparkles className="w-6 h-6 text-twice-apricot absolute animate-pulse" />
+          </div>
+          <div className="text-white text-base sm:text-lg font-black tracking-wider mb-1 flex items-center gap-2">
+            <span>SYNCHRONIZING MULTI-ANGLES</span>
+          </div>
+          <div className="text-xs sm:text-sm text-gray-300 font-medium">
+            Preparing simultaneous playback ({readyVideoIds.size} / {Math.max(targetVideoIds.length, 1)} ready)
+          </div>
+          {/* Progress bar */}
+          <div className="w-56 sm:w-72 h-1.5 bg-slate-800 rounded-full mt-4 overflow-hidden shadow-inner">
+            <div 
+              className="h-full bg-gradient-to-r from-twice-magenta via-twice-apricot to-twice-magenta transition-all duration-300"
+              style={{ width: `${Math.min(100, Math.round((readyVideoIds.size / Math.max(targetVideoIds.length, 1)) * 100))}%` }}
+            ></div>
+          </div>
+          <div className="text-[10px] text-gray-500 mt-2">
+            Waiting for angles to buffer before synchronized start
+          </div>
+        </div>
+      )}
+
       {isDesktop ? (
         /* Desktop Studio Layout (>= 1280px) */
         <div className="grid grid-cols-1 xl:grid-cols-5 xl:grid-rows-[auto_1fr] gap-4 xl:gap-6">
