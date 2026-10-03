@@ -36,6 +36,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const [readyVideoIds, setReadyVideoIds] = useState<Set<number>>(new Set());
   const [isBarrierReleased, setIsBarrierReleased] = useState(false);
   const isBarrierReleasedRef = useRef(false);
+  const mountTimeRef = useRef<number>(Date.now());
+  const WARMUP_BUFFER_MS = 2500; // 2.5s pre-buffer settling period behind the curtain
+  const MAX_SAFETY_TIMEOUT_MS = 4500; // 4.5s max safety fallback
 
   // Responsive layout & Touch Immersive Mode states
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280);
@@ -92,6 +95,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       setMasterId(videos[0].id);
       setIsPlaying(false);
       setReadyVideoIds(new Set());
+      mountTimeRef.current = Date.now();
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
     }
@@ -133,58 +137,59 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return masterId ? [masterId, ...initialActiveSlaveIds] : [];
   }, [masterId, initialActiveSlaveIds]);
 
-  // Synchronously release all players to start playback in lockstep
+  // Synchronously re-align all players and release barrier
   const releaseBarrier = useCallback(() => {
     if (isBarrierReleasedRef.current) return;
     isBarrierReleasedRef.current = true;
     setIsBarrierReleased(true);
 
+    const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
     const allPlayers = playersRef.current;
     const masterPlayer = allPlayers[masterId];
-    if (masterPlayer && typeof masterPlayer.playVideo === 'function' && masterPlayer.getIframe()) {
+
+    // Re-align master player to exact start timestamp and unmute if permitted
+    if (masterPlayer && typeof masterPlayer.seekTo === 'function' && masterPlayer.getIframe()) {
       try {
+        masterPlayer.seekTo(initialTime, true);
+        if (!isMuted) {
+          masterPlayer.unMute();
+        }
         masterPlayer.playVideo();
       } catch (err) {
         console.warn('Error starting master player:', err);
       }
     }
 
-    Object.entries(allPlayers).forEach(([idStr, p]) => {
-      const id = parseInt(idStr, 10);
-      if (id !== masterId && p && typeof p.playVideo === 'function' && p.getIframe()) {
+    // Re-align all slave players to their exact synchronized concert timestamps
+    slaveVideosRef.current.forEach(slave => {
+      const slavePlayer = allPlayers[slave.id];
+      if (slavePlayer && typeof slavePlayer.seekTo === 'function' && slavePlayer.getIframe()) {
         try {
-          p.playVideo();
+          const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
+          if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+            slavePlayer.seekTo(targetSlaveTime, true);
+          }
+          slavePlayer.mute();
+          slavePlayer.playVideo();
         } catch (err) {
-          console.warn(`Error starting slave player ${id}:`, err);
+          console.warn(`Error starting slave player ${slave.id}:`, err);
         }
       }
     });
 
     setIsPlaying(true);
-  }, [masterId]);
+  }, [masterId, masterVideo, initialTime, isMuted]);
 
   const handleReady = (e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
       playersRef.current[videoId] = e.target;
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
 
-      // Ensure all videos start muted initially to satisfy mobile autoplay policies
+      // Ensure all videos start playback muted in background to pre-buffer stream chunks
       try {
         e.target.mute();
+        e.target.playVideo();
       } catch (err) {}
-
-      // Keep paused if barrier has not yet been released
-      if (!isBarrierReleasedRef.current) {
-        try {
-          e.target.pauseVideo();
-        } catch (err) {}
-      } else {
-        if (isPlaying) {
-          try {
-            e.target.playVideo();
-          } catch (err) {}
-        }
-      }
 
       setReadyVideoIds(prev => {
         const next = new Set(prev);
@@ -194,21 +199,30 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   };
 
-  // Barrier check: release when all target initial videos are ready
+  // Barrier check: release when all target initial videos are ready + warmup time elapsed
   useEffect(() => {
     if (isBarrierReleasedRef.current) return;
-    if (targetVideoIds.length > 0 && targetVideoIds.every(id => readyVideoIds.has(id))) {
-      releaseBarrier();
+
+    const allReady = targetVideoIds.length > 0 && targetVideoIds.every(id => readyVideoIds.has(id));
+    if (allReady) {
+      const elapsed = Date.now() - mountTimeRef.current;
+      const remainingWarmup = Math.max(0, WARMUP_BUFFER_MS - elapsed);
+
+      const warmupTimer = setTimeout(() => {
+        releaseBarrier();
+      }, remainingWarmup);
+
+      return () => clearTimeout(warmupTimer);
     }
   }, [readyVideoIds, targetVideoIds, releaseBarrier]);
 
-  // Fallback safety timeout: max 3.5s wait so network jitter never stalls playback
+  // Fallback safety timeout: max 4.5s wait so network jitter never stalls playback
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!isBarrierReleasedRef.current) {
         releaseBarrier();
       }
-    }, 3500);
+    }, MAX_SAFETY_TIMEOUT_MS);
 
     return () => clearTimeout(timer);
   }, [releaseBarrier]);
@@ -387,31 +401,34 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   return (
     <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 sm:p-4 xl:p-6 relative">
-      {/* Multi-Angle Barrier Sync Loading HUD */}
-      {!isBarrierReleased && (
-        <div className="absolute inset-0 z-50 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center select-none transition-opacity duration-500">
-          <div className="relative flex items-center justify-center mb-4">
-            <div className="w-14 h-14 rounded-full border-2 border-twice-magenta/20 border-t-twice-magenta animate-spin"></div>
-            <Sparkles className="w-6 h-6 text-twice-apricot absolute animate-pulse" />
-          </div>
-          <div className="text-white text-base sm:text-lg font-black tracking-wider mb-1 flex items-center gap-2">
-            <span>SYNCHRONIZING MULTI-ANGLES</span>
-          </div>
-          <div className="text-xs sm:text-sm text-gray-300 font-medium">
-            Preparing simultaneous playback ({readyVideoIds.size} / {Math.max(targetVideoIds.length, 1)} ready)
-          </div>
-          {/* Progress bar */}
-          <div className="w-56 sm:w-72 h-1.5 bg-slate-800 rounded-full mt-4 overflow-hidden shadow-inner">
-            <div 
-              className="h-full bg-gradient-to-r from-twice-magenta via-twice-apricot to-twice-magenta transition-all duration-300"
-              style={{ width: `${Math.min(100, Math.round((readyVideoIds.size / Math.max(targetVideoIds.length, 1)) * 100))}%` }}
-            ></div>
-          </div>
-          <div className="text-[10px] text-gray-500 mt-2">
-            Waiting for angles to buffer before synchronized start
-          </div>
+      {/* Multi-Angle Pre-Buffer & Barrier Sync Loading Screen */}
+      <div 
+        className={`absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none transition-opacity duration-500 ${
+          isBarrierReleased ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
+        }`}
+      >
+        <div className="relative flex items-center justify-center mb-5">
+          <div className="w-16 h-16 rounded-full border-2 border-twice-magenta/20 border-t-twice-magenta animate-spin"></div>
+          <Sparkles className="w-6 h-6 text-twice-apricot absolute animate-pulse" />
         </div>
-      )}
+        <div className="text-white text-base sm:text-lg font-black tracking-wider mb-1.5 flex items-center gap-2">
+          <span>SYNCHRONIZING MULTI-ANGLES</span>
+        </div>
+        <div className="text-xs sm:text-sm text-gray-400 font-medium max-w-sm">
+          Pre-buffering video angles for zero-stutter playback ({readyVideoIds.size} / {Math.max(targetVideoIds.length, 1)} loaded)
+        </div>
+        {/* Animated buffer warmup progress bar */}
+        <div className="w-60 sm:w-72 h-1.5 bg-slate-900 rounded-full mt-5 overflow-hidden shadow-inner border border-slate-800">
+          <div 
+            className="h-full bg-gradient-to-r from-twice-magenta via-twice-apricot to-twice-magenta transition-all duration-300"
+            style={{ width: `${Math.min(100, Math.round((readyVideoIds.size / Math.max(targetVideoIds.length, 1)) * 100))}%` }}
+          ></div>
+        </div>
+        <div className="text-[11px] text-gray-500 mt-2.5 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-twice-apricot animate-ping"></span>
+          <span>Stabilizing multi-cam streams...</span>
+        </div>
+      </div>
 
       {isDesktop ? (
         /* Desktop Studio Layout (>= 1280px) */
