@@ -4,7 +4,7 @@ import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play } from 'lucid
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime } from '../utils/timelineSync';
-import { packMobileTiles } from '../utils/tilePacker';
+import { packMobileTiles, isVerticalVideo } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
 
 export interface MultiAnglePlayerRef {
@@ -29,8 +29,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const playersRef = useRef<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentConcertTime, setCurrentConcertTime] = useState<number>(0);
-  const currentConcertTimeRef = useRef<number>(0);
+
+  // Initialize concert time from initial master video or fallback to initialTime
+  const initialConcertTime = useMemo(() => {
+    const m = videos.find(v => v.id === masterId) || videos[0];
+    return m ? getMasterConcertTime(m, initialTime) : initialTime;
+  }, [videos, masterId, initialTime]);
+
+  const [currentConcertTime, setCurrentConcertTime] = useState<number>(initialConcertTime);
+  const currentConcertTimeRef = useRef<number>(initialConcertTime);
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Multi-Angle Barrier Synchronization & Start-on-Click States
@@ -44,8 +51,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const MAX_SAFETY_TIMEOUT_MS = 4500; // 4.5s max safety fallback
 
   // Responsive layout & Touch Immersive Mode states
-  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1280);
-  const [isLandscape, setIsLandscape] = useState(() => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth < 1280);
+  const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  const [isLandscape, setIsLandscape] = useState(() => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth < 1024);
   const [showOverlay, setShowOverlay] = useState(false);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -53,8 +60,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     const handleResize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      setIsDesktop(w >= 1280);
-      setIsLandscape(w > h && w < 1280);
+      setIsDesktop(w >= 1024);
+      setIsLandscape(w > h && w < 1024);
     };
     handleResize();
     window.addEventListener('resize', handleResize);
@@ -95,7 +102,11 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   // Sync internal state when navigating between videos (e.g. clicking back/forward or promo/demote)
   useEffect(() => {
     if (videos[0]?.id && videos[0].id !== masterId) {
-      setMasterId(videos[0].id);
+      const newMaster = videos[0];
+      const newConcertTime = getMasterConcertTime(newMaster, initialTime);
+      setMasterId(newMaster.id);
+      setCurrentConcertTime(newConcertTime);
+      currentConcertTimeRef.current = newConcertTime;
       setIsPlaying(false);
       setIsReadyToPlay(false);
       hasUserRequestedPlayRef.current = false;
@@ -104,7 +115,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
     }
-  }, [videos[0]?.id]);
+  }, [videos[0]?.id, masterId, initialTime]);
+
+  // Synchronize concert time once videos are loaded if not playing yet
+  useEffect(() => {
+    if (videos.length > 0 && !isPlaying && !isBarrierReleasedRef.current) {
+      const m = videos.find(v => v.id === masterId) || videos[0];
+      if (m) {
+        const initTime = getMasterConcertTime(m, initialTime);
+        setCurrentConcertTime(initTime);
+        currentConcertTimeRef.current = initTime;
+      }
+    }
+  }, [videos, masterId, initialTime, isPlaying]);
 
   const masterVideo = videos.find(v => v.id === masterId) || videos[0];
   
@@ -170,14 +193,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     // Re-align all slave players to their exact synchronized concert timestamps
     slaveVideosRef.current.forEach(slave => {
       const slavePlayer = allPlayers[slave.id];
-      if (slavePlayer && typeof slavePlayer.seekTo === 'function' && slavePlayer.getIframe()) {
+      if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
         try {
           const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
+          slavePlayer.mute();
+          slavePlayer.playVideo();
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
             slavePlayer.seekTo(targetSlaveTime, true);
           }
-          slavePlayer.mute();
-          slavePlayer.playVideo();
         } catch (err) {
           console.warn(`Error starting slave player ${slave.id}:`, err);
         }
@@ -239,9 +262,23 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       playersRef.current[videoId] = e.target;
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
 
-      // Ensure all videos start playback muted in background to pre-buffer stream chunks
+      // Ensure all videos seek to exact target time and start muted background pre-buffering
       try {
         e.target.mute();
+        const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
+        if (videoId === masterId) {
+          if (initialTime > 0) {
+            e.target.seekTo(initialTime, true);
+          }
+        } else {
+          const slave = videos.find(v => v.id === videoId);
+          if (slave) {
+            const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
+            if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+              e.target.seekTo(targetSlaveTime, true);
+            }
+          }
+        }
         e.target.playVideo();
       } catch (err) {}
 
@@ -300,19 +337,22 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       slaveVideosRef.current.forEach(slave => {
         const slavePlayer = playersRef.current[slave.id];
         if (slavePlayer && typeof slavePlayer.getCurrentTime === 'function' && slavePlayer.getIframe()) {
-          // Buffering Guard: If slave is currently buffering (state 3), do NOT seek!
-          // Let it finish downloading its buffer chunks to avoid thrashing.
-          if (typeof slavePlayer.getPlayerState === 'function') {
-            const state = slavePlayer.getPlayerState();
-            if (state === 3) { // 3 = BUFFERING
-              return;
-            }
-          }
-
           const targetSlaveTime = getLocalVideoTime(slave, newConcertTime, 0);
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
             const slaveTime = slavePlayer.getCurrentTime();
-            if (Math.abs(slaveTime - targetSlaveTime) > SYNC_THRESHOLD) {
+            const drift = Math.abs(slaveTime - targetSlaveTime);
+
+            // Buffering Guard: If slave is currently buffering (state 3) AND within 2.0s of target,
+            // let it finish downloading its buffer chunks to avoid thrashing.
+            // But if it is buffering far away (> 2.0s drift, e.g. stuck at 0s), force seek immediately!
+            if (typeof slavePlayer.getPlayerState === 'function') {
+              const state = slavePlayer.getPlayerState();
+              if (state === 3 && drift < 2.0) {
+                return;
+              }
+            }
+
+            if (drift > SYNC_THRESHOLD) {
               slavePlayer.seekTo(targetSlaveTime, true);
             }
           }
@@ -455,7 +495,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   }, [masterVideo, activeSlaveVideos, isLandscape]);
 
   return (
-    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 sm:p-4 xl:p-6 relative min-h-[380px] sm:min-h-[500px]">
+    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 relative min-h-[380px] sm:min-h-[500px]">
       {/* Multi-Angle Pre-Buffer & Play Overlay Screen */}
       <div 
         className={`absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none transition-opacity duration-500 ${
@@ -528,18 +568,61 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       </div>
 
       {isDesktop ? (
-        /* Desktop Studio Layout (>= 1280px) */
-        <div className="grid grid-cols-1 xl:grid-cols-5 xl:grid-rows-[auto_1fr] gap-4 xl:gap-6">
-          
-          {/* Master View (Top-Left) - Spans 3 columns */}
-          <div className="xl:col-span-3 flex flex-col min-w-0">
-            <div className="flex items-center justify-between mb-2 sm:mb-4 px-4 sm:px-0 pt-2 sm:pt-0">
-              <h2 className="text-base sm:text-xl font-black text-white flex items-center gap-2 truncate">
-                <span className="bg-twice-magenta text-white px-2 py-0.5 sm:py-1 rounded text-[10px] sm:text-xs shrink-0">MASTER</span>
-                <span className="truncate">{masterVideo?.title}</span>
-              </h2>
+        /* Desktop Seamless Mosaic Video Wall (>= 1024px) */
+        <div 
+          className="w-full relative bg-black select-none overflow-hidden group/player"
+          onMouseEnter={() => setShowOverlay(true)}
+          onMouseLeave={() => setShowOverlay(false)}
+        >
+          {/* Floating Top HUD Header */}
+          <div 
+            className={`absolute top-0 inset-x-0 z-30 px-4 py-3 bg-gradient-to-b from-black/95 via-black/70 to-transparent flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
+              showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            <div className="flex items-center gap-3 min-w-0 pr-2">
+              <span className="bg-twice-magenta text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0 shadow">
+                MASTER
+              </span>
+              <span className="text-white text-sm font-bold truncate">
+                {masterVideo?.title}
+              </span>
+              {masterVideo?.songs?.[0]?.name && (
+                <span className="text-twice-apricot text-xs font-semibold shrink-0">
+                  • {masterVideo.songs[0].name}
+                </span>
+              )}
+              {masterVideo?.members && masterVideo.members.length > 0 && (
+                <span className="text-gray-400 text-xs truncate hidden sm:inline">
+                  • {masterVideo.members.join(', ')}
+                </span>
+              )}
             </div>
-            <div className="aspect-video w-full rounded-none sm:rounded-2xl overflow-hidden bg-black shadow-[0_0_50px_rgba(0,0,0,0.5)] border-0 sm:border border-slate-800 relative group">
+            <div className="flex items-center gap-3 shrink-0">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest hidden md:inline">
+                {1 + activeSlaveVideos.length} ANGLES SYNCED
+              </span>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleGlobalMute();
+                }}
+                className="p-2 bg-black/80 hover:bg-black rounded-full border border-white/20 text-white transition-all hover:scale-105 active:scale-95"
+                title={isMuted ? 'Unmute' : 'Mute'}
+              >
+                {isMuted ? (
+                  <VolumeX className="w-4 h-4 text-red-400" />
+                ) : (
+                  <Volume2 className="w-4 h-4 text-twice-apricot" />
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Seamless Mosaic Video Wall */}
+          {activeSlaveVideos.length === 0 ? (
+            /* Standalone Master Full-Width */
+            <div className="aspect-video w-full relative bg-black">
               {masterVideo && (
                 <YouTube 
                   key={`master-${masterVideo.id}`}
@@ -553,117 +636,232 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 />
               )}
             </div>
-            <div className="mt-3 sm:mt-4 px-4 sm:px-0 flex flex-wrap gap-2 sm:gap-4 text-xs text-gray-400 font-bold uppercase tracking-wider">
-              <span className="text-twice-magenta">{masterVideo?.members?.join(", ") || 'No Members Tagged'}</span>
-              <span className="hidden sm:inline opacity-30">•</span>
-              <span className="text-twice-apricot">
-                {masterVideo?.songs && masterVideo.songs.length > 0 
-                  ? masterVideo.songs.map(s => s.name).join(', ') 
-                  : 'Unknown Song'}
-              </span>
-              <span className="hidden sm:inline opacity-30">•</span>
-              <span>Offset: {masterVideo?.sync_offset || 0}s</span>
-            </div>
-          </div>
-
-          {/* Side Slaves (Right Sidebar) - Spans the right-most 2 columns */}
-          <div className="xl:col-span-2 xl:row-span-2 flex flex-col space-y-4 xl:max-h-[850px] xl:overflow-y-auto no-scrollbar min-w-0 pb-4 sm:pb-0">
-            <div className="px-4 sm:px-0">
-              <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
-                <div className="h-px flex-1 bg-slate-800"></div>
-                SIDE ANGLES
-                <div className="h-px flex-1 bg-slate-800"></div>
-              </h3>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-1 gap-4">
-              {activeSlaveVideos.slice(0, 4).map(video => (
+          ) : activeSlaveVideos.length === 2 && !activeSlaveVideos.some(v => isVerticalVideo(v)) && !isVerticalVideo(masterVideo) ? (
+            /* 3-Cam Panorama Mode: 3 horizontal angles side-by-side */
+            <div className="grid grid-cols-3 gap-0.5 w-full bg-slate-950">
+              <div className="aspect-video relative bg-black w-full">
+                {masterVideo && (
+                  <YouTube 
+                    key={`master-${masterVideo.id}`}
+                    videoId={masterVideo.youtube_id} 
+                    opts={optsMaster} 
+                    onReady={(e) => handleReady(e, masterVideo.id)}
+                    onPlay={handlePlay}
+                    onPause={handlePause}
+                    className="w-full h-full absolute inset-0"
+                    iframeClassName="w-full h-full block"
+                  />
+                )}
+              </div>
+              {activeSlaveVideos.slice(0, 2).map(video => (
                 <div 
-                  key={video.id} 
-                  className="bg-slate-900 rounded-none sm:rounded-xl overflow-hidden border-x-0 border-y sm:border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0 w-full"
+                  key={`desktop-slave-trio-${video.id}`}
+                  className="aspect-video relative bg-black w-full cursor-pointer group/tile"
                   onClick={() => setAsMaster(video.id)}
                 >
-                  <div className="aspect-video relative bg-black w-full">
-                    <YouTube 
-                      key={`slave-static-${video.id}`}
-                      videoId={video.youtube_id} 
-                      opts={getSlaveOpts(video)} 
-                      onReady={(e) => handleReady(e, video.id)}
-                      className="w-full h-full absolute inset-0 pointer-events-none"
-                      iframeClassName="w-full h-full block"
-                    />
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
-                       <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-xs text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
-                         {video.title}
-                       </div>
-                       <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
-                         <Maximize2 className="w-3 h-3" /> SET AS MASTER
-                       </div>
-                    </div>
-                  </div>
-                  <div className="p-3 px-4 sm:px-3">
-                    <div className="flex justify-between items-start gap-2">
-                      <h4 className="text-[10px] font-bold text-white line-clamp-1 flex-1">{video.title}</h4>
-                      <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-gray-500 transition-colors">
-                        <ExternalLink className="h-3 w-3" />
+                  <YouTube 
+                    key={`slave-${video.id}`}
+                    videoId={video.youtube_id} 
+                    opts={getSlaveOpts(video)} 
+                    onReady={(e) => handleReady(e, video.id)}
+                    className="w-full h-full absolute inset-0 pointer-events-none"
+                    iframeClassName="w-full h-full block"
+                  />
+                  <div className={`absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-300 bg-black/40 ${
+                    showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                  } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                    <div className="flex justify-end">
+                      <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
+                        <ExternalLink className="h-3.5 w-3.5" />
                       </Link>
+                    </div>
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 transition-transform scale-95 group-hover/tile:scale-100">
+                        <Maximize2 className="w-3.5 h-3.5" /> SET AS MASTER
+                      </div>
+                    </div>
+                    <div className="text-white text-xs font-bold line-clamp-1 drop-shadow-md">
+                      {video.title}
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+          ) : (
+            /* Split Video Wall: Master (Left 8 cols) + Side Slaves (Right 4 cols) */
+            <div className="w-full flex flex-col space-y-0.5 bg-slate-950">
+              <div className="grid grid-cols-12 gap-0.5 w-full bg-slate-950">
+                {/* Master Column (8 cols) */}
+                <div className="col-span-8 aspect-video relative bg-black w-full">
+                  {masterVideo && (
+                    <YouTube 
+                      key={`master-${masterVideo.id}`}
+                      videoId={masterVideo.youtube_id} 
+                      opts={optsMaster} 
+                      onReady={(e) => handleReady(e, masterVideo.id)}
+                      onPlay={handlePlay}
+                      onPause={handlePause}
+                      className="w-full h-full absolute inset-0"
+                      iframeClassName="w-full h-full block"
+                    />
+                  )}
+                </div>
 
-            {activeSlaveVideos.length === 0 && (
-              <div className="mx-4 sm:mx-0 py-10 text-center border-2 border-dashed border-slate-800 rounded-2xl">
-                <span className="text-[10px] font-black text-slate-700 uppercase tracking-widest">No Live Angles</span>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom Slaves (Horizontal Flow) - Spans 3 columns below Master */}
-          {activeSlaveVideos.length > 4 && (
-            <div className="xl:col-span-3 flex flex-col space-y-4 pb-4 sm:pb-0">
-              <div className="px-4 sm:px-0">
-                <h3 className="text-[10px] font-black text-gray-500 tracking-widest uppercase mb-1 flex items-center gap-2 shrink-0">
-                  <div className="h-px flex-1 bg-slate-800"></div>
-                  ADDITIONAL ANGLES ({activeSlaveVideos.length - 4})
-                  <div className="h-px flex-1 bg-slate-800"></div>
-                </h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-                {activeSlaveVideos.slice(4, 12).map(video => (
-                  <div 
-                    key={video.id} 
-                    className="bg-slate-900 rounded-none sm:rounded-xl overflow-hidden border-x-0 border-y sm:border border-slate-800 hover:border-twice-apricot transition-colors group cursor-pointer relative shrink-0 w-full"
-                    onClick={() => setAsMaster(video.id)}
-                  >
-                    <div className="aspect-video relative bg-black w-full">
+                {/* Right Slaves Column (4 cols) */}
+                <div className="col-span-4 w-full h-full flex flex-col">
+                  {activeSlaveVideos.length === 1 ? (
+                    /* Exactly 1 Slave: Match Master height */
+                    <div 
+                      className="aspect-video relative bg-black w-full h-full cursor-pointer group/tile"
+                      onClick={() => setAsMaster(activeSlaveVideos[0].id)}
+                    >
                       <YouTube 
-                        key={`slave-static-extra-${video.id}`}
-                        videoId={video.youtube_id} 
-                        opts={getSlaveOpts(video)} 
-                        onReady={(e) => handleReady(e, video.id)}
+                        key={`slave-${activeSlaveVideos[0].id}`}
+                        videoId={activeSlaveVideos[0].youtube_id} 
+                        opts={getSlaveOpts(activeSlaveVideos[0])} 
+                        onReady={(e) => handleReady(e, activeSlaveVideos[0].id)}
                         className="w-full h-full absolute inset-0 pointer-events-none"
                         iframeClassName="w-full h-full block"
                       />
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/0 group-hover:bg-black/70 transition-colors p-4 gap-2">
-                         <div className="opacity-0 group-hover:opacity-100 text-white font-bold text-[10px] text-center line-clamp-2 drop-shadow-md transition-opacity duration-300">
-                           {video.title}
-                         </div>
-                         <div className="opacity-0 group-hover:opacity-100 bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-90 group-hover:scale-100">
-                           <Maximize2 className="w-3 h-3" /> SET MASTER
-                         </div>
+                      <div className={`absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-300 bg-black/40 ${
+                        showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                      } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                        <div className="flex justify-end">
+                          <Link to={`/video/${activeSlaveVideos[0].id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
+                            <ExternalLink className="h-3.5 w-3.5" />
+                          </Link>
+                        </div>
+                        <div className="flex flex-col items-center gap-2">
+                          <div className="bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 transition-transform scale-95 group-hover/tile:scale-100">
+                            <Maximize2 className="w-3.5 h-3.5" /> SET AS MASTER
+                          </div>
+                        </div>
+                        <div className="text-white text-xs font-bold line-clamp-1 drop-shadow-md">
+                          {activeSlaveVideos[0].title}
+                        </div>
                       </div>
                     </div>
-                    <div className="p-2.5 px-4 sm:px-2.5">
-                      <h4 className="text-[10px] font-bold text-white line-clamp-1 truncate">{video.title}</h4>
+                  ) : activeSlaveVideos.slice(0, 2).some(v => isVerticalVideo(v)) ? (
+                    /* Vertical Slaves: 2 Vertical side-by-side inside the 4-col width */
+                    <div className="grid grid-cols-2 gap-0.5 w-full h-full bg-slate-950">
+                      {activeSlaveVideos.slice(0, 2).map(video => (
+                        <div 
+                          key={`desktop-slave-vert-${video.id}`}
+                          className="aspect-[9/16] relative bg-black w-full cursor-pointer group/tile"
+                          onClick={() => setAsMaster(video.id)}
+                        >
+                          <YouTube 
+                            key={`slave-${video.id}`}
+                            videoId={video.youtube_id} 
+                            opts={getSlaveOpts(video)} 
+                            onReady={(e) => handleReady(e, video.id)}
+                            className="w-full h-full absolute inset-0 pointer-events-none"
+                            iframeClassName="w-full h-full block"
+                          />
+                          <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-300 bg-black/40 ${
+                            showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                          } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                            <div className="flex justify-end">
+                              <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
+                                <ExternalLink className="h-3 w-3" />
+                              </Link>
+                            </div>
+                            <div className="flex flex-col items-center gap-1">
+                              <div className="bg-twice-apricot text-black px-2 py-1 rounded text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
+                                <Maximize2 className="w-3 h-3" /> MASTER
+                              </div>
+                            </div>
+                            <div className="text-white text-[10px] font-bold line-clamp-1 drop-shadow-md">
+                              {video.title}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                ))}
+                  ) : (
+                    /* 2 Horizontal Slaves: Stacked vertically (each 16:9) */
+                    <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
+                      {activeSlaveVideos.slice(0, 2).map(video => (
+                        <div 
+                          key={`desktop-slave-stack-${video.id}`}
+                          className="aspect-video relative bg-black w-full flex-1 cursor-pointer group/tile"
+                          onClick={() => setAsMaster(video.id)}
+                        >
+                          <YouTube 
+                            key={`slave-${video.id}`}
+                            videoId={video.youtube_id} 
+                            opts={getSlaveOpts(video)} 
+                            onReady={(e) => handleReady(e, video.id)}
+                            className="w-full h-full absolute inset-0 pointer-events-none"
+                            iframeClassName="w-full h-full block"
+                          />
+                          <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-300 bg-black/40 ${
+                            showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                          } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                            <div className="flex justify-end">
+                              <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
+                                <ExternalLink className="h-3 w-3" />
+                              </Link>
+                            </div>
+                            <div className="flex flex-col items-center gap-1.5">
+                              <div className="bg-twice-apricot text-black px-2.5 py-1 rounded-md text-[11px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
+                                <Maximize2 className="w-3 h-3" /> SET AS MASTER
+                              </div>
+                            </div>
+                            <div className="text-white text-[11px] font-bold line-clamp-1 drop-shadow-md">
+                              {video.title}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
+
+              {/* Additional Angles (> 2 slaves) tiled seamlessly below in a bottom row */}
+              {activeSlaveVideos.length > 2 && (
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5 w-full bg-slate-950">
+                  {activeSlaveVideos.slice(2).map(video => {
+                    const isVert = isVerticalVideo(video);
+                    return (
+                      <div 
+                        key={`desktop-slave-extra-${video.id}`}
+                        className={`relative bg-black w-full cursor-pointer group/tile ${isVert ? 'aspect-[9/16]' : 'aspect-video'}`}
+                        onClick={() => setAsMaster(video.id)}
+                      >
+                        <YouTube 
+                          key={`slave-${video.id}`}
+                          videoId={video.youtube_id} 
+                          opts={getSlaveOpts(video)} 
+                          onReady={(e) => handleReady(e, video.id)}
+                          className="w-full h-full absolute inset-0 pointer-events-none"
+                          iframeClassName="w-full h-full block"
+                        />
+                        <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-300 bg-black/40 ${
+                          showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                        } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                          <div className="flex justify-end">
+                            <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
+                              <ExternalLink className="h-3 w-3" />
+                            </Link>
+                          </div>
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="bg-twice-apricot text-black px-2.5 py-1 rounded text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
+                              <Maximize2 className="w-3 h-3" /> SET MASTER
+                            </div>
+                          </div>
+                          <div className="text-white text-[10px] font-bold line-clamp-1 drop-shadow-md">
+                            {video.title}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
-
         </div>
       ) : (
         /* Mobile / Tablet Smart Tile Mosaic Layout (< 1280px) with Touch HUD */
