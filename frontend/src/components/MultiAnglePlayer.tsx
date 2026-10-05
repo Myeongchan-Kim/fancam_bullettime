@@ -107,6 +107,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   // Sync internal state when navigating between videos (e.g. clicking back/forward or promo/demote)
   useEffect(() => {
+    if (isLoadingData || videos.length === 0) {
+      setIsReadyToPlay(false);
+      setIsPlaying(false);
+      setReadyVideoIds(new Set());
+      isBarrierReleasedRef.current = false;
+      setIsBarrierReleased(false);
+      return;
+    }
+
     const targetMaster = videos.find(v => !v.is_unavailable) || videos[0];
     if (targetMaster?.id && targetMaster.id !== masterId) {
       const newMaster = targetMaster;
@@ -122,7 +131,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
     }
-  }, [videos, masterId, initialTime]);
+  }, [videos, masterId, initialTime, isLoadingData]);
 
   // Synchronize concert time once videos are loaded if not playing yet
   useEffect(() => {
@@ -222,7 +231,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   // Pre-buffer and freeze all players at initial timestamps, revealing the Play button
   const freezeAtStartPosition = useCallback(() => {
-    if (isReadyToPlay || isBarrierReleasedRef.current) return;
+    if (isLoadingData || !masterVideo || isReadyToPlay || isBarrierReleasedRef.current) return;
 
     const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
     const allPlayers = playersRef.current;
@@ -253,10 +262,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     if (hasUserRequestedPlayRef.current) {
       releaseBarrier();
     }
-  }, [masterId, masterVideo, initialTime, isReadyToPlay, releaseBarrier]);
+  }, [isLoadingData, masterId, masterVideo, initialTime, isReadyToPlay, releaseBarrier]);
 
   const handleStartPlayback = useCallback(() => {
-    if (isBarrierReleasedRef.current) return;
+    if (isLoadingData || !masterVideo || isBarrierReleasedRef.current) return;
     if (isReadyToPlay) {
       releaseBarrier();
     } else {
@@ -265,7 +274,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         freezeAtStartPosition();
       }
     }
-  }, [isReadyToPlay, releaseBarrier, targetVideoIds, readyVideoIds, freezeAtStartPosition]);
+  }, [isLoadingData, masterVideo, isReadyToPlay, releaseBarrier, targetVideoIds, readyVideoIds, freezeAtStartPosition]);
 
   const handleReady = useCallback((e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
@@ -302,7 +311,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   // Warmup and freeze ready check: once all initial angles buffer + warmup time elapsed
   useEffect(() => {
-    if (isReadyToPlay || isBarrierReleasedRef.current) return;
+    if (isLoadingData || !masterVideo || isReadyToPlay || isBarrierReleasedRef.current) return;
 
     const allReady = targetVideoIds.length > 0 && targetVideoIds.every(id => readyVideoIds.has(id));
     if (allReady) {
@@ -315,10 +324,12 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
       return () => clearTimeout(warmupTimer);
     }
-  }, [readyVideoIds, targetVideoIds, freezeAtStartPosition, isReadyToPlay]);
+  }, [isLoadingData, masterVideo, readyVideoIds, targetVideoIds, freezeAtStartPosition, isReadyToPlay]);
 
   // Fallback safety timeout: after 4.5s, ready to play even if network had slight jitter
   useEffect(() => {
+    if (isLoadingData || !masterVideo) return;
+
     const timer = setTimeout(() => {
       if (!isReadyToPlay && !isBarrierReleasedRef.current) {
         freezeAtStartPosition();
@@ -326,7 +337,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }, MAX_SAFETY_TIMEOUT_MS);
 
     return () => clearTimeout(timer);
-  }, [freezeAtStartPosition, isReadyToPlay]);
+  }, [isLoadingData, masterVideo, freezeAtStartPosition, isReadyToPlay]);
 
   // Stable sync loop with Buffering Guard & Seek Cooldown
   useEffect(() => {
@@ -591,7 +602,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           isBarrierReleased ? 'opacity-0 pointer-events-none' : 'opacity-100 pointer-events-auto'
         }`}
       >
-        {!isReadyToPlay ? (
+        {isLoadingData || !masterVideo || !isReadyToPlay ? (
           /* Pre-buffering Loading State */
           <div className="flex flex-col items-center max-w-md w-full">
             <div className="relative flex items-center justify-center mb-5">
