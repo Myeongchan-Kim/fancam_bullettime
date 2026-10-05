@@ -378,10 +378,16 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     if (masterId !== undefined && e.target === playersRef.current[masterId]) {
       setIsPlaying(true);
       if (isBarrierReleasedRef.current) {
+        const currentMasterTime = typeof e.target.getCurrentTime === 'function' ? e.target.getCurrentTime() : 0;
+        const concertTime = masterVideo ? getMasterConcertTime(masterVideo, currentMasterTime) : currentMasterTime;
         slaveVideos.forEach(slave => {
           const slavePlayer = playersRef.current[slave.id];
           if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
             slavePlayer.playVideo();
+            const targetSlaveTime = getLocalVideoTime(slave, concertTime, 0);
+            if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+              slavePlayer.seekTo(targetSlaveTime, true);
+            }
           }
         });
       }
