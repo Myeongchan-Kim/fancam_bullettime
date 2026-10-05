@@ -16,7 +16,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'BATTITUDE', 
     subtitle: 'Incheon 20250720 (Nayeon, Jeongyeon, Momo, Mina Unit)', 
     img: '/images/featured_cam01_battitude.jpg',
-    angleCount: 5,
+    angleCount: 9,
     extraImgs: [
       '/images/featured_cam02_battitude.jpg',
       '/images/featured_cam03_battitude.jpg',
@@ -29,7 +29,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'DAT AHH DAT OOH', 
     subtitle: 'Incheon 20250720 (Sana, Jihyo, Dahyun, Chaeyoung, Tzuyu Unit)', 
     img: '/images/featured_cam01_datahh.jpg',
-    angleCount: 5,
+    angleCount: 13,
     extraImgs: [
       '/images/featured_cam02_datahh.jpg',
       '/images/featured_cam03_datahh.jpg',
@@ -42,7 +42,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'In my room', 
     subtitle: 'Incheon 20250720 (Chaeyoung Solo)', 
     img: '/images/featured_cam01_inmyroom.jpg',
-    angleCount: 5,
+    angleCount: 7,
     extraImgs: [
       '/images/featured_cam02_inmyroom.jpg',
       '/images/featured_cam03_inmyroom.jpg',
@@ -55,7 +55,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'MAKE ME GO', 
     subtitle: 'Incheon 20250720 (360° Stage)', 
     img: '/images/featured_cam01_makemego.jpg',
-    angleCount: 4,
+    angleCount: 6,
     extraImgs: [
       '/images/featured_cam02_makemego.jpg',
       '/images/featured_cam03_makemego.jpg',
@@ -67,7 +67,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'THIS IS FOR', 
     subtitle: 'Incheon 20250720 (Opening 360° Stage)', 
     img: '/images/featured_cam01_thisisfor.jpg',
-    angleCount: 4,
+    angleCount: 8,
     extraImgs: [
       '/images/featured_cam02_thisisfor.jpg',
       '/images/featured_cam03_thisisfor.jpg',
@@ -79,7 +79,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'GONE', 
     subtitle: 'Incheon 20250720 (Band Live Ver.)', 
     img: '/images/featured_cam01_gone.jpg',
-    angleCount: 3,
+    angleCount: 5,
     extraImgs: [
       '/images/featured_cam02_gone.jpg',
       '/images/featured_cam03_gone.jpg'
@@ -90,7 +90,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'MOVE LIKE THAT', 
     subtitle: 'Incheon 20250719 (Momo Solo)', 
     img: '/images/featured_cam01_movelikethat.jpg',
-    angleCount: 3,
+    angleCount: 7,
     extraImgs: [
       '/images/featured_cam02_movelikethat.jpg',
       '/images/featured_cam03_movelikethat.jpg'
@@ -101,7 +101,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'CHESS', 
     subtitle: 'Incheon 20250719 (Dahyun Solo)', 
     img: '/images/featured_cam01_chess.jpg',
-    angleCount: 3,
+    angleCount: 5,
     extraImgs: [
       '/images/featured_cam02_chess.jpg',
       '/images/featured_cam03_chess.jpg'
@@ -112,7 +112,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'RIGHT HAND GIRL', 
     subtitle: 'Incheon 20250720 (Tzuyu, Jihyo Focus)', 
     img: '/images/featured_cam01_righthandgirl.jpg',
-    angleCount: 3,
+    angleCount: 5,
     extraImgs: [
       '/images/featured_cam02_righthandgirl.jpg',
       '/images/featured_cam03_righthandgirl.jpg'
@@ -123,7 +123,7 @@ const FEATURED_SYNC_VIDEOS = [
     title: 'CRY FOR ME', 
     subtitle: 'Incheon 20250719 (Chaeyoung, Tzuyu Focus)', 
     img: '/images/featured_cam01_cryforme.jpg',
-    angleCount: 3,
+    angleCount: 9,
     extraImgs: [
       '/images/featured_cam02_cryforme.jpg',
       '/images/featured_cam03_cryforme.jpg'
@@ -165,13 +165,15 @@ const HomePage = () => {
 
   // 🎲 Shuffle featured videos pool on visit and fix display to 8 items
   const shuffledFeaturedVideos = useMemo(() => {
-    const list = [...FEATURED_SYNC_VIDEOS];
+    const unavailableSet = new Set(videos.filter(v => v.is_unavailable).map(v => v.id));
+    const activeList = FEATURED_SYNC_VIDEOS.filter(f => !unavailableSet.has(f.id));
+    const list = [...activeList];
     for (let i = list.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [list[i], list[j]] = [list[j], list[i]];
     }
     return list.slice(0, MAX_FEATURED_DISPLAY);
-  }, []);
+  }, [videos]);
 
   // Local state for the input field to make it snappy
   const [localSearch, setLocalSearch] = useState(searchQuery);
