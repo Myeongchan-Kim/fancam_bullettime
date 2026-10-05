@@ -500,6 +500,38 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return packMobileTiles(masterVideo, activeSlaveVideos, isLandscape);
   }, [masterVideo, activeSlaveVideos, isLandscape]);
 
+  // Unified monotonic progress calculation (0% ~ 100%)
+  const loadingProgress = useMemo(() => {
+    if (isLoadingData || !masterVideo) {
+      return 25; // Phase 1: API / Archive fetch (0 ~ 30%)
+    }
+    const totalTargets = Math.max(targetVideoIds.length, 1);
+    const streamRatio = readyVideoIds.size / totalTargets;
+    // Phase 2: Streams pre-buffering maps smoothly from 30% to 100%
+    return Math.min(100, Math.round(30 + streamRatio * 70));
+  }, [isLoadingData, masterVideo, targetVideoIds.length, readyVideoIds.size]);
+
+  const loadingStatusText = useMemo(() => {
+    if (isLoadingData || !masterVideo) {
+      return 'Connecting to concert archive...';
+    }
+    const totalTargets = Math.max(targetVideoIds.length, 1);
+    if (readyVideoIds.size === 0) {
+      return `Initializing ${totalTargets} camera streams...`;
+    }
+    if (readyVideoIds.size < totalTargets) {
+      return `Pre-buffering camera angles (${readyVideoIds.size} / ${totalTargets} ready)`;
+    }
+    return `Stabilizing multi-cam streams (${totalTargets} / ${totalTargets} ready)`;
+  }, [isLoadingData, masterVideo, targetVideoIds.length, readyVideoIds.size]);
+
+  const loadingSubText = useMemo(() => {
+    if (isLoadingData || !masterVideo) {
+      return 'Retrieving 360° stage coordinates...';
+    }
+    return 'Synchronizing timeline offsets...';
+  }, [isLoadingData, masterVideo]);
+
   return (
     <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 relative min-h-[380px] sm:min-h-[500px]">
       {/* Multi-Angle Pre-Buffer & Play Overlay Screen */}
@@ -519,25 +551,21 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
               <span>SYNCHRONIZING MULTI-ANGLES</span>
             </div>
             <div className="text-xs sm:text-sm text-gray-400 font-medium max-w-sm">
-              {isLoadingData || !masterVideo
-                ? 'Connecting to concert archive...'
-                : `Pre-buffering video angles (${readyVideoIds.size} / ${Math.max(targetVideoIds.length, 1)} loaded)`
-              }
+              {loadingStatusText}
             </div>
             {/* Animated buffer warmup progress bar */}
             <div className="w-60 sm:w-72 h-1.5 bg-slate-900 rounded-full mt-5 overflow-hidden shadow-inner border border-slate-800">
               <div 
-                className="h-full bg-gradient-to-r from-twice-magenta via-twice-apricot to-twice-magenta transition-all duration-300"
-                style={{ 
-                  width: isLoadingData || !masterVideo
-                    ? '25%'
-                    : `${Math.min(100, Math.round((readyVideoIds.size / Math.max(targetVideoIds.length, 1)) * 100))}%` 
-                }}
+                className="h-full bg-gradient-to-r from-twice-magenta via-twice-apricot to-twice-magenta transition-all duration-500 ease-out"
+                style={{ width: `${loadingProgress}%` }}
               ></div>
             </div>
-            <div className="text-[11px] text-gray-500 mt-2.5 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 rounded-full bg-twice-apricot animate-ping"></span>
-              <span>Stabilizing multi-cam streams...</span>
+            <div className="text-[11px] text-gray-500 mt-2.5 flex items-center justify-between w-60 sm:w-72 px-0.5">
+              <span className="flex items-center gap-1.5 truncate">
+                <span className="w-1.5 h-1.5 rounded-full bg-twice-apricot animate-ping shrink-0"></span>
+                <span className="truncate">{loadingSubText}</span>
+              </span>
+              <span className="font-mono font-bold text-gray-400 text-[10px] shrink-0 ml-2">{loadingProgress}%</span>
             </div>
           </div>
         ) : (
