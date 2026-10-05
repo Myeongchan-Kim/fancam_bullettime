@@ -595,7 +595,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   }, [isLoadingData, masterVideo]);
 
   return (
-    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 relative min-h-[380px] sm:min-h-[500px]">
+    <div className="w-full rounded-none sm:rounded-3xl overflow-hidden shadow-2xl border-0 sm:border border-slate-800 bg-slate-950 p-0 relative min-h-[380px] sm:min-h-[500px] flex flex-col">
       {/* Multi-Angle Pre-Buffer & Play Overlay Screen */}
       <div 
         className={`absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center p-6 text-center select-none transition-opacity duration-500 ${
@@ -663,57 +663,52 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         )}
       </div>
 
+      {/* Dedicated Master Video Top Control Bar (Non-overlapping, directly above video wall) */}
+      <div className="w-full px-3.5 sm:px-4 py-2 sm:py-2.5 bg-slate-900/90 border-b border-slate-800/80 flex items-center justify-between z-20 shrink-0 select-none">
+        <div className="flex items-center gap-2.5 min-w-0 pr-3">
+          <span className="bg-twice-magenta text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0 shadow">
+            MASTER
+          </span>
+          <span className="text-white text-xs sm:text-sm font-bold truncate">
+            {masterVideo?.title || 'TWICE Fancam Archive'}
+          </span>
+          {masterVideo?.songs?.[0]?.name && (
+            <span className="text-twice-apricot text-xs font-semibold shrink-0 hidden sm:inline">
+              • {masterVideo.songs[0].name}
+            </span>
+          )}
+          {masterVideo?.members && masterVideo.members.length > 0 && (
+            <span className="text-gray-400 text-xs truncate hidden md:inline">
+              • {masterVideo.members.join(', ')}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+          <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest hidden md:inline">
+            {1 + activeSlaveVideos.length} ANGLES SYNCED
+          </span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleGlobalMute();
+            }}
+            className="p-1.5 sm:p-2 bg-slate-800 hover:bg-slate-700 rounded-full border border-white/20 text-white transition-all hover:scale-105 active:scale-95 cursor-pointer"
+            title={isMuted ? 'Unmute' : 'Mute'}
+          >
+            {isMuted ? (
+              <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-red-400" />
+            ) : (
+              <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-twice-apricot" />
+            )}
+          </button>
+        </div>
+      </div>
+
       {isDesktop ? (
         /* Desktop Seamless Mosaic Video Wall (>= 1024px) */
         <div 
           className="w-full relative bg-black select-none overflow-hidden group/player"
-          onMouseEnter={() => setShowOverlay(true)}
-          onMouseLeave={() => setShowOverlay(false)}
         >
-          {/* Floating Top HUD Header */}
-          <div 
-            className={`absolute top-0 inset-x-0 z-30 px-4 py-3 bg-gradient-to-b from-black/95 via-black/70 to-transparent flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
-              showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
-          >
-            <div className="flex items-center gap-3 min-w-0 pr-2">
-              <span className="bg-twice-magenta text-white px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider shrink-0 shadow">
-                MASTER
-              </span>
-              <span className="text-white text-sm font-bold truncate">
-                {masterVideo?.title}
-              </span>
-              {masterVideo?.songs?.[0]?.name && (
-                <span className="text-twice-apricot text-xs font-semibold shrink-0">
-                  • {masterVideo.songs[0].name}
-                </span>
-              )}
-              {masterVideo?.members && masterVideo.members.length > 0 && (
-                <span className="text-gray-400 text-xs truncate hidden sm:inline">
-                  • {masterVideo.members.join(', ')}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-3 shrink-0">
-              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest hidden md:inline">
-                {1 + activeSlaveVideos.length} ANGLES SYNCED
-              </span>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleGlobalMute();
-                }}
-                className="p-2 bg-black/80 hover:bg-black rounded-full border border-white/20 text-white transition-all hover:scale-105 active:scale-95"
-                title={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted ? (
-                  <VolumeX className="w-4 h-4 text-red-400" />
-                ) : (
-                  <Volume2 className="w-4 h-4 text-twice-apricot" />
-                )}
-              </button>
-            </div>
-          </div>
 
           {/* Seamless Mosaic Video Wall */}
           {activeSlaveVideos.length === 0 ? (
@@ -763,9 +758,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                     className="w-full h-full absolute inset-0 pointer-events-none"
                     iframeClassName="w-full h-full block"
                   />
-                  <div className={`absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-300 bg-black/40 ${
-                    showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                  } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                  <div className="absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
                     <div className="flex justify-end">
                       <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
                         <ExternalLink className="h-3.5 w-3.5" />
@@ -819,9 +812,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                         className="w-full h-full absolute inset-0 pointer-events-none"
                         iframeClassName="w-full h-full block"
                       />
-                      <div className={`absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-300 bg-black/40 ${
-                        showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                      } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                      <div className="absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
                         <div className="flex justify-end">
                           <Link to={`/video/${activeSlaveVideos[0].id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
                             <ExternalLink className="h-3.5 w-3.5" />
@@ -854,9 +845,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                             className="w-full h-full absolute inset-0 pointer-events-none"
                             iframeClassName="w-full h-full block"
                           />
-                          <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-300 bg-black/40 ${
-                            showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                          } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                          <div className="absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
                             <div className="flex justify-end">
                               <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
                                 <ExternalLink className="h-3 w-3" />
@@ -891,9 +880,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                             className="w-full h-full absolute inset-0 pointer-events-none"
                             iframeClassName="w-full h-full block"
                           />
-                          <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-300 bg-black/40 ${
-                            showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                          } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                          <div className="absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
                             <div className="flex justify-end">
                               <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
                                 <ExternalLink className="h-3 w-3" />
@@ -934,9 +921,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                           className="w-full h-full absolute inset-0 pointer-events-none"
                           iframeClassName="w-full h-full block"
                         />
-                        <div className={`absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-300 bg-black/40 ${
-                          showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                        } group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto`}>
+                        <div className="absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
                           <div className="flex justify-end">
                             <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
                               <ExternalLink className="h-3 w-3" />
@@ -965,38 +950,6 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           className="w-full relative bg-black select-none overflow-hidden"
           onClick={toggleOverlay}
         >
-          {/* Sticky Top Floating HUD */}
-          <div 
-            className={`sticky top-0 inset-x-0 z-30 px-3 py-2 bg-gradient-to-b from-black/95 via-black/70 to-transparent flex items-center justify-between transition-opacity duration-300 pointer-events-auto ${
-              showOverlay ? 'opacity-100' : 'opacity-0 pointer-events-none'
-            }`}
-          >
-            <div className="flex items-center gap-2 min-w-0 pr-2">
-              <span className="bg-twice-magenta text-white px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider shrink-0 shadow">
-                MASTER
-              </span>
-              <span className="text-white text-xs font-bold truncate">
-                {masterVideo?.title}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleGlobalMute();
-                }}
-                className="p-1.5 bg-black/70 hover:bg-black/90 rounded-full border border-white/20 text-white active:scale-95 transition-transform"
-                title={isMuted ? 'Unmute' : 'Mute'}
-              >
-                {isMuted ? (
-                  <VolumeX className="w-3.5 h-3.5 text-red-400" />
-                ) : (
-                  <Volume2 className="w-3.5 h-3.5 text-twice-apricot" />
-                )}
-              </button>
-            </div>
-          </div>
-
           {/* Dynamic Mosaic Video Groups */}
           <div className="w-full flex flex-col space-y-0.5 bg-black">
             {mobileGroups.map((group) => {
