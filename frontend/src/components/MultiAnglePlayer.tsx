@@ -16,7 +16,8 @@ interface MultiAnglePlayerProps {
   isLoadingData?: boolean;
 }
 
-const SYNC_THRESHOLD = 0.5; // seconds difference before forcing seek
+const SYNC_THRESHOLD = 1.5; // seconds difference before forcing seek (avoids mobile seek-thrashing)
+const SEEK_COOLDOWN_MS = 3500; // minimum ms between consecutive seeks on any single slave video
 
 const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(({ videos, isLoadingData = false }, ref) => {
   const navigate = useNavigate();
@@ -38,6 +39,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   const [currentConcertTime, setCurrentConcertTime] = useState<number>(initialConcertTime);
   const currentConcertTimeRef = useRef<number>(initialConcertTime);
+  const lastReportedSecondRef = useRef<number>(Math.floor(initialConcertTime));
+  const lastSeekTimeRef = useRef<{ [key: number]: number }>({});
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Multi-Angle Barrier Synchronization & Start-on-Click States
@@ -191,6 +194,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
 
     // Re-align all slave players to their exact synchronized concert timestamps
+    const now = Date.now();
     slaveVideosRef.current.forEach(slave => {
       const slavePlayer = allPlayers[slave.id];
       if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
@@ -199,6 +203,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           slavePlayer.mute();
           slavePlayer.playVideo();
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+            lastSeekTimeRef.current[slave.id] = now;
             slavePlayer.seekTo(targetSlaveTime, true);
           }
         } catch (err) {
@@ -257,7 +262,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   }, [isReadyToPlay, releaseBarrier, targetVideoIds, readyVideoIds, freezeAtStartPosition]);
 
-  const handleReady = (e: YouTubeEvent, videoId: number) => {
+  const handleReady = useCallback((e: YouTubeEvent, videoId: number) => {
     if (e.target && e.target.getIframe()) {
       playersRef.current[videoId] = e.target;
       setPlayers(prev => ({ ...prev, [videoId]: e.target }));
@@ -288,7 +293,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         return next;
       });
     }
-  };
+  }, [masterId, masterVideo, initialTime, videos]);
 
   // Warmup and freeze ready check: once all initial angles buffer + warmup time elapsed
   useEffect(() => {
@@ -318,7 +323,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return () => clearTimeout(timer);
   }, [freezeAtStartPosition, isReadyToPlay]);
 
-  // Stable sync loop with Buffering Guard
+  // Stable sync loop with Buffering Guard & Seek Cooldown
   useEffect(() => {
     syncInterval.current = setInterval(() => {
       if (masterId === undefined) return;
@@ -329,9 +334,18 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       const newConcertTime = masterVideo ? getMasterConcertTime(masterVideo, masterLocalTime) : masterLocalTime;
       
       currentConcertTimeRef.current = newConcertTime;
-      setCurrentConcertTime(newConcertTime);
+
+      // Throttle React state updates to when the whole integer second advances
+      // This prevents high-frequency component re-renders that stall mobile video decoding
+      const currentSec = Math.floor(newConcertTime);
+      if (currentSec !== lastReportedSecondRef.current) {
+        lastReportedSecondRef.current = currentSec;
+        setCurrentConcertTime(newConcertTime);
+      }
 
       if (!isPlaying || !isBarrierReleasedRef.current) return;
+
+      const now = Date.now();
 
       // Use the ref to get the latest visible slaves without restarting the interval
       slaveVideosRef.current.forEach(slave => {
@@ -342,17 +356,28 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             const slaveTime = slavePlayer.getCurrentTime();
             const drift = Math.abs(slaveTime - targetSlaveTime);
 
-            // Buffering Guard: If slave is currently buffering (state 3) AND within 2.0s of target,
-            // let it finish downloading its buffer chunks to avoid thrashing.
-            // But if it is buffering far away (> 2.0s drift, e.g. stuck at 0s), force seek immediately!
+            // Cooldown check: if this video was sought recently (< 3.5s), let it finish buffering and playing
+            const lastSeek = lastSeekTimeRef.current[slave.id] || 0;
+            if (now - lastSeek < SEEK_COOLDOWN_MS) {
+              return;
+            }
+
+            // State-based protection
             if (typeof slavePlayer.getPlayerState === 'function') {
               const state = slavePlayer.getPlayerState();
-              if (state === 3 && drift < 2.0) {
+              // State 3 = BUFFERING: Never interrupt active buffering unless drift is extreme (> 5.0s)
+              if (state === 3 && drift < 5.0) {
                 return;
+              }
+              // State 2 = PAUSED: If master is playing, ensure slave is playing
+              if (state === 2) {
+                slavePlayer.playVideo();
               }
             }
 
+            // Only seek if drift exceeds generous threshold (1.5s) to eliminate repeating spinner thrashing
             if (drift > SYNC_THRESHOLD) {
+              lastSeekTimeRef.current[slave.id] = now;
               slavePlayer.seekTo(targetSlaveTime, true);
             }
           }
@@ -380,12 +405,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       if (isBarrierReleasedRef.current) {
         const currentMasterTime = typeof e.target.getCurrentTime === 'function' ? e.target.getCurrentTime() : 0;
         const concertTime = masterVideo ? getMasterConcertTime(masterVideo, currentMasterTime) : currentMasterTime;
+        const now = Date.now();
         slaveVideos.forEach(slave => {
           const slavePlayer = playersRef.current[slave.id];
           if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
             slavePlayer.playVideo();
             const targetSlaveTime = getLocalVideoTime(slave, concertTime, 0);
             if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+              lastSeekTimeRef.current[slave.id] = now;
               slavePlayer.seekTo(targetSlaveTime, true);
             }
           }
@@ -454,7 +481,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     setIsPlaying(false);
   };
 
-  const optsMaster = {
+  const optsMaster = useMemo(() => ({
     width: '100%',
     height: '100%',
     playerVars: {
@@ -465,14 +492,33 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       start: initialTime,
       playsinline: 1 as const, // Crucial for iOS inline playback
     },
-  };
-  const getSlaveOpts = (slaveVideo: Video) => {
-    // We'll use a one-time calculation for the initial start time 
-    // to avoid the player restarting when currentConcertTime updates.
-    const initialConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
-    const targetTime = getLocalVideoTime(slaveVideo, initialConcertTime, 0) ?? 0;
+  }), [initialTime]);
 
-    return {
+  const slaveOptsMap = useMemo(() => {
+    const map = new Map<number, any>();
+    const initConcert = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
+    videos.forEach(v => {
+      const targetTime = getLocalVideoTime(v, initConcert, 0) ?? 0;
+      map.set(v.id, {
+        width: '100%',
+        height: '100%',
+        playerVars: {
+          autoplay: 1 as const,
+          mute: 1 as const,
+          modestbranding: 1 as const,
+          rel: 0 as const,
+          controls: 0 as const,
+          disablekb: 1 as const,
+          playsinline: 1 as const,
+          start: Math.floor(targetTime),
+        },
+      });
+    });
+    return map;
+  }, [videos, masterVideo?.id, initialTime]);
+
+  const getSlaveOpts = useCallback((slaveVideo: Video) => {
+    return slaveOptsMap.get(slaveVideo.id) || {
       width: '100%',
       height: '100%',
       playerVars: {
@@ -483,10 +529,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         controls: 0 as const,
         disablekb: 1 as const,
         playsinline: 1 as const,
-        start: Math.floor(targetTime),
+        start: 0,
       },
     };
-  };
+  }, [slaveOptsMap]);
 
   // Only show slave videos that are actually active at the CURRENT concert time
   const activeSlaveVideos = useMemo(() => {
