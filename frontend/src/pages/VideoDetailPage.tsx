@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
-import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch } from 'lucide-react';
+import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch, AlertTriangle } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
 import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
 import StageMap from '../components/StageMap';
@@ -61,6 +61,24 @@ const VideoDetailPage = () => {
       const res = await axios.get(`${API_BASE_URL}/videos/${id}/full`);
       const { video: videoData, related_videos: relatedData, songs: songsData, concerts: concertsData, contributions: contribsData } = res.data;
       
+      // If video is unavailable and user is not in admin mode,
+      // redirect to the closest active alternative angle if available
+      if (videoData.is_unavailable && !isAdminMode) {
+        const activeAlternatives = (relatedData || []).filter((v: Video) => !v.is_unavailable);
+        if (activeAlternatives.length > 0) {
+          const targetOffset = videoData.sync_offset || 0;
+          activeAlternatives.sort((a: Video, b: Video) => {
+            const diffA = Math.abs((a.sync_offset || 0) - targetOffset);
+            const diffB = Math.abs((b.sync_offset || 0) - targetOffset);
+            return diffA - diffB;
+          });
+          const replacement = activeAlternatives[0];
+          console.warn(`Video ${id} is unavailable on YouTube. Redirecting to closest active angle ${replacement.id}`);
+          navigate(`/video/${replacement.id}`, { replace: true });
+          return;
+        }
+      }
+
       setVideo(videoData);
       setRelatedVideos(relatedData);
       setSongs(songsData);
@@ -248,6 +266,16 @@ const VideoDetailPage = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-10 px-4 sm:px-0">
         <div className="lg:col-span-2 space-y-8">
           
+          {video.is_unavailable && (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-3 text-amber-200">
+              <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+              <div>
+                <p className="font-bold text-sm">해당 직캠은 유튜브에서 비공개 또는 삭제된 영상입니다.</p>
+                <p className="text-xs text-amber-300/80">아카이브 기록 보존을 위해 메타데이터는 유지되며, 일반 탐색 및 추천 목록에서는 자동으로 제외되었습니다.</p>
+              </div>
+            </div>
+          )}
+
           {/* Metadata Display / Official Editor */}
           <div className="p-5 sm:p-8 bg-slate-800/30 rounded-2xl sm:rounded-3xl border border-slate-800 space-y-6 relative shadow-xl">
             {!isEditing ? (

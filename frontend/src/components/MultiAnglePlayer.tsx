@@ -26,14 +26,17 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const initialTime = parseInt(queryParams.get('t') || '0', 10);
   const { isMuted, toggleGlobalMute, setActiveAudioSource } = useGlobalAudio();
 
-  const [masterId, setMasterId] = useState<number | undefined>(videos[0]?.id);
+  const [masterId, setMasterId] = useState<number | undefined>(() => {
+    const firstActive = videos.find(v => !v.is_unavailable);
+    return firstActive ? firstActive.id : videos[0]?.id;
+  });
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const playersRef = useRef<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
 
   // Initialize concert time from initial master video or fallback to initialTime
   const initialConcertTime = useMemo(() => {
-    const m = videos.find(v => v.id === masterId) || videos[0];
+    const m = videos.find(v => v.id === masterId && !v.is_unavailable) || videos.find(v => !v.is_unavailable) || videos[0];
     return m ? getMasterConcertTime(m, initialTime) : initialTime;
   }, [videos, masterId, initialTime]);
 
@@ -104,8 +107,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   // Sync internal state when navigating between videos (e.g. clicking back/forward or promo/demote)
   useEffect(() => {
-    if (videos[0]?.id && videos[0].id !== masterId) {
-      const newMaster = videos[0];
+    const targetMaster = videos.find(v => !v.is_unavailable) || videos[0];
+    if (targetMaster?.id && targetMaster.id !== masterId) {
+      const newMaster = targetMaster;
       const newConcertTime = getMasterConcertTime(newMaster, initialTime);
       setMasterId(newMaster.id);
       setCurrentConcertTime(newConcertTime);
@@ -118,12 +122,12 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
     }
-  }, [videos[0]?.id, masterId, initialTime]);
+  }, [videos, masterId, initialTime]);
 
   // Synchronize concert time once videos are loaded if not playing yet
   useEffect(() => {
     if (videos.length > 0 && !isPlaying && !isBarrierReleasedRef.current) {
-      const m = videos.find(v => v.id === masterId) || videos[0];
+      const m = videos.find(v => v.id === masterId && !v.is_unavailable) || videos.find(v => !v.is_unavailable) || videos[0];
       if (m) {
         const initTime = getMasterConcertTime(m, initialTime);
         setCurrentConcertTime(initTime);
@@ -132,13 +136,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   }, [videos, masterId, initialTime, isPlaying]);
 
-  const masterVideo = videos.find(v => v.id === masterId) || videos[0];
+  const masterVideo = videos.find(v => v.id === masterId && !v.is_unavailable) || videos.find(v => !v.is_unavailable) || videos[0];
   
   // Slave videos that cover the current timeframe
   const slaveVideos = useMemo(() => {
     if (!masterVideo) return [];
     const filtered = videos.filter(v => {
       if (v.id === masterId) return false;
+      if (v.is_unavailable) return false;
       return isVideoActiveAtConcertTime(v, currentConcertTime, 15);
     });
 
@@ -161,7 +166,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     if (!masterVideo) return [];
     const initConcertTime = getMasterConcertTime(masterVideo, initialTime);
     return videos
-      .filter(v => v.id !== masterId && isVideoActiveAtConcertTime(v, initConcertTime, 15))
+      .filter(v => v.id !== masterId && !v.is_unavailable && isVideoActiveAtConcertTime(v, initConcertTime, 15))
       .slice(0, 4)
       .map(v => v.id);
   }, [videos, masterId, masterVideo, initialTime]);

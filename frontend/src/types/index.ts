@@ -60,6 +60,7 @@ export interface Video {
   sync_offset: number;
   duration: number;
   is_shorts: boolean;
+  is_unavailable?: boolean;
   width?: number | null;
   height?: number | null;
   aspect_ratio?: number | null;

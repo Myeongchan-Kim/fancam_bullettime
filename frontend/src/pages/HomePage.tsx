@@ -12,7 +12,7 @@ import { ShieldCheck, PlayCircle, Star } from 'lucide-react';
 
 const FEATURED_SYNC_VIDEOS = [
   { 
-    id: 1668, 
+    id: 1645, 
     title: 'BATTITUDE', 
     subtitle: 'Incheon 20250720 (Nayeon, Jeongyeon, Momo, Mina Unit)', 
     img: '/images/featured_cam01_battitude.jpg',

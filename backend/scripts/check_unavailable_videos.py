@@ -25,12 +25,22 @@ async def check_video_status(client: httpx.AsyncClient, video_id: int, youtube_i
     url = OEMBED_URL.format(youtube_id)
     async with semaphore:
         try:
-            resp = await client.get(url, timeout=5.0)
-            # 200 = Active, 404/401/403/400 = Unavailable/Private/Deleted
+            resp = await client.get(url, timeout=6.0)
+            # 200 = Active
             if resp.status_code == 200:
                 return video_id, youtube_id, True
-            else:
-                return video_id, youtube_id, False
+            
+            # If 401, 403, 404, 400: confirm with a second request after brief pause to prevent false positives
+            if resp.status_code in [400, 401, 403, 404]:
+                await asyncio.sleep(1.0)
+                retry_resp = await client.get(url, timeout=6.0)
+                if retry_resp.status_code in [400, 401, 403, 404]:
+                    return video_id, youtube_id, False
+                elif retry_resp.status_code == 200:
+                    return video_id, youtube_id, True
+
+            # Any other status (e.g. 429 rate limit or 5xx) -> default to active to protect DB
+            return video_id, youtube_id, True
         except Exception:
             # On timeout or connection error, default to True (don't prematurely kill)
             return video_id, youtube_id, True
@@ -55,14 +65,29 @@ async def run_health_check(dry_run: bool = False):
         print(f"   - Unavailable / Private / Deleted Videos: {len(unavailable_ids)}")
 
         if unavailable_ids:
-            print(f"   - Identified Unavailable Video IDs: {unavailable_ids[:20]}...")
+            print(f"   - Identified Unavailable Video IDs: {unavailable_ids}")
             if not dry_run:
+                # 1. Update Primary DB (Supabase)
                 db.query(Video).filter(Video.id.in_(unavailable_ids)).update(
                     {Video.is_unavailable: True},
                     synchronize_session=False
                 )
                 db.commit()
-                print(f"   ✅ Successfully marked {len(unavailable_ids)} videos as is_unavailable=True in DB!")
+                print(f"   ✅ Successfully marked {len(unavailable_ids)} videos as is_unavailable=True in Primary DB!")
+
+                # 2. Sync to local SQLite DB if present and non-empty
+                sqlite_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "twice_fancam.db")
+                if os.path.exists(sqlite_path) and os.path.getsize(sqlite_path) > 0:
+                    try:
+                        import sqlite3
+                        conn = sqlite3.connect(sqlite_path)
+                        cur = conn.cursor()
+                        cur.executemany("UPDATE videos SET is_unavailable = 1 WHERE id = ?", [(vid,) for vid in unavailable_ids])
+                        conn.commit()
+                        conn.close()
+                        print(f"   ✅ Also synchronized {len(unavailable_ids)} unavailable flags to local SQLite (twice_fancam.db)!")
+                    except Exception as e:
+                        print(f"   ℹ️ SQLite sync skipped: {e}")
             else:
                 print("   ℹ️ [DRY RUN] No database changes made.")
     finally:
