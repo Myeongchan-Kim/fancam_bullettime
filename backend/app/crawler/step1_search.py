@@ -8,13 +8,13 @@ import requests
 from datetime import datetime
 from urllib.parse import urlparse, parse_qs
 from playwright.sync_api import sync_playwright
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
+
 
 # 프로젝트 루트를 path에 추가하여 app 모듈 참조 가능하게 함
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from app.core.config import settings
+from app.db import SessionLocal
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.ai_parser import parse_fancam_metadata
 from app.crawler.visual_classifier import classify_fancam_visually
@@ -138,8 +138,6 @@ def get_video_info(url: str):
 
 def run_deep_dive(target_city, limit_videos_per_query=20):
     """특정 도시를 집중적으로 수집하는 로직"""
-    engine = create_engine(DATABASE_URL)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = SessionLocal()
 
     new_video_count = 0
@@ -220,8 +218,8 @@ def run_deep_dive(target_city, limit_videos_per_query=20):
                                     song_objs.append(song_obj)
 
                             # 💡 텍스트 메타데이터에서 곡을 특정하지 못한 경우 시각적(Visual) 판별 실행
-                            if not song_objs and v_id:
-                                vis_res = classify_fancam_visually(youtube_id=v_id, title=title, description="")
+                            if not song_objs and yt_id:
+                                vis_res = classify_fancam_visually(youtube_id=yt_id, title=title, description="")
                                 vis_song_name = vis_res.get("identified_song")
                                 if vis_song_name:
                                     vis_song_obj = db.query(Song).filter(Song.name.ilike(f"%{vis_song_name}%")).first()
