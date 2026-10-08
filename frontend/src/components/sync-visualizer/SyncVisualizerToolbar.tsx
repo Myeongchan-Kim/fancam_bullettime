@@ -164,30 +164,24 @@ export const StatusFilterTabs: React.FC<StatusFilterTabsProps> = ({
 
 interface SearchFilterBarProps {
   searchQuery: string;
-  memberFilter: string;
-  allMembers: string[];
   scaleFactor: number;
   onSearchChange: (query: string) => void;
-  onMemberFilterChange: (member: string) => void;
   onScaleChange: (scale: number) => void;
 }
 
 export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   searchQuery,
-  memberFilter,
-  allMembers,
   scaleFactor,
   onSearchChange,
-  onMemberFilterChange,
   onScaleChange
 }) => {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 p-3.5 rounded-xl backdrop-blur-sm">
-      <div className="relative flex-1 min-w-[180px] max-w-xs">
+      <div className="relative flex-1 min-w-[220px] max-w-sm">
         <Search className="w-3.5 h-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
         <input
           type="text"
-          placeholder="영상 제목, 곡명, #영상ID 검색..."
+          placeholder="영상 제목, 곡명, 아티스트/태그, #영상ID 검색..."
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="w-full bg-slate-800 text-white pl-8 pr-3 py-1.5 rounded-lg text-xs border border-slate-700 focus:outline-none focus:border-twice-magenta placeholder-gray-500"
@@ -200,33 +194,6 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
             <X className="w-3 h-3" />
           </button>
         )}
-      </div>
-
-      {/* Member Filter Pills */}
-      <div className="flex items-center gap-1 overflow-x-auto pb-1 max-w-full">
-        <button
-          onClick={() => onMemberFilterChange('all')}
-          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
-            memberFilter === 'all'
-              ? 'bg-twice-magenta text-white shadow-md'
-              : 'bg-slate-800 text-gray-400 hover:text-white'
-          }`}
-        >
-          전체 멤버
-        </button>
-        {allMembers.map(member => (
-          <button
-            key={member}
-            onClick={() => onMemberFilterChange(member)}
-            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all whitespace-nowrap ${
-              memberFilter === member
-                ? 'bg-twice-apricot text-slate-950 font-black shadow-md'
-                : 'bg-slate-800 text-gray-400 hover:text-white'
-            }`}
-          >
-            {member}
-          </button>
-        ))}
       </div>
 
       {/* Zoom Scale Controller */}

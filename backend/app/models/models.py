@@ -28,6 +28,22 @@ video_song_association = Table(
     Column('song_id', Integer, ForeignKey('songs.id'), primary_key=True)
 )
 
+video_tag_association = Table(
+    'video_tag_association',
+    Base.metadata,
+    Column('video_id', Integer, ForeignKey('videos.id', ondelete="CASCADE"), primary_key=True),
+    Column('tag_id', Integer, ForeignKey('tags.id', ondelete="CASCADE"), primary_key=True)
+)
+
+class Tag(Base):
+    __tablename__ = "tags"
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True, nullable=False)
+    category = Column(String, default="artist", index=True) # "artist" | "member" | "custom"
+    created_at = Column(DateTime, default=lambda: datetime.datetime.now(datetime.UTC))
+
+    videos = relationship("Video", secondary=video_tag_association, back_populates="tags", lazy="select")
+
 class AngleType(str, enum.Enum):
     NORTH = "North (Front)"
     SOUTH = "South (Back)"
@@ -84,6 +100,7 @@ class Video(Base):
     song = relationship("Song", foreign_keys=[song_id], back_populates="videos", overlaps="songs,videos_list") # Deprecated
     songs = relationship("Song", secondary=video_song_association, back_populates="videos_list", lazy="selectin")
     concert = relationship("Concert", back_populates="videos", lazy="joined")
+    tags = relationship("Tag", secondary=video_tag_association, back_populates="videos", lazy="selectin")
     contributions = relationship("Contribution", back_populates="video", lazy="select")
     sync_segments = relationship("VideoSyncSegment", back_populates="video", cascade="all, delete-orphan", order_by=lambda: VideoSyncSegment.video_start_time, lazy="selectin")
 

@@ -37,7 +37,6 @@ export default function SyncVisualizerPage() {
 
   // Filters
   const [statusFilter, setStatusFilter] = useState<'all' | 'uncalibrated' | 'ai' | 'verified' | 'segmented' | 'solos'>('all');
-  const [memberFilter, setMemberFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Horizontal Scrubber Time Cursor (in Master seconds)
@@ -106,8 +105,6 @@ export default function SyncVisualizerPage() {
   const LANE_WIDTH = 13;
   const LANE_GAP = 5;
   const TIME_AXIS_WIDTH = 88;
-
-  const allMembers = ['Nayeon', 'Jeongyeon', 'Momo', 'Sana', 'Jihyo', 'Mina', 'Dahyun', 'Chaeyoung', 'Tzuyu'];
 
   // Static player options to prevent iframe re-creation/blinking
   const playerOpts = useMemo(() => ({
@@ -270,16 +267,13 @@ export default function SyncVisualizerPage() {
         if (!v.songs || !v.songs.some((s: any) => s.is_solo)) return false;
       }
 
-      if (memberFilter !== 'all') {
-        if (!v.members || !v.members.includes(memberFilter)) return false;
-      }
-
       if (searchQuery.trim()) {
         const query = searchQuery.toLowerCase();
         const matchTitle = v.title.toLowerCase().includes(query);
         const matchId = v.id.toString() === query.replace('#', '');
         const matchSong = v.songs && v.songs.some((s: any) => s.name.toLowerCase().includes(query));
-        if (!matchTitle && !matchId && !matchSong) return false;
+        const matchTag = v.members && v.members.some((m: string) => m.toLowerCase().includes(query));
+        if (!matchTitle && !matchId && !matchSong && !matchTag) return false;
       }
 
       return true;
@@ -341,7 +335,7 @@ export default function SyncVisualizerPage() {
       allVisibleVideos: visible,
       videoLaneMap
     };
-  }, [graphData, statusFilter, memberFilter, searchQuery, totalDuration]);
+  }, [graphData, statusFilter, searchQuery, totalDuration]);
 
   // Total width of packed timeline canvas
   const totalCanvasWidth = useMemo(() => {
@@ -1151,11 +1145,8 @@ export default function SyncVisualizerPage() {
       {/* Filter Toolbar & Zoom Scale Slider */}
       <SearchFilterBar
         searchQuery={searchQuery}
-        memberFilter={memberFilter}
-        allMembers={allMembers}
         scaleFactor={scaleFactor}
         onSearchChange={setSearchQuery}
-        onMemberFilterChange={setMemberFilter}
         onScaleChange={setScaleFactor}
       />
 

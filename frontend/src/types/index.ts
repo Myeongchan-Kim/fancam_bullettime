@@ -46,6 +46,13 @@ export interface VideoSyncSegment {
   setlist?: ConcertSetlist;
 }
 
+export interface Tag {
+  id: number;
+  name: string;
+  category?: string;
+  created_at?: string;
+}
+
 export interface Video {
   id: number;
   youtube_id: string;
@@ -54,6 +61,7 @@ export interface Video {
   thumbnail_url: string;
   url: string;
   members: string[];
+  tags?: Tag[];
   angle: string;
   coordinate_x: number | null;
   coordinate_y: number | null;

@@ -37,6 +37,18 @@ class ConcertBase(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class TagBase(BaseModel):
+    id: int
+    name: str
+    category: Optional[str] = "artist"
+    created_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+class TagCreate(BaseModel):
+    name: str
+    category: Optional[str] = "artist"
+
 class VideoBase(BaseModel):
     id: int
     youtube_id: str
@@ -46,6 +58,7 @@ class VideoBase(BaseModel):
     song_id: Optional[int] = None # Deprecated
     concert_id: Optional[int] = None
     members: List[str]
+    tags: Optional[List[TagBase]] = []
     angle: str
     coordinate_x: Optional[float] = None
     coordinate_y: Optional[float] = None
@@ -113,6 +126,7 @@ class VideoUpdate(BaseModel):
     song_ids: Optional[List[int]] = None
     concert_id: Optional[int] = None
     members: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
     angle: Optional[str] = None
     coordinate_x: Optional[float] = None
     coordinate_y: Optional[float] = None
@@ -135,6 +149,7 @@ class ContributionCreate(BaseModel):
     suggested_song_ids: Optional[List[int]] = None
     suggested_concert_id: Optional[int] = None
     suggested_members: Optional[List[str]] = None
+    suggested_tags: Optional[List[str]] = None
     suggested_duration: Optional[float] = None
     suggested_is_shorts: Optional[bool] = None
     suggested_angle: Optional[str] = None
@@ -155,6 +170,7 @@ class ContributionBase(BaseModel):
     suggested_song_ids: Optional[List[int]] = None
     suggested_concert_id: Optional[int] = None
     suggested_members: Optional[List[str]] = None
+    suggested_tags: Optional[List[str]] = None
     suggested_duration: Optional[float] = None
     suggested_is_shorts: bool = False
     suggested_angle: Optional[str] = None

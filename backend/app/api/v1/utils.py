@@ -7,7 +7,7 @@ from fastapi import HTTPException, Header
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ...models.models import Video, Song, ConcertSetlist, Contribution
+from ...models.models import Video, Song, ConcertSetlist, Contribution, Tag
 from ...core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -61,6 +61,28 @@ def _maybe_auto_approve(db: Session, contribution_id: int):
         except Exception as e:
             logger.error(f"Auto-approve failed for contribution {contribution_id}: {str(e)}")
 
+def sync_video_tags(db: Session, video: Video, tag_names: list[str]):
+    """Syncs a video's tags by name, creating any new tags if necessary, and synchronizes video.members."""
+    clean_names = list(dict.fromkeys([name.strip() for name in tag_names if name and isinstance(name, str) and name.strip()]))
+    if not clean_names:
+        video.tags = []
+        video.members = []
+        return
+    existing_tags = db.query(Tag).filter(Tag.name.in_(clean_names)).all()
+    existing_map = {t.name: t for t in existing_tags}
+    resolved_tags = []
+    for name in clean_names:
+        if name in existing_map:
+            resolved_tags.append(existing_map[name])
+        else:
+            new_tag = Tag(name=name, category="artist")
+            db.add(new_tag)
+            db.flush()
+            resolved_tags.append(new_tag)
+            existing_map[name] = new_tag
+    video.tags = resolved_tags
+    video.members = [t.name for t in resolved_tags]
+
 def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Contribution):
     if video:
         if contrib.suggested_title is not None: video.title = contrib.suggested_title
@@ -77,7 +99,11 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
             video.songs = [song] if song else []
 
         if contrib.suggested_concert_id is not None: video.concert_id = contrib.suggested_concert_id
-        if contrib.suggested_members is not None: video.members = contrib.suggested_members
+        suggested_tags = getattr(contrib, 'suggested_tags', None)
+        if suggested_tags is not None:
+            sync_video_tags(db, video, suggested_tags)
+        elif contrib.suggested_members is not None:
+            sync_video_tags(db, video, contrib.suggested_members)
         if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
         if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
         if contrib.suggested_sync_offset is not None:

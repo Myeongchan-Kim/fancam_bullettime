@@ -4,21 +4,30 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func, or_, and_, String
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.models.models import Video, Song, Concert, ConcertSetlist, Contribution, VideoSyncSegment
-from app.schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination, VideoSyncSegmentBase, VideoSyncSegmentCreate
+from app.models.models import Video, Song, Concert, ConcertSetlist, Contribution, VideoSyncSegment, Tag
+from app.schemas.schemas import VideoDetail, VideoUpdate, HomeSummary, VideoFullDetail, VideoPagination, VideoSyncSegmentBase, VideoSyncSegmentCreate, TagBase
 from app.services.calibration import record_video_calibration
 from ...db import get_db
-from .utils import ensure_list, verify_admin
+from .utils import ensure_list, verify_admin, sync_video_tags
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api", tags=["videos"])
+
+@router.get("/tags", response_model=List[TagBase])
+def get_tags(q: Optional[str] = None, db: Session = Depends(get_db)):
+    """Fetch registered tags (artists/performers) with optional search filtering."""
+    query = db.query(Tag)
+    if q:
+        query = query.filter(Tag.name.ilike(f"%{q.strip()}%"))
+    return query.order_by(Tag.name.asc()).all()
 
 @router.get("/videos", response_model=VideoPagination)
 def get_videos(
     song_id: Optional[int] = None,
     concert_id: Optional[int] = None,
     member: Optional[str] = None,
+    tag: Optional[str] = None,
     angle: Optional[str] = None,
     shorts_only: bool = Query(False),
     include_unavailable: bool = Query(False),
@@ -31,6 +40,7 @@ def get_videos(
 ):
     query = db.query(Video).options(
         selectinload(Video.songs),
+        selectinload(Video.tags),
         joinedload(Video.concert)
     )
 
@@ -40,7 +50,9 @@ def get_videos(
     if shorts_only: query = query.filter(Video.is_shorts == True)
     if concert_id: query = query.filter(Video.concert_id == concert_id)
     if song_id: query = query.filter(Video.songs.any(Song.id == song_id))
-    if member:
+    if tag:
+        query = query.filter(Video.tags.any(Tag.name.ilike(f"%{tag.strip()}%")))
+    elif member:
         query = query.filter(Video.members.cast(String).like(f"%{member}%"))
     if angle: query = query.filter(Video.angle == angle)
 
@@ -54,7 +66,8 @@ def get_videos(
                 func.lower(Video.youtube_id).like(q_lower),
                 func.lower(Concert.city).like(q_lower),
                 func.lower(Concert.venue).like(q_lower),
-                func.lower(Song.name).like(q_lower)
+                func.lower(Song.name).like(q_lower),
+                Video.tags.any(func.lower(Tag.name).like(q_lower))
             )
         )
 
@@ -128,11 +141,13 @@ def get_home_summary(response: Response, db: Session = Depends(get_db)):
         # 비디오 목록은 홈 화면 렌더링에 필요한 관계만 가볍게 로드
         latest_videos = db.query(Video).options(
             selectinload(Video.songs),
+            selectinload(Video.tags),
             joinedload(Video.concert)
         ).filter(Video.is_unavailable == False).distinct().order_by(Video.created_at.desc()).limit(24).all()
 
         mapped_videos = db.query(Video).options(
             selectinload(Video.songs),
+            selectinload(Video.tags),
             joinedload(Video.concert)
         ).filter(Video.coordinate_x.isnot(None), Video.is_unavailable == False).all()
 
@@ -205,6 +220,15 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
             commit=False
         )
 
+    if "tags" in update_data:
+        tags = update_data.pop("tags")
+        if tags is not None:
+            sync_video_tags(db, db_video, tags)
+    elif "members" in update_data:
+        members = update_data.pop("members")
+        if members is not None:
+            sync_video_tags(db, db_video, members)
+
     for key, value in update_data.items():
         setattr(db_video, key, value)
     
@@ -212,6 +236,7 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
     db.refresh(db_video)
     return db.query(Video).options(
         selectinload(Video.songs),
+        selectinload(Video.tags),
         joinedload(Video.concert),
         selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
     ).filter(Video.id == video_id).first()
@@ -221,6 +246,7 @@ def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
     """Combined endpoint to fetch everything needed for the detail page in ONE request."""
     video = db.query(Video).options(
         selectinload(Video.songs), 
+        selectinload(Video.tags),
         joinedload(Video.concert).selectinload(Concert.setlist).joinedload(ConcertSetlist.song),
         selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
     ).filter(Video.id == video_id).first()

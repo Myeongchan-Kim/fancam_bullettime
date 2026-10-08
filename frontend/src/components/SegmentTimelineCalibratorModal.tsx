@@ -4,7 +4,6 @@ import {
   X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2, GitBranch
 } from 'lucide-react';
 import { Video, VideoSyncSegment } from '../types';
-import { TWICE_MEMBERS } from '../constants';
 
 interface SegmentTimelineCalibratorModalProps {
   video: Video;
@@ -439,28 +438,30 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
                       />
                     </div>
                     {/* Segment Members Tagging */}
-                    <div className="flex flex-wrap items-center gap-1">
-                      <span className="text-[10px] text-gray-500 font-bold mr-0.5">멤버:</span>
-                      {TWICE_MEMBERS.map((m) => {
-                        const effectiveMembers = seg.members || (video.members || []);
-                        const isSelected = effectiveMembers.includes(m);
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            onClick={() => handleToggleMember(idx, m)}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all border ${
-                              isSelected
-                                ? 'bg-twice-magenta text-white border-pink-400 shadow-sm'
-                                : 'bg-slate-950 text-gray-400 border-slate-800 hover:text-gray-200 hover:border-slate-700'
-                            }`}
-                            title={`${m} 태그 토글`}
-                          >
-                            {m}
-                          </button>
-                        );
-                      })}
-                    </div>
+                    {(video.members && video.members.length > 0) && (
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="text-[10px] text-gray-500 font-bold mr-0.5">포커스:</span>
+                        {video.members.map((m) => {
+                          const effectiveMembers = seg.members || video.members || [];
+                          const isSelected = effectiveMembers.includes(m);
+                          return (
+                            <button
+                              key={m}
+                              type="button"
+                              onClick={() => handleToggleMember(idx, m)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all border ${
+                                isSelected
+                                  ? 'bg-twice-magenta text-white border-pink-400 shadow-sm'
+                                  : 'bg-slate-950 text-gray-400 border-slate-800 hover:text-gray-200 hover:border-slate-700'
+                              }`}
+                              title={`${m} 태그 토글`}
+                            >
+                              {m}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
 
                   <div className="col-span-2 flex items-center gap-1 font-mono">

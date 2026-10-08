@@ -3,7 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { ChevronLeft, Info, Clock, Send, Edit3, Save, X, Music, MapPin, Target, ShieldCheck, Check, Trash2, Type, Sliders, Layers, GitBranch, AlertTriangle } from 'lucide-react';
 import { Video, Song, Concert, Contribution } from '../types';
-import { API_BASE_URL, TWICE_MEMBERS } from '../constants';
+import { API_BASE_URL } from '../constants';
+import { TagInput } from '../components/TagInput';
 import StageMap from '../components/StageMap';
 import MultiAnglePlayer, { MultiAnglePlayerRef } from '../components/MultiAnglePlayer';
 import ConcertTimelineModal from '../components/ConcertTimelineModal';
@@ -112,6 +113,7 @@ const VideoDetailPage = () => {
         song_ids: editData.song_ids.length > 0 ? editData.song_ids : null,
         concert_id: editData.concert_id || null,
         members: editData.members,
+        tags: editData.members,
         coordinate_x: editData.coordinate_x,
         coordinate_y: editData.coordinate_y,
         sync_offset: parseFloat(editData.sync_offset.toString()) || 0,
@@ -132,6 +134,7 @@ const VideoDetailPage = () => {
         suggested_song_ids: editData.song_ids.length > 0 ? editData.song_ids : null,
         suggested_concert_id: editData.concert_id || null,
         suggested_members: editData.members,
+        suggested_tags: editData.members,
         suggested_coordinate_x: editData.coordinate_x,
         suggested_coordinate_y: editData.coordinate_y,
         suggested_sync_offset: parseFloat(editData.sync_offset.toString()) || 0,
@@ -176,12 +179,6 @@ const VideoDetailPage = () => {
     setShowAdminLogin(false);
   };
 
-  const toggleMember = (m: string) => {
-    setEditData(prev => ({
-      ...prev,
-      members: prev.members.includes(m) ? prev.members.filter(name => name !== m) : [...prev.members, m]
-    }));
-  };
 
   const toggleSong = (s_id: number) => {
     setEditData(prev => ({
@@ -388,16 +385,13 @@ const VideoDetailPage = () => {
                       value={editData.duration} onChange={(e) => setEditData({...editData, duration: e.target.value})} />
                   </div>
 
-                  <div className="space-y-2 md:col-span-2">
-                    <label className="text-[11px] font-black text-gray-500 uppercase tracking-widest ml-1">Members Featured</label>
-                    <div className="flex flex-wrap gap-1.5 p-3 bg-slate-900 border border-slate-700 rounded-xl shadow-inner">
-                      {TWICE_MEMBERS.map(m => (
-                        <button key={m} onClick={() => toggleMember(m)}
-                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black transition-all uppercase ${editData.members.includes(m) ? 'bg-twice-magenta text-white shadow-[0_0_10px_#FF1988]' : 'bg-slate-800 text-gray-600 hover:bg-slate-700'}`}>
-                          {m}
-                        </button>
-                      ))}
-                    </div>
+                  <div className="md:col-span-2">
+                    <TagInput
+                      tags={editData.members}
+                      onChange={(tags) => setEditData(prev => ({ ...prev, members: tags }))}
+                      label="Featured Artists / Performers / Tags"
+                      placeholder="아티스트 / 가수 / 멤버 이름 입력 후 Enter (예: Coldplay, IU, Nayeon)..."
+                    />
                   </div>
                 </div>
                 <div className="pt-4">
