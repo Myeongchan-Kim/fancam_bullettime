@@ -254,3 +254,18 @@ def test_sync_case_video_43_corrected_duration():
         )
     finally:
         db.close()
+
+
+def test_sync_case_video_1661_corrected_duration():
+    """
+    Test Case: Video #1661 duration anomaly fix.
+    Ensures #1661 (Chaeyoung IN MY ROOM fancam) is 95.0s and not the 9999.0s placeholder.
+    """
+    db = SessionLocal()
+    try:
+        v1661 = db.query(Video).filter(Video.id == 1661).first()
+        if v1661:
+            assert v1661.duration == 95.0, f"Video 1661 duration should be 95.0s, got {v1661.duration}"
+            assert v1661.duration < 300.0
+    finally:
+        db.close()
