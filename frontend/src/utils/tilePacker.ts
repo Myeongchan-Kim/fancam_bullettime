@@ -232,3 +232,61 @@ export function packMobileTiles(
 
   return groups;
 }
+
+/**
+ * Determines which slave video IDs should be mounted as live <YouTube> iframes on mobile devices.
+ *
+ * Mobile chipsets (iOS WebKit / Android Chrome) restrict hardware-accelerated video decoding to
+ * 3~4 concurrent streams (1 Master + 2~3 Slaves). Mounting 5+ iframes causes the 3rd~5th+ videos
+ * to fall back to software decoding and enter an infinite seek-buffer spinner loop.
+ *
+ * By default, caps live mobile slave streams to the primary row below Master (3 for vertical_trio,
+ * 2 otherwise). When a user explicitly activates a standby tile (`manualPriorityIds`), swaps it into
+ * the live budget using most-recently-requested priority without exceeding the hardware decoder cap.
+ */
+export function getMobileLiveSlaveIds(
+  groups: TileLayoutGroup[],
+  manualPriorityIds: number[] = [],
+  customCap?: number
+): Set<number> {
+  const orderedSlaveIds: number[] = [];
+  let firstSlaveGroupType: TileGroupType | null = null;
+
+  for (const group of groups) {
+    if (group.type !== 'master' && firstSlaveGroupType === null) {
+      firstSlaveGroupType = group.type;
+    }
+    for (const tile of group.tiles) {
+      if (!tile.isMaster) {
+        orderedSlaveIds.push(tile.video.id);
+      }
+    }
+  }
+
+  const maxLiveSlaves =
+    customCap !== undefined
+      ? customCap
+      : firstSlaveGroupType === 'vertical_trio'
+      ? 3
+      : 2;
+
+  const validSlaveSet = new Set(orderedSlaveIds);
+  const liveIds = new Set<number>();
+
+  // 1. Honor user's most recently requested live tiles first (up to cap)
+  for (let i = manualPriorityIds.length - 1; i >= 0; i--) {
+    const id = manualPriorityIds[i];
+    if (validSlaveSet.has(id) && liveIds.size < maxLiveSlaves) {
+      liveIds.add(id);
+    }
+  }
+
+  // 2. Fill remaining budget from top-to-bottom natural layout order
+  for (const id of orderedSlaveIds) {
+    if (liveIds.size >= maxLiveSlaves) break;
+    liveIds.add(id);
+  }
+
+  return liveIds;
+}
+

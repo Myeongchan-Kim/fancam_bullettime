@@ -3,7 +3,8 @@ import {
   getMasterConcertTime, 
   getLocalVideoTime, 
   isVideoActiveAtConcertTime, 
-  getConcertTimeIntervals 
+  getConcertTimeIntervals,
+  evaluateSlaveSyncAction
 } from './timelineSync';
 import { Video } from '../types';
 
@@ -85,4 +86,83 @@ describe('timelineSync legacy utilities tests', () => {
     expect(intervals[0].start).toBe(1000);
     expect(intervals[1].start).toBe(1200);
   });
+
+  describe('evaluateSlaveSyncAction (Anti-Spinner Mobile Sync Engine)', () => {
+    it('prevents seek thrashing while buffering (state === 3) on mobile even with 6s drift', () => {
+      const action = evaluateSlaveSyncAction({
+        slaveTime: 10,
+        targetSlaveTime: 16, // 6s behind while buffering
+        playerState: 3, // BUFFERING
+        msSinceLastSeek: 9000,
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(action.shouldSeek).toBe(false);
+      expect(action.shouldPlay).toBe(false);
+      expect(action.targetPlaybackRate).toBeNull();
+    });
+
+    it('uses smooth 1.25x playbackRate catch-up instead of seekTo for moderate mobile drift (0.6s ~ 4.0s)', () => {
+      const action = evaluateSlaveSyncAction({
+        slaveTime: 20,
+        targetSlaveTime: 22.0, // 2.0s behind on mobile
+        playerState: 1, // PLAYING
+        msSinceLastSeek: 10000,
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(action.shouldSeek).toBe(false);
+      expect(action.targetPlaybackRate).toBe(1.25);
+    });
+
+    it('uses smooth 0.75x playbackRate slow-down when slave is moderately ahead', () => {
+      const action = evaluateSlaveSyncAction({
+        slaveTime: 22.0,
+        targetSlaveTime: 20.5, // 1.5s ahead
+        playerState: 1, // PLAYING
+        msSinceLastSeek: 10000,
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(action.shouldSeek).toBe(false);
+      expect(action.targetPlaybackRate).toBe(0.75);
+    });
+
+    it('restores playbackRate to 1 once drift settles within 0.6s', () => {
+      const action = evaluateSlaveSyncAction({
+        slaveTime: 20.2,
+        targetSlaveTime: 20.5, // 0.3s drift
+        playerState: 1,
+        msSinceLastSeek: 10000,
+        isMobile: true,
+        currentPlaybackRate: 1.25,
+      });
+      expect(action.shouldSeek).toBe(false);
+      expect(action.targetPlaybackRate).toBe(1);
+    });
+
+    it('respects 8000ms cooldown on mobile before allowing another hard seek', () => {
+      const blockedByCooldown = evaluateSlaveSyncAction({
+        slaveTime: 10,
+        targetSlaveTime: 18, // 8s drift
+        playerState: 1,
+        msSinceLastSeek: 5000, // < 8000ms mobile cooldown
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(blockedByCooldown.shouldSeek).toBe(false);
+
+      const allowedAfterCooldown = evaluateSlaveSyncAction({
+        slaveTime: 10,
+        targetSlaveTime: 18, // 8s drift
+        playerState: 1,
+        msSinceLastSeek: 8500, // >= 8000ms mobile cooldown
+        isMobile: true,
+        currentPlaybackRate: 1.25,
+      });
+      expect(allowedAfterCooldown.shouldSeek).toBe(true);
+      expect(allowedAfterCooldown.targetPlaybackRate).toBe(1);
+    });
+  });
 });
+

@@ -3,8 +3,8 @@ import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
 import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
-import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime } from '../utils/timelineSync';
-import { packMobileTiles, isVerticalVideo } from '../utils/tilePacker';
+import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime, evaluateSlaveSyncAction } from '../utils/timelineSync';
+import { packMobileTiles, isVerticalVideo, getMobileLiveSlaveIds } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
 
 export interface MultiAnglePlayerRef {
@@ -15,9 +15,6 @@ interface MultiAnglePlayerProps {
   videos: Video[];
   isLoadingData?: boolean;
 }
-
-const SYNC_THRESHOLD = 1.5; // seconds difference before forcing seek (avoids mobile seek-thrashing)
-const SEEK_COOLDOWN_MS = 3500; // minimum ms between consecutive seeks on any single slave video
 
 const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(({ videos, isLoadingData = false }, ref) => {
   const navigate = useNavigate();
@@ -33,6 +30,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const [players, setPlayers] = useState<{ [key: number]: YouTubePlayer }>({});
   const playersRef = useRef<{ [key: number]: YouTubePlayer }>({});
   const [isPlaying, setIsPlaying] = useState(false);
+  const isPlayingRef = useRef(false);
 
   // Initialize concert time from initial master video or fallback to initialTime
   const initialConcertTime = useMemo(() => {
@@ -44,6 +42,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const currentConcertTimeRef = useRef<number>(initialConcertTime);
   const lastReportedSecondRef = useRef<number>(Math.floor(initialConcertTime));
   const lastSeekTimeRef = useRef<{ [key: number]: number }>({});
+  const slavePlaybackRatesRef = useRef<{ [key: number]: number }>({});
   const syncInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Multi-Angle Barrier Synchronization & Start-on-Click States
@@ -56,17 +55,21 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const WARMUP_BUFFER_MS = 2000; // 2.0s pre-buffer settling period behind the curtain
   const MAX_SAFETY_TIMEOUT_MS = 4500; // 4.5s max safety fallback
 
-  // Responsive layout & Touch Immersive Mode states
+  // Responsive layout, Touch Immersive Mode & Mobile Decoder Budget states
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
+  const isDesktopRef = useRef(isDesktop);
   const [isLandscape, setIsLandscape] = useState(() => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth < 1024);
   const [showOverlay, setShowOverlay] = useState(false);
+  const [manualMobileLiveIds, setManualMobileLiveIds] = useState<number[]>([]);
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const handleResize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
-      setIsDesktop(w >= 1024);
+      const desktop = w >= 1024;
+      setIsDesktop(desktop);
+      isDesktopRef.current = desktop;
       setIsLandscape(w > h && w < 1024);
     };
     handleResize();
@@ -110,9 +113,11 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     if (isLoadingData || videos.length === 0) {
       setIsReadyToPlay(false);
       setIsPlaying(false);
+      isPlayingRef.current = false;
       setReadyVideoIds(new Set());
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
+      setManualMobileLiveIds([]);
       return;
     }
 
@@ -124,9 +129,12 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       setCurrentConcertTime(newConcertTime);
       currentConcertTimeRef.current = newConcertTime;
       setIsPlaying(false);
+      isPlayingRef.current = false;
       setIsReadyToPlay(false);
       hasUserRequestedPlayRef.current = false;
       setReadyVideoIds(new Set());
+      setManualMobileLiveIds([]);
+      slavePlaybackRatesRef.current = {};
       mountTimeRef.current = Date.now();
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
@@ -170,15 +178,56 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     slaveVideosRef.current = slaveVideos;
   }, [slaveVideos]);
 
+  // Only show slave videos that are actually active at the CURRENT concert time
+  const activeSlaveVideos = useMemo(() => {
+    return slaveVideos.filter(v => {
+      // 15s padding ensures fancams starting slightly after the intro are visible and pre-buffered from second 0
+      return getLocalVideoTime(v, currentConcertTime, 15) !== null;
+    });
+  }, [slaveVideos, currentConcertTime]);
+
+  const mobileGroups = useMemo(() => {
+    return packMobileTiles(masterVideo, activeSlaveVideos, isLandscape);
+  }, [masterVideo, activeSlaveVideos, isLandscape]);
+
+  // Mobile Hardware Decoder Budget: cap live <YouTube> slave streams on mobile (2 horizontal or 3 vertical trio)
+  const mobileLiveSlaveIds = useMemo(() => {
+    return getMobileLiveSlaveIds(mobileGroups, manualMobileLiveIds);
+  }, [mobileGroups, manualMobileLiveIds]);
+
+  const activateMobileLiveSlave = useCallback((videoId: number) => {
+    setManualMobileLiveIds(prev => [...prev.filter(id => id !== videoId), videoId]);
+  }, []);
+
+  // Clean up detached player references when mobile slave tiles transition to standby mode
+  useEffect(() => {
+    if (isDesktop) return;
+    Object.keys(playersRef.current).forEach(idStr => {
+      const id = parseInt(idStr, 10);
+      if (id !== masterId && !mobileLiveSlaveIds.has(id)) {
+        delete playersRef.current[id];
+        delete slavePlaybackRatesRef.current[id];
+      }
+    });
+  }, [isDesktop, masterId, mobileLiveSlaveIds]);
+
   // Target initial video IDs that must be ready before simultaneous start
   const initialActiveSlaveIds = useMemo(() => {
     if (!masterVideo) return [];
     const initConcertTime = getMasterConcertTime(masterVideo, initialTime);
-    return videos
-      .filter(v => v.id !== masterId && !v.is_unavailable && isVideoActiveAtConcertTime(v, initConcertTime, 15))
+    const activeAtInit = videos
+      .filter(v => v.id !== masterId && !v.is_unavailable && isVideoActiveAtConcertTime(v, initConcertTime, 15));
+
+    if (!isDesktop) {
+      return activeAtInit
+        .filter(v => mobileLiveSlaveIds.has(v.id))
+        .map(v => v.id);
+    }
+
+    return activeAtInit
       .slice(0, 4)
       .map(v => v.id);
-  }, [videos, masterId, masterVideo, initialTime]);
+  }, [videos, masterId, masterVideo, initialTime, isDesktop, mobileLiveSlaveIds]);
 
   const targetVideoIds = useMemo(() => {
     return masterVideo ? [masterVideo.id, ...initialActiveSlaveIds] : [];
@@ -193,11 +242,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
     const allPlayers = playersRef.current;
     const masterPlayer = masterId ? allPlayers[masterId] : undefined;
+    const now = Date.now();
 
-    // Re-align master player to exact start timestamp and unmute if permitted
+    // Re-align master player to exact start timestamp only if needed (preserves pre-buffer) and unmute if permitted
     if (masterPlayer && typeof masterPlayer.seekTo === 'function' && masterPlayer.getIframe()) {
       try {
-        masterPlayer.seekTo(initialTime, true);
+        const currentMasterPos = typeof masterPlayer.getCurrentTime === 'function' ? masterPlayer.getCurrentTime() : -999;
+        if (Math.abs(currentMasterPos - initialTime) > 1.5) {
+          masterPlayer.seekTo(initialTime, true);
+        }
         if (!isMuted) {
           masterPlayer.unMute();
         }
@@ -207,25 +260,28 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       }
     }
 
-    // Re-align all slave players to their exact synchronized concert timestamps
-    const now = Date.now();
+    // Start all mounted slave players; avoid redundant seekTo if already pre-positioned by freezeAtStartPosition
     slaveVideosRef.current.forEach(slave => {
       const slavePlayer = allPlayers[slave.id];
       if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
         try {
           const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
           slavePlayer.mute();
-          slavePlayer.playVideo();
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+            const currentSlavePos = typeof slavePlayer.getCurrentTime === 'function' ? slavePlayer.getCurrentTime() : -999;
             lastSeekTimeRef.current[slave.id] = now;
-            slavePlayer.seekTo(targetSlaveTime, true);
+            if (Math.abs(currentSlavePos - targetSlaveTime) > 1.5) {
+              slavePlayer.seekTo(targetSlaveTime, true);
+            }
           }
+          slavePlayer.playVideo();
         } catch (err) {
           console.warn(`Error starting slave player ${slave.id}:`, err);
         }
       }
     });
 
+    isPlayingRef.current = true;
     setIsPlaying(true);
   }, [masterId, masterVideo, initialTime, isMuted]);
 
@@ -236,6 +292,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
     const allPlayers = playersRef.current;
     const masterPlayer = masterId ? allPlayers[masterId] : undefined;
+    const now = Date.now();
 
     if (masterPlayer && typeof masterPlayer.pauseVideo === 'function' && masterPlayer.getIframe()) {
       try {
@@ -250,6 +307,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         try {
           const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+            lastSeekTimeRef.current[slave.id] = now;
             slavePlayer.pauseVideo();
             slavePlayer.seekTo(targetSlaveTime, true);
           }
@@ -284,21 +342,37 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       // Ensure all videos seek to exact target time and start muted background pre-buffering
       try {
         e.target.mute();
-        const initConcertTime = masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime;
+        const now = Date.now();
+        const referenceConcertTime = isBarrierReleasedRef.current
+          ? currentConcertTimeRef.current
+          : (masterVideo ? getMasterConcertTime(masterVideo, initialTime) : initialTime);
+
         if (videoId === masterId) {
-          if (initialTime > 0) {
+          if (initialTime > 0 && !isBarrierReleasedRef.current) {
             e.target.seekTo(initialTime, true);
           }
+          e.target.playVideo();
         } else {
+          // On mobile, request lower stream resolution for small slave tiles to save hardware decoder bandwidth
+          if (!isDesktopRef.current && typeof (e.target as any).setPlaybackQuality === 'function') {
+            try {
+              (e.target as any).setPlaybackQuality('small');
+            } catch {}
+          }
           const slave = videos.find(v => v.id === videoId);
           if (slave) {
-            const targetSlaveTime = getLocalVideoTime(slave, initConcertTime, 0);
+            const targetSlaveTime = getLocalVideoTime(slave, referenceConcertTime, 0);
             if (targetSlaveTime !== null && targetSlaveTime >= 0) {
+              lastSeekTimeRef.current[videoId] = now;
               e.target.seekTo(targetSlaveTime, true);
             }
           }
+          if (!isBarrierReleasedRef.current || isPlayingRef.current) {
+            e.target.playVideo();
+          } else {
+            e.target.pauseVideo();
+          }
         }
-        e.target.playVideo();
       } catch (err) {}
 
       setReadyVideoIds(prev => {
@@ -339,7 +413,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return () => clearTimeout(timer);
   }, [isLoadingData, masterVideo, freezeAtStartPosition, isReadyToPlay]);
 
-  // Stable sync loop with Buffering Guard & Seek Cooldown
+  // Stable sync loop with Buffering Guard, Smooth PlaybackRate Catch-Up & Seek Cooldown
   useEffect(() => {
     syncInterval.current = setInterval(() => {
       if (masterId === undefined) return;
@@ -351,17 +425,27 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       
       currentConcertTimeRef.current = newConcertTime;
 
-      // Throttle React state updates to when the whole integer second advances
-      // This prevents high-frequency component re-renders that stall mobile video decoding
+      // Only trigger React state re-render when active angle membership changes or every 4s
+      // Prevents 1Hz component tree re-renders from stalling mobile video decoding
       const currentSec = Math.floor(newConcertTime);
       if (currentSec !== lastReportedSecondRef.current) {
-        lastReportedSecondRef.current = currentSec;
-        setCurrentConcertTime(newConcertTime);
+        const prevTime = lastReportedSecondRef.current;
+        const membershipChanged = videos.some(
+          v =>
+            v.id !== masterId &&
+            !v.is_unavailable &&
+            isVideoActiveAtConcertTime(v, newConcertTime, 15) !== isVideoActiveAtConcertTime(v, prevTime, 15)
+        );
+        if (membershipChanged || Math.abs(currentSec - prevTime) >= 4) {
+          lastReportedSecondRef.current = currentSec;
+          setCurrentConcertTime(newConcertTime);
+        }
       }
 
       if (!isPlaying || !isBarrierReleasedRef.current) return;
 
       const now = Date.now();
+      const isMobileDevice = !isDesktopRef.current;
 
       // Use the ref to get the latest visible slaves without restarting the interval
       slaveVideosRef.current.forEach(slave => {
@@ -370,29 +454,31 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           const targetSlaveTime = getLocalVideoTime(slave, newConcertTime, 0);
           if (targetSlaveTime !== null && targetSlaveTime >= 0) {
             const slaveTime = slavePlayer.getCurrentTime();
-            const drift = Math.abs(slaveTime - targetSlaveTime);
-
-            // Cooldown check: if this video was sought recently (< 3.5s), let it finish buffering and playing
             const lastSeek = lastSeekTimeRef.current[slave.id] || 0;
-            if (now - lastSeek < SEEK_COOLDOWN_MS) {
-              return;
+            const state = typeof slavePlayer.getPlayerState === 'function' ? slavePlayer.getPlayerState() : 1;
+            const currentRate = slavePlaybackRatesRef.current[slave.id] || 1;
+
+            const syncAction = evaluateSlaveSyncAction({
+              slaveTime,
+              targetSlaveTime,
+              playerState: state,
+              msSinceLastSeek: now - lastSeek,
+              isMobile: isMobileDevice,
+              currentPlaybackRate: currentRate,
+            });
+
+            if (syncAction.shouldPlay) {
+              slavePlayer.playVideo();
             }
 
-            // State-based protection
-            if (typeof slavePlayer.getPlayerState === 'function') {
-              const state = slavePlayer.getPlayerState();
-              // State 3 = BUFFERING: Never interrupt active buffering unless drift is extreme (> 5.0s)
-              if (state === 3 && drift < 5.0) {
-                return;
-              }
-              // State 2 = PAUSED: If master is playing, ensure slave is playing
-              if (state === 2) {
-                slavePlayer.playVideo();
-              }
+            if (syncAction.targetPlaybackRate !== null && typeof slavePlayer.setPlaybackRate === 'function') {
+              try {
+                slavePlayer.setPlaybackRate(syncAction.targetPlaybackRate);
+                slavePlaybackRatesRef.current[slave.id] = syncAction.targetPlaybackRate;
+              } catch (err) {}
             }
 
-            // Only seek if drift exceeds generous threshold (1.5s) to eliminate repeating spinner thrashing
-            if (drift > SYNC_THRESHOLD) {
+            if (syncAction.shouldSeek) {
               lastSeekTimeRef.current[slave.id] = now;
               slavePlayer.seekTo(targetSlaveTime, true);
             }
@@ -404,32 +490,42 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return () => {
       if (syncInterval.current) clearInterval(syncInterval.current);
     };
-  }, [isPlaying, masterId, masterVideo]);
+  }, [isPlaying, masterId, masterVideo, videos]);
 
   // Handle player cleanup only on unmount
   useEffect(() => {
     return () => { 
       setPlayers({}); 
       playersRef.current = {};
+      slavePlaybackRatesRef.current = {};
     };
   }, []);
 
   const handlePlay = (e: YouTubeEvent) => {
     // Ensure we only process events from the master player
     if (masterId !== undefined && e.target === playersRef.current[masterId]) {
+      isPlayingRef.current = true;
       setIsPlaying(true);
       if (isBarrierReleasedRef.current) {
         const currentMasterTime = typeof e.target.getCurrentTime === 'function' ? e.target.getCurrentTime() : 0;
         const concertTime = masterVideo ? getMasterConcertTime(masterVideo, currentMasterTime) : currentMasterTime;
         const now = Date.now();
+        const seekThreshold = isDesktopRef.current ? 2.2 : 4.0;
+        const seekCooldown = isDesktopRef.current ? 4000 : 8000;
+
         slaveVideos.forEach(slave => {
           const slavePlayer = playersRef.current[slave.id];
           if (slavePlayer && typeof slavePlayer.playVideo === 'function' && slavePlayer.getIframe()) {
             slavePlayer.playVideo();
             const targetSlaveTime = getLocalVideoTime(slave, concertTime, 0);
             if (targetSlaveTime !== null && targetSlaveTime >= 0) {
-              lastSeekTimeRef.current[slave.id] = now;
-              slavePlayer.seekTo(targetSlaveTime, true);
+              const currentSlavePos = typeof slavePlayer.getCurrentTime === 'function' ? slavePlayer.getCurrentTime() : -999;
+              const lastSeek = lastSeekTimeRef.current[slave.id] || 0;
+              // Only seek on play resume if slave has drifted significantly and is outside seek cooldown
+              if (Math.abs(currentSlavePos - targetSlaveTime) > seekThreshold && now - lastSeek >= seekCooldown) {
+                lastSeekTimeRef.current[slave.id] = now;
+                slavePlayer.seekTo(targetSlaveTime, true);
+              }
             }
           }
         });
@@ -439,6 +535,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   const handlePause = (e: YouTubeEvent) => {
     if (masterId !== undefined && e.target === playersRef.current[masterId]) {
+      isPlayingRef.current = false;
       setIsPlaying(false);
       slaveVideos.forEach(slave => {
         const slavePlayer = playersRef.current[slave.id];
@@ -494,6 +591,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     navigate(`/video/${id}?t=${Math.floor(targetTime)}`);
 
     setMasterId(id);
+    isPlayingRef.current = false;
     setIsPlaying(false);
   };
 
@@ -549,18 +647,6 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       },
     };
   }, [slaveOptsMap]);
-
-  // Only show slave videos that are actually active at the CURRENT concert time
-  const activeSlaveVideos = useMemo(() => {
-    return slaveVideos.filter(v => {
-      // 15s padding ensures fancams starting slightly after the intro are visible and pre-buffered from second 0
-      return getLocalVideoTime(v, currentConcertTime, 15) !== null;
-    });
-  }, [slaveVideos, currentConcertTime]);
-
-  const mobileGroups = useMemo(() => {
-    return packMobileTiles(masterVideo, activeSlaveVideos, isLandscape);
-  }, [masterVideo, activeSlaveVideos, isLandscape]);
 
   // Unified monotonic progress calculation (0% ~ 100%)
   const loadingProgress = useMemo(() => {
@@ -1005,6 +1091,74 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                     {group.tiles.map((tile) => {
                       const video = tile.video;
                       const isVert = tile.isVertical;
+                      const isLiveTile = tile.isMaster || mobileLiveSlaveIds.has(video.id);
+
+                      if (!isLiveTile) {
+                        // Eco Standby Tile: Prevents mobile hardware decoder starvation & infinite seek spinners on 4th+ cams
+                        return (
+                          <div
+                            key={`tile-standby-${video.id}`}
+                            className={`relative bg-slate-950 w-full overflow-hidden select-none ${
+                              isVert ? 'aspect-[9/16]' : 'aspect-video'
+                            }`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              activateMobileLiveSlave(video.id);
+                            }}
+                          >
+                            <img
+                              src={video.thumbnail_url}
+                              alt={video.title}
+                              loading="lazy"
+                              className="w-full h-full object-cover opacity-50"
+                            />
+                            <div className="absolute inset-0 z-20 flex flex-col justify-between p-2 bg-gradient-to-t from-black/90 via-black/45 to-black/60">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="px-1.5 py-0.5 rounded bg-black/80 border border-white/15 text-[8px] font-black text-twice-apricot uppercase tracking-wider">
+                                  STANDBY
+                                </span>
+                                <Link
+                                  to={`/video/${video.id}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="p-1 bg-black/70 rounded text-gray-300 hover:text-white"
+                                  title="Open Video Details"
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                </Link>
+                              </div>
+
+                              <div className="flex flex-wrap items-center justify-center gap-1.5 my-auto">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    activateMobileLiveSlave(video.id);
+                                  }}
+                                  className="bg-twice-apricot text-black px-2.5 py-1 rounded-full text-[9px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform"
+                                  title="Play Live in Grid"
+                                >
+                                  <Play className="w-2.5 h-2.5 fill-current" /> LIVE ON
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setAsMaster(video.id);
+                                  }}
+                                  className="bg-slate-900/90 text-white border border-white/25 px-2.5 py-1 rounded-full text-[9px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform"
+                                  title="Promote to Master"
+                                >
+                                  <Maximize2 className="w-2.5 h-2.5" /> MASTER
+                                </button>
+                              </div>
+
+                              <div className="bg-black/80 backdrop-blur-sm px-1.5 py-1 rounded text-[9px] text-gray-200 font-medium line-clamp-1 truncate">
+                                {video.members && video.members.length > 0 ? `[${video.members.join(', ')}] ` : ''}
+                                {video.title}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
                       return (
                         <div
                           key={`tile-${video.id}`}
@@ -1017,15 +1171,17 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                           }}
                         >
                           <YouTube
-                            key={`slave-${video.id}`}
+                            key={tile.isMaster ? `master-${video.id}` : `slave-${video.id}`}
                             videoId={video.youtube_id}
-                            opts={getSlaveOpts(video)}
+                            opts={tile.isMaster ? optsMaster : getSlaveOpts(video)}
                             onReady={(e) => handleReady(e, video.id)}
+                            onPlay={tile.isMaster ? handlePlay : undefined}
+                            onPause={tile.isMaster ? handlePause : undefined}
                             className="w-full h-full absolute inset-0 pointer-events-none"
                             iframeClassName="w-full h-full block"
                           />
 
-                          {/* Touch Floating Overlay on each slave tile */}
+                          {/* Touch Floating Overlay on each live slave tile */}
                           <div
                             className={`absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-300 bg-black/40 ${
                               showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -1081,7 +1237,9 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           >
             <div className="flex items-center gap-1.5 text-twice-apricot font-black">
               <Sparkles className="w-3 h-3 text-twice-magenta" />
-              <span>MULTI-ANGLE SYNC ACTIVE</span>
+              <span>
+                MULTI-ANGLE SYNC ACTIVE ({1 + mobileLiveSlaveIds.size}/{1 + activeSlaveVideos.length} LIVE)
+              </span>
             </div>
             <span className="text-[9px] text-gray-400">Tap anywhere to toggle HUD</span>
           </div>
