@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isVerticalVideo, getVideoAspectRatio, packMobileTiles } from './tilePacker';
+import { isVerticalVideo, getVideoAspectRatio, packMobileTiles, getMobileLiveSlaveIds } from './tilePacker';
 import { Video } from '../types';
 
 function createMockVideo(id: number, overrides: Partial<Video> = {}): Video {
@@ -126,6 +126,38 @@ describe('tilePacker', () => {
       expect(groups[0].type).toBe('horizontal_trio');
       expect(groups[0].gridColsClass).toBe('grid-cols-3');
       expect(groups[0].tiles).toHaveLength(3);
+    });
+  });
+
+  describe('getMobileLiveSlaveIds', () => {
+    it('caps horizontal slaves at 2 live streams by default (3 total decoders with master)', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const slaves = [2, 3, 4, 5, 6].map((id) => createMockVideo(id, { aspect_ratio: 1.7778 }));
+      const groups = packMobileTiles(master, slaves, false);
+
+      const liveIds = getMobileLiveSlaveIds(groups);
+      expect(Array.from(liveIds)).toEqual([2, 3]);
+    });
+
+    it('allows 3 live slaves when the primary slave group is a vertical_trio', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const v1 = createMockVideo(2, { aspect_ratio: 0.5625 });
+      const v2 = createMockVideo(3, { aspect_ratio: 0.5625 });
+      const v3 = createMockVideo(4, { aspect_ratio: 0.5625 });
+      const h1 = createMockVideo(5, { aspect_ratio: 1.7778 });
+      const groups = packMobileTiles(master, [v1, v2, v3, h1], false);
+
+      const liveIds = getMobileLiveSlaveIds(groups);
+      expect(Array.from(liveIds)).toEqual([2, 3, 4]);
+    });
+
+    it('prioritizes manualPriorityIds (LRU swap) when user activates a standby tile', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const slaves = [2, 3, 4, 5].map((id) => createMockVideo(id, { aspect_ratio: 1.7778 }));
+      const groups = packMobileTiles(master, slaves, false);
+
+      const liveIds = getMobileLiveSlaveIds(groups, [5]);
+      expect(Array.from(liveIds)).toEqual([5, 2]);
     });
   });
 });

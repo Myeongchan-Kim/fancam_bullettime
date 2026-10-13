@@ -106,3 +106,106 @@ export function getConcertTimeIntervals(
     label: video.title
   }];
 }
+
+export interface SlaveSyncEvaluationInput {
+  slaveTime: number;
+  targetSlaveTime: number;
+  playerState: number; // YouTube PlayerState: -1 unstarted, 0 ended, 1 playing, 2 paused, 3 buffering, 5 cued
+  msSinceLastSeek: number;
+  isMobile: boolean;
+  currentPlaybackRate?: number;
+}
+
+export interface SlaveSyncAction {
+  shouldPlay: boolean;
+  shouldSeek: boolean;
+  targetPlaybackRate: number | null;
+}
+
+/**
+ * Evaluates how a slave player should synchronize with the master timeline without causing
+ * mobile seek-buffer spinner thrashing.
+ *
+ * - Protects buffering players (state === 3) from premature re-seeks that flush decoded buffers.
+ * - Uses smooth playbackRate modulation (1.25x / 0.75x) for moderate drift (0.6s ~ threshold)
+ *   so muted slave angles catch up seamlessly without triggering YouTube's loading spinner.
+ * - Reserves hard seekTo() for large drift beyond threshold after respecting device cooldown.
+ */
+export function evaluateSlaveSyncAction({
+  slaveTime,
+  targetSlaveTime,
+  playerState,
+  msSinceLastSeek,
+  isMobile,
+  currentPlaybackRate = 1,
+}: SlaveSyncEvaluationInput): SlaveSyncAction {
+  const signedDrift = targetSlaveTime - slaveTime; // > 0: slave is behind master; < 0: slave is ahead
+  const absDrift = Math.abs(signedDrift);
+
+  const seekCooldownMs = isMobile ? 8000 : 4000;
+  const hardSeekThreshold = isMobile ? 4.0 : 2.2;
+  const rateAdjustThreshold = 0.6;
+
+  // 1. Respect seek cooldown to let recent seeks finish decoding keyframes
+  if (msSinceLastSeek < seekCooldownMs) {
+    return {
+      shouldPlay: playerState === 2,
+      shouldSeek: false,
+      targetPlaybackRate: null,
+    };
+  }
+
+  // 2. Buffering / Unstarted guard: never flush an actively buffering stream unless severely stalled
+  if (playerState === 3 || playerState === -1) {
+    const extremeStallDrift = isMobile ? 15.0 : 8.0;
+    const extremeStallCooldown = isMobile ? 12000 : 6000;
+    if (absDrift > extremeStallDrift && msSinceLastSeek > extremeStallCooldown) {
+      return {
+        shouldPlay: false,
+        shouldSeek: true,
+        targetPlaybackRate: currentPlaybackRate !== 1 ? 1 : null,
+      };
+    }
+    return {
+      shouldPlay: false,
+      shouldSeek: false,
+      targetPlaybackRate: null,
+    };
+  }
+
+  // 3. Paused or Cued while master is playing: resume playback, only seek if drift is large
+  if (playerState === 2 || playerState === 5) {
+    const shouldSeek = absDrift > hardSeekThreshold;
+    return {
+      shouldPlay: true,
+      shouldSeek,
+      targetPlaybackRate: currentPlaybackRate !== 1 ? 1 : null,
+    };
+  }
+
+  // 4. Playing (or unknown state): apply hard seek for large drift, playbackRate catch-up for moderate drift
+  if (absDrift > hardSeekThreshold) {
+    return {
+      shouldPlay: false,
+      shouldSeek: true,
+      targetPlaybackRate: currentPlaybackRate !== 1 ? 1 : null,
+    };
+  }
+
+  if (absDrift > rateAdjustThreshold) {
+    const desiredRate = signedDrift > 0 ? 1.25 : 0.75;
+    return {
+      shouldPlay: false,
+      shouldSeek: false,
+      targetPlaybackRate: currentPlaybackRate !== desiredRate ? desiredRate : null,
+    };
+  }
+
+  // Within 0.6s sync window: restore normal 1.0x speed if previously accelerated/decelerated
+  return {
+    shouldPlay: false,
+    shouldSeek: false,
+    targetPlaybackRate: currentPlaybackRate !== 1 ? 1 : null,
+  };
+}
+
