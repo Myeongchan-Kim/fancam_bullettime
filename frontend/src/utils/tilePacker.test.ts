@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { isVerticalVideo, getVideoAspectRatio, packMobileTiles, getMobileLiveSlaveIds } from './tilePacker';
+import {
+  isVerticalVideo,
+  getVideoAspectRatio,
+  packMobileTiles,
+  getMobileLiveSlaveIds,
+  getAdaptiveMobileSlaveCap,
+} from './tilePacker';
 import { Video } from '../types';
 
 function createMockVideo(id: number, overrides: Partial<Video> = {}): Video {
@@ -160,4 +166,59 @@ describe('tilePacker', () => {
       expect(Array.from(liveIds)).toEqual([5, 2]);
     });
   });
+
+  describe('getAdaptiveMobileSlaveCap', () => {
+    it('returns higher slave cap (4) for high-spec mobile/tablet devices (8+ cores & >=6GB RAM or tablet width)', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const slaves = [2, 3, 4, 5, 6].map((id) => createMockVideo(id, { aspect_ratio: 1.7778 }));
+      const groups = packMobileTiles(master, slaves, false);
+
+      const capHigh = getAdaptiveMobileSlaveCap(groups, {
+        hardwareConcurrency: 8,
+        deviceMemory: 8,
+        screenWidth: 820,
+        stallPenalty: 0,
+      });
+      expect(capHigh).toBe(4);
+    });
+
+    it('returns conservative slave cap (2) for low-spec mobile devices (<=4 cores or <=4GB RAM)', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const slaves = [2, 3, 4, 5].map((id) => createMockVideo(id, { aspect_ratio: 0.5625 }));
+      const groups = packMobileTiles(master, slaves, false);
+
+      const capLow = getAdaptiveMobileSlaveCap(groups, {
+        hardwareConcurrency: 4,
+        deviceMemory: 3,
+        screenWidth: 375,
+        stallPenalty: 0,
+      });
+      expect(capLow).toBe(2);
+    });
+
+    it('steps down cap dynamically when runtime stallPenalty increases (never dropping below 1)', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const slaves = [2, 3, 4, 5, 6].map((id) => createMockVideo(id, { aspect_ratio: 1.7778 }));
+      const groups = packMobileTiles(master, slaves, false);
+
+      expect(
+        getAdaptiveMobileSlaveCap(groups, {
+          hardwareConcurrency: 8,
+          deviceMemory: 8,
+          screenWidth: 430,
+          stallPenalty: 1,
+        })
+      ).toBe(3);
+
+      expect(
+        getAdaptiveMobileSlaveCap(groups, {
+          hardwareConcurrency: 8,
+          deviceMemory: 8,
+          screenWidth: 430,
+          stallPenalty: 5,
+        })
+      ).toBe(1);
+    });
+  });
 });
+

@@ -233,16 +233,66 @@ export function packMobileTiles(
   return groups;
 }
 
+export interface MobileDeviceProfile {
+  hardwareConcurrency?: number;
+  deviceMemory?: number;
+  screenWidth?: number;
+  stallPenalty?: number;
+}
+
+/**
+ * Computes an adaptive concurrent slave stream budget for mobile/tablet devices.
+ *
+ * - High-spec mobile/tablet (8+ cores & >=6GB RAM, or tablet screen >=768px with 6+ cores): up to 4 live slaves (5 total with Master)
+ * - Mid-spec smartphone (6+ cores, or vertical_trio first row on normal devices): 3 live slaves (4 total with Master)
+ * - Low-spec smartphone (<=4 cores or <=4GB RAM): 2 live slaves (3 total with Master)
+ * - Dynamically steps down by `stallPenalty` (minimum 1 live slave) when runtime buffering stalls are detected.
+ */
+export function getAdaptiveMobileSlaveCap(
+  groups: TileLayoutGroup[],
+  profile?: MobileDeviceProfile
+): number {
+  let firstSlaveGroupType: TileGroupType | null = null;
+  for (const group of groups) {
+    if (group.type !== 'master' && firstSlaveGroupType === null) {
+      firstSlaveGroupType = group.type;
+      break;
+    }
+  }
+
+  const nav: any = typeof navigator !== 'undefined' ? navigator : {};
+  const cores = profile?.hardwareConcurrency ?? nav.hardwareConcurrency ?? 6;
+  const memory = profile?.deviceMemory ?? nav.deviceMemory;
+  const width =
+    profile?.screenWidth ?? (typeof window !== 'undefined' ? window.innerWidth : 390);
+  const stallPenalty = Math.max(0, profile?.stallPenalty ?? 0);
+
+  let baseCap: number;
+  const isLowSpec = cores <= 4 || (memory !== undefined && memory <= 4);
+  const isHighSpec =
+    !isLowSpec &&
+    ((cores >= 8 && (memory === undefined || memory >= 6)) || (width >= 768 && cores >= 6));
+
+  if (isLowSpec) {
+    baseCap = 2;
+  } else if (isHighSpec) {
+    baseCap = 4;
+  } else {
+    baseCap = firstSlaveGroupType === 'vertical_trio' ? 3 : 2;
+  }
+
+  return Math.max(1, baseCap - stallPenalty);
+}
+
 /**
  * Determines which slave video IDs should be mounted as live <YouTube> iframes on mobile devices.
  *
  * Mobile chipsets (iOS WebKit / Android Chrome) restrict hardware-accelerated video decoding to
- * 3~4 concurrent streams (1 Master + 2~3 Slaves). Mounting 5+ iframes causes the 3rd~5th+ videos
- * to fall back to software decoding and enter an infinite seek-buffer spinner loop.
+ * a finite number of concurrent streams. Mounting more iframes than the device can decode causes
+ * later videos to fall back to software decoding and enter an infinite seek-buffer spinner loop.
  *
- * By default, caps live mobile slave streams to the primary row below Master (3 for vertical_trio,
- * 2 otherwise). When a user explicitly activates a standby tile (`manualPriorityIds`), swaps it into
- * the live budget using most-recently-requested priority without exceeding the hardware decoder cap.
+ * When a user explicitly activates a standby tile (`manualPriorityIds`), swaps it into
+ * the live budget using most-recently-requested priority without exceeding the cap.
  */
 export function getMobileLiveSlaveIds(
   groups: TileLayoutGroup[],
@@ -289,4 +339,5 @@ export function getMobileLiveSlaveIds(
 
   return liveIds;
 }
+
 

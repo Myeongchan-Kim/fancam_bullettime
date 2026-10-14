@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef, useMemo, useImperativeHandle, forwardRef, useCallback } from 'react';
 import YouTube, { YouTubeEvent, YouTubePlayer } from 'react-youtube';
-import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play } from 'lucide-react';
+import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play, Monitor } from 'lucide-react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime, evaluateSlaveSyncAction } from '../utils/timelineSync';
-import { packMobileTiles, isVerticalVideo, getMobileLiveSlaveIds } from '../utils/tilePacker';
+import { packMobileTiles, isVerticalVideo, getMobileLiveSlaveIds, getAdaptiveMobileSlaveCap } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
 import { SlaveVideoTile } from './multi-angle/SlaveVideoTile';
 
@@ -56,12 +56,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   const WARMUP_BUFFER_MS = 2000; // 2.0s pre-buffer settling period behind the curtain
   const MAX_SAFETY_TIMEOUT_MS = 4500; // 4.5s max safety fallback
 
-  // Responsive layout, Touch Immersive Mode & Mobile Decoder Budget states
+  // Responsive layout, Touch Immersive Mode & Adaptive Mobile Decoder Budget states
   const [isDesktop, setIsDesktop] = useState(() => typeof window !== 'undefined' && window.innerWidth >= 1024);
   const isDesktopRef = useRef(isDesktop);
   const [isLandscape, setIsLandscape] = useState(() => typeof window !== 'undefined' && window.innerWidth > window.innerHeight && window.innerWidth < 1024);
   const [showOverlay, setShowOverlay] = useState(false);
   const [manualMobileLiveIds, setManualMobileLiveIds] = useState<number[]>([]);
+  const [stallPenalty, setStallPenalty] = useState(0);
+  const bufferingTicksRef = useRef<{ [key: number]: number }>({});
   const overlayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -119,6 +121,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
       setManualMobileLiveIds([]);
+      setStallPenalty(0);
+      bufferingTicksRef.current = {};
       return;
     }
 
@@ -135,6 +139,8 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       hasUserRequestedPlayRef.current = false;
       setReadyVideoIds(new Set());
       setManualMobileLiveIds([]);
+      setStallPenalty(0);
+      bufferingTicksRef.current = {};
       slavePlaybackRatesRef.current = {};
       mountTimeRef.current = Date.now();
       isBarrierReleasedRef.current = false;
@@ -191,14 +197,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     return packMobileTiles(masterVideo, activeSlaveVideos, isLandscape);
   }, [masterVideo, activeSlaveVideos, isLandscape]);
 
-  // Mobile Hardware Decoder Budget: cap live <YouTube> slave streams on mobile (2 horizontal or 3 vertical trio)
+  // Adaptive Mobile Hardware Decoder Budget: dynamically sizes live slave cap based on device specs and runtime buffering
+  const adaptiveMobileSlaveCap = useMemo(() => {
+    return getAdaptiveMobileSlaveCap(mobileGroups, { stallPenalty });
+  }, [mobileGroups, stallPenalty]);
+
   const mobileLiveSlaveIds = useMemo(() => {
-    return getMobileLiveSlaveIds(mobileGroups, manualMobileLiveIds);
-  }, [mobileGroups, manualMobileLiveIds]);
+    return getMobileLiveSlaveIds(mobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap);
+  }, [mobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap]);
 
   const activateMobileLiveSlave = useCallback((videoId: number) => {
+    triggerOverlay();
     setManualMobileLiveIds(prev => [...prev.filter(id => id !== videoId), videoId]);
-  }, []);
+  }, [triggerOverlay]);
 
   // Clean up detached player references when mobile slave tiles transition to standby mode
   useEffect(() => {
@@ -458,6 +469,21 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
             const lastSeek = lastSeekTimeRef.current[slave.id] || 0;
             const state = typeof slavePlayer.getPlayerState === 'function' ? slavePlayer.getPlayerState() : 1;
             const currentRate = slavePlaybackRatesRef.current[slave.id] || 1;
+
+            // Adaptive mobile stream throttling: if a slave buffers continuously for >= 4.5s (9 ticks),
+            // reduce mobile live slave cap by 1 so hardware decoder contention resolves automatically
+            if (isMobileDevice) {
+              if (state === 3) {
+                const nextTicks = (bufferingTicksRef.current[slave.id] || 0) + 1;
+                bufferingTicksRef.current[slave.id] = nextTicks;
+                if (nextTicks >= 9) {
+                  bufferingTicksRef.current = {};
+                  setStallPenalty(prev => Math.min(prev + 1, 3));
+                }
+              } else if (state === 1) {
+                bufferingTicksRef.current[slave.id] = 0;
+              }
+            }
 
             const syncAction = evaluateSlaveSyncAction({
               slaveTime,
@@ -791,6 +817,19 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         </div>
       </div>
 
+      {/* Mobile Adaptive Stream Limit & PC Recommendation Banner */}
+      {!isDesktop && activeSlaveVideos.length > 0 && (
+        <div className="w-full px-3.5 py-2 bg-slate-900/95 border-b border-slate-800/80 flex items-center justify-between gap-2 z-20 text-[11px] text-gray-300 select-none">
+          <div className="flex items-center gap-2 min-w-0">
+            <Monitor className="w-3.5 h-3.5 text-twice-apricot shrink-0" />
+            <span className="leading-snug">
+              모바일 기기 성능에 맞춰 동시 재생 수가 자동 조절됩니다 ({1 + mobileLiveSlaveIds.size}/{1 + activeSlaveVideos.length}개 활성).{' '}
+              <strong className="text-twice-apricot font-bold">최대한 많은 영상을 동시에 재생하려면 PC 환경</strong>에서 시청해 주세요.
+            </span>
+          </div>
+        </div>
+      )}
+
       {isDesktop ? (
         /* Desktop Seamless Mosaic Video Wall (>= 1024px) */
         <div 
@@ -932,7 +971,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
           )}
         </div>
       ) : (
-        /* Mobile / Tablet Smart Tile Mosaic Layout (< 1280px) with Touch HUD */
+        /* Mobile / Tablet Smart Tile Mosaic Layout (< 1024px) with Touch HUD */
         <div 
           className="w-full relative bg-black select-none overflow-hidden"
           onClick={toggleOverlay}
@@ -995,7 +1034,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                       const isLiveTile = tile.isMaster || mobileLiveSlaveIds.has(video.id);
 
                       if (!isLiveTile) {
-                        // Eco Standby Tile: Prevents mobile hardware decoder starvation & infinite seek spinners on 4th+ cams
+                        // Eco Standby Tile: Tapping tile body reveals HUD without reordering; explicit buttons trigger LIVE ON or MASTER
                         return (
                           <div
                             key={`tile-standby-${video.id}`}
@@ -1004,7 +1043,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                             }`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              activateMobileLiveSlave(video.id);
+                              triggerOverlay();
                             }}
                           >
                             <img
@@ -1021,33 +1060,35 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                                 <Link
                                   to={`/video/${video.id}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="p-1 bg-black/70 rounded text-gray-300 hover:text-white"
+                                  className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
                                   title="Open Video Details"
                                 >
-                                  <ExternalLink className="w-3 h-3" />
+                                  <ExternalLink className="w-3.5 h-3.5" />
                                 </Link>
                               </div>
 
                               <div className="flex flex-wrap items-center justify-center gap-1.5 my-auto">
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     activateMobileLiveSlave(video.id);
                                   }}
-                                  className="bg-twice-apricot text-black px-2.5 py-1 rounded-full text-[9px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform"
+                                  className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
                                   title="Play Live in Grid"
                                 >
-                                  <Play className="w-2.5 h-2.5 fill-current" /> LIVE ON
+                                  <Play className="w-3 h-3 fill-current" /> LIVE ON
                                 </button>
                                 <button
+                                  type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setAsMaster(video.id);
                                   }}
-                                  className="bg-slate-900/90 text-white border border-white/25 px-2.5 py-1 rounded-full text-[9px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform"
+                                  className="bg-slate-900/90 text-white border border-white/25 px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
                                   title="Promote to Master"
                                 >
-                                  <Maximize2 className="w-2.5 h-2.5" /> MASTER
+                                  <Maximize2 className="w-3 h-3" /> MASTER
                                 </button>
                               </div>
 
@@ -1068,7 +1109,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                           }`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setAsMaster(video.id);
+                            triggerOverlay();
                           }}
                         >
                           <YouTube
@@ -1092,21 +1133,22 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                               <Link
                                 to={`/video/${video.id}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="p-1 bg-black/70 rounded text-gray-300 hover:text-white"
+                                className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
                                 title="Open Video Details"
                               >
-                                <ExternalLink className="w-3 h-3" />
+                                <ExternalLink className="w-3.5 h-3.5" />
                               </Link>
                             </div>
                             <div className="flex flex-col items-center gap-1.5 my-auto">
                               <button
+                                type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setAsMaster(video.id);
                                 }}
-                                className="bg-twice-apricot text-black px-2.5 py-1 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform"
+                                className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
                               >
-                                <Maximize2 className="w-2.5 h-2.5" /> SET MASTER
+                                <Maximize2 className="w-3 h-3" /> SET MASTER
                               </button>
                             </div>
                             <div className="bg-black/80 backdrop-blur-sm p-1 rounded text-[9px] text-white font-medium line-clamp-1 truncate">
@@ -1142,7 +1184,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 MULTI-ANGLE SYNC ACTIVE ({1 + mobileLiveSlaveIds.size}/{1 + activeSlaveVideos.length} LIVE)
               </span>
             </div>
-            <span className="text-[9px] text-gray-400">Tap anywhere to toggle HUD</span>
+            <span className="text-[9px] text-gray-400">Tap tile to show controls</span>
           </div>
         </div>
       )}
