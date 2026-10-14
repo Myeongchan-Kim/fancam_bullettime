@@ -4,7 +4,7 @@ import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play, Monitor } fr
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime, evaluateSlaveSyncAction } from '../utils/timelineSync';
-import { packMobileTiles, isVerticalVideo, getMobileLiveSlaveIds, getAdaptiveMobileSlaveCap } from '../utils/tilePacker';
+import { packMobileTiles, packMobileLiveAndStandbyTiles, isVerticalVideo, getMobileLiveSlaveIds, getAdaptiveMobileSlaveCap } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
 import { SlaveVideoTile } from './multi-angle/SlaveVideoTile';
 
@@ -193,23 +193,49 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     });
   }, [slaveVideos, currentConcertTime]);
 
-  const mobileGroups = useMemo(() => {
+  const baseMobileGroups = useMemo(() => {
     return packMobileTiles(masterVideo, activeSlaveVideos, isLandscape);
   }, [masterVideo, activeSlaveVideos, isLandscape]);
 
   // Adaptive Mobile Hardware Decoder Budget: dynamically sizes live slave cap based on device specs and runtime buffering
   const adaptiveMobileSlaveCap = useMemo(() => {
-    return getAdaptiveMobileSlaveCap(mobileGroups, { stallPenalty });
-  }, [mobileGroups, stallPenalty]);
+    return getAdaptiveMobileSlaveCap(baseMobileGroups, { stallPenalty });
+  }, [baseMobileGroups, stallPenalty]);
 
   const mobileLiveSlaveIds = useMemo(() => {
-    return getMobileLiveSlaveIds(mobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap);
-  }, [mobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap]);
+    return getMobileLiveSlaveIds(baseMobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap);
+  }, [baseMobileGroups, manualMobileLiveIds, adaptiveMobileSlaveCap]);
+
+  // Pack live slaves into top rows right below Master, and push non-playing standby slaves to bottom rows
+  const mobileGroups = useMemo(() => {
+    return packMobileLiveAndStandbyTiles(
+      masterVideo,
+      activeSlaveVideos,
+      isLandscape,
+      mobileLiveSlaveIds,
+      manualMobileLiveIds
+    );
+  }, [masterVideo, activeSlaveVideos, isLandscape, mobileLiveSlaveIds, manualMobileLiveIds]);
+
+  const slaveMountOptsRef = useRef<{ [key: number]: any }>({});
 
   const activateMobileLiveSlave = useCallback((videoId: number) => {
     triggerOverlay();
+    // Clear cached mount opts for this video so it mounts at the current concert timestamp
+    delete slaveMountOptsRef.current[videoId];
     setManualMobileLiveIds(prev => [...prev.filter(id => id !== videoId), videoId]);
-  }, [triggerOverlay]);
+
+    if (isBarrierReleasedRef.current) {
+      isPlayingRef.current = true;
+      setIsPlaying(true);
+      const masterPlayer = masterId !== undefined ? playersRef.current[masterId] : undefined;
+      if (masterPlayer && typeof masterPlayer.playVideo === 'function' && masterPlayer.getIframe()) {
+        try {
+          masterPlayer.playVideo();
+        } catch {}
+      }
+    }
+  }, [triggerOverlay, masterId]);
 
   // Clean up detached player references when mobile slave tiles transition to standby mode
   useEffect(() => {
@@ -219,6 +245,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       if (id !== masterId && !mobileLiveSlaveIds.has(id)) {
         delete playersRef.current[id];
         delete slavePlaybackRatesRef.current[id];
+        delete slaveMountOptsRef.current[id];
       }
     });
   }, [isDesktop, masterId, mobileLiveSlaveIds]);
@@ -659,6 +686,27 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
   }, [videos, masterVideo?.id, initialTime]);
 
   const getSlaveOpts = useCallback((slaveVideo: Video) => {
+    if (isBarrierReleasedRef.current) {
+      if (!slaveMountOptsRef.current[slaveVideo.id]) {
+        const currentTargetTime = getLocalVideoTime(slaveVideo, currentConcertTimeRef.current, 0) ?? 0;
+        slaveMountOptsRef.current[slaveVideo.id] = {
+          width: '100%',
+          height: '100%',
+          playerVars: {
+            autoplay: 1 as const,
+            mute: 1 as const,
+            modestbranding: 1 as const,
+            rel: 0 as const,
+            controls: 0 as const,
+            disablekb: 1 as const,
+            playsinline: 1 as const,
+            start: Math.floor(Math.max(0, currentTargetTime)),
+          },
+        };
+      }
+      return slaveMountOptsRef.current[slaveVideo.id];
+    }
+
     return slaveOptsMap.get(slaveVideo.id) || {
       width: '100%',
       height: '100%',
@@ -1034,16 +1082,16 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                       const isLiveTile = tile.isMaster || mobileLiveSlaveIds.has(video.id);
 
                       if (!isLiveTile) {
-                        // Eco Standby Tile: Tapping tile body reveals HUD without reordering; explicit buttons trigger LIVE ON or MASTER
+                        // Eco Standby Tile: Tapping tile body or LIVE ON promotes it to the top Live section and starts playing immediately
                         return (
                           <div
                             key={`tile-standby-${video.id}`}
-                            className={`relative bg-slate-950 w-full overflow-hidden select-none ${
+                            className={`relative bg-slate-950 w-full overflow-hidden select-none cursor-pointer ${
                               isVert ? 'aspect-[9/16]' : 'aspect-video'
                             }`}
                             onClick={(e) => {
                               e.stopPropagation();
-                              triggerOverlay();
+                              activateMobileLiveSlave(video.id);
                             }}
                           >
                             <img

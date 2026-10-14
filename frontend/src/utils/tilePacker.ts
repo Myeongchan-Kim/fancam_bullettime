@@ -340,4 +340,67 @@ export function getMobileLiveSlaveIds(
   return liveIds;
 }
 
+/**
+ * Packs mobile tiles so that all currently playing (LIVE) slave videos are positioned
+ * in the top rows immediately below Master, while non-playing (STANDBY) slave videos
+ * are pushed down to the bottom rows.
+ *
+ * When a user taps a standby video, it is promoted into the top live zone (with most-recently
+ * selected priority first) and starts playing, while the bumped-out video moves down to standby.
+ */
+export function packMobileLiveAndStandbyTiles(
+  masterVideo: Video | null | undefined,
+  slaveVideos: Video[],
+  isLandscape: boolean,
+  liveSlaveIds: Set<number>,
+  manualPriorityIds: number[] = []
+): TileLayoutGroup[] {
+  const slaveById = new Map<number, Video>();
+  for (const v of slaveVideos) {
+    slaveById.set(v.id, v);
+  }
+
+  const liveSlaves: Video[] = [];
+  const addedLiveIds = new Set<number>();
+
+  // 1. Place user's most recently activated live slaves first so promoted standby tiles move to the top
+  for (let i = manualPriorityIds.length - 1; i >= 0; i--) {
+    const id = manualPriorityIds[i];
+    if (liveSlaveIds.has(id) && !addedLiveIds.has(id)) {
+      const v = slaveById.get(id);
+      if (v) {
+        liveSlaves.push(v);
+        addedLiveIds.add(id);
+      }
+    }
+  }
+
+  // 2. Append remaining live slaves in natural order
+  const standbySlaves: Video[] = [];
+  for (const v of slaveVideos) {
+    if (liveSlaveIds.has(v.id)) {
+      if (!addedLiveIds.has(v.id)) {
+        liveSlaves.push(v);
+        addedLiveIds.add(v.id);
+      }
+    } else {
+      standbySlaves.push(v);
+    }
+  }
+
+  const liveGroups = packMobileTiles(masterVideo ?? null, liveSlaves, isLandscape);
+  if (standbySlaves.length === 0) {
+    return liveGroups;
+  }
+
+  const standbyGroups = packMobileTiles(null, standbySlaves, isLandscape).map((g) => ({
+    ...g,
+    id: `standby-${g.id}`,
+    label: g.label ? `${g.label} (STANDBY)` : 'STANDBY ANGLES',
+  }));
+
+  return [...liveGroups, ...standbyGroups];
+}
+
+
 

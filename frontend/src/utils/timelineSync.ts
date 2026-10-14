@@ -146,17 +146,18 @@ export function evaluateSlaveSyncAction({
   const hardSeekThreshold = isMobile ? 4.0 : 2.2;
   const rateAdjustThreshold = 0.6;
 
-  // 1. Respect seek cooldown to let recent seeks finish decoding keyframes
+  // 1. Respect seek cooldown to let recent seeks finish decoding keyframes,
+  //    but always start playback if player is paused (2), cued (5), or unstarted (-1)
   if (msSinceLastSeek < seekCooldownMs) {
     return {
-      shouldPlay: playerState === 2,
+      shouldPlay: playerState === 2 || playerState === 5 || playerState === -1,
       shouldSeek: false,
       targetPlaybackRate: null,
     };
   }
 
-  // 2. Buffering / Unstarted guard: never flush an actively buffering stream unless severely stalled
-  if (playerState === 3 || playerState === -1) {
+  // 2. Buffering guard: never flush an actively buffering stream (state === 3) unless severely stalled
+  if (playerState === 3) {
     const extremeStallDrift = isMobile ? 15.0 : 8.0;
     const extremeStallCooldown = isMobile ? 12000 : 6000;
     if (absDrift > extremeStallDrift && msSinceLastSeek > extremeStallCooldown) {
@@ -173,8 +174,8 @@ export function evaluateSlaveSyncAction({
     };
   }
 
-  // 3. Paused or Cued while master is playing: resume playback, only seek if drift is large
-  if (playerState === 2 || playerState === 5) {
+  // 3. Paused (2), Cued (5), or Unstarted (-1) while master is playing: resume playback, only seek if drift is large
+  if (playerState === 2 || playerState === 5 || playerState === -1) {
     const shouldSeek = absDrift > hardSeekThreshold;
     return {
       shouldPlay: true,

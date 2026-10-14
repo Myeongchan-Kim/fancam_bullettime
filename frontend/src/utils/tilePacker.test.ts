@@ -3,6 +3,7 @@ import {
   isVerticalVideo,
   getVideoAspectRatio,
   packMobileTiles,
+  packMobileLiveAndStandbyTiles,
   getMobileLiveSlaveIds,
   getAdaptiveMobileSlaveCap,
 } from './tilePacker';
@@ -220,5 +221,41 @@ describe('tilePacker', () => {
       ).toBe(1);
     });
   });
+
+  describe('packMobileLiveAndStandbyTiles', () => {
+    it('moves activated standby video up into the live zone below Master and pushes bumped video down to standby zone', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const v1 = createMockVideo(2, { aspect_ratio: 0.5625 });
+      const v2 = createMockVideo(3, { aspect_ratio: 0.5625 });
+      const v3 = createMockVideo(4, { aspect_ratio: 0.5625 });
+      const h1 = createMockVideo(5, { aspect_ratio: 1.7778 });
+
+      // Cap = 2: initially v1(2) and v2(3) are live; user taps h1(5) from standby -> live becomes {5, 2}, v2(3) and v3(4) are standby
+      const baseGroups = packMobileTiles(master, [v1, v2, v3, h1], false);
+      const liveIds = getMobileLiveSlaveIds(baseGroups, [5], 2);
+      expect(Array.from(liveIds)).toEqual([5, 2]);
+
+      const orderedGroups = packMobileLiveAndStandbyTiles(
+        master,
+        [v1, v2, v3, h1],
+        false,
+        liveIds,
+        [5]
+      );
+
+      // Master is first group
+      expect(orderedGroups[0].type).toBe('master');
+
+      // Flatten slave tile IDs in visual top-to-bottom order
+      const slaveOrder = orderedGroups
+        .slice(1)
+        .flatMap((g) => g.tiles.map((t) => t.video.id));
+
+      // Top two slave positions must be the live videos (5 and 2), and bottom two must be the standby videos (3 and 4)
+      expect(slaveOrder.slice(0, 2).sort()).toEqual([2, 5]);
+      expect(slaveOrder.slice(2)).toEqual([3, 4]);
+    });
+  });
 });
+
 

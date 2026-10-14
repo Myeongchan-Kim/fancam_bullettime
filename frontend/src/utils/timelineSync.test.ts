@@ -163,6 +163,29 @@ describe('timelineSync legacy utilities tests', () => {
       expect(allowedAfterCooldown.shouldSeek).toBe(true);
       expect(allowedAfterCooldown.targetPlaybackRate).toBe(1);
     });
+
+    it('commands shouldPlay=true when a newly promoted standby slave is UNSTARTED (-1) or CUED (5) even during seek cooldown', () => {
+      const unstartedDuringCooldown = evaluateSlaveSyncAction({
+        slaveTime: 0,
+        targetSlaveTime: 45,
+        playerState: -1, // UNSTARTED
+        msSinceLastSeek: 500, // right after onReady seek
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(unstartedDuringCooldown.shouldPlay).toBe(true);
+
+      const cuedDuringCooldown = evaluateSlaveSyncAction({
+        slaveTime: 45,
+        targetSlaveTime: 45,
+        playerState: 5, // CUED
+        msSinceLastSeek: 500,
+        isMobile: true,
+        currentPlaybackRate: 1,
+      });
+      expect(cuedDuringCooldown.shouldPlay).toBe(true);
+    });
   });
 });
+
 
