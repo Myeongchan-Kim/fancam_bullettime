@@ -3,6 +3,7 @@ import axios from 'axios';
 import { Song, Concert } from '../types';
 import { MapPin, History, Clock, Save, Send } from 'lucide-react';
 import { API_BASE_URL } from '../constants';
+import { getStoredAdminKey } from '../context/AuthContext';
 import ConcertTimelineModal from './ConcertTimelineModal';
 
 interface SetlistSliderProps {
@@ -25,7 +26,7 @@ const SetlistSlider: React.FC<SetlistSliderProps> = ({
   onChange 
 }) => {
   const [showTimeline, setShowTimeline] = useState(false);
-  const adminKey = localStorage.getItem('admin_key');
+  const adminKey = getStoredAdminKey();
 
   const activeConcert = concerts.find(c => c.id.toString() === selectedConcert);
   const hasCustomSetlist = activeConcert && activeConcert.setlist && activeConcert.setlist.length > 0;

@@ -19,6 +19,12 @@ describe('formatters', () => {
       expect(formatTime(NaN)).toBe('00:00');
       expect(formatTime(null)).toBe('00:00');
     });
+
+    it('formats negative timestamps and compact minutes when allowNegative is enabled', () => {
+      expect(formatTime(-180, { allowNegative: true, padMinutes: false })).toBe('-3:00');
+      expect(formatTime(-65.4, { allowNegative: true, showDecimals: true, decimals: 1, padMinutes: false })).toBe('-1:05.4');
+      expect(formatTime(-3661, { allowNegative: true })).toBe('-1:01:01');
+    });
   });
 
   describe('formatDuration', () => {

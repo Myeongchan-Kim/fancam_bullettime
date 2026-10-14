@@ -36,21 +36,25 @@ def elect_master_video(
         if exclude_video_id is not None:
             query = query.filter(Video.id != exclude_video_id)
 
-        first_candidate = query.order_by(Video.duration.desc()).first()
         raw_all = query.all()
-        if isinstance(raw_all, list) and len(raw_all) > 0:
-            candidates = raw_all
-        elif first_candidate is not None:
-            return first_candidate
-        elif fallback_to_any:
-            fb_q = db.query(Video).filter(
-                Video.concert_id == concert_id,
-                Video.is_unavailable == False,
-            )
-            if exclude_video_id is not None:
-                fb_q = fb_q.filter(Video.id != exclude_video_id)
-            return fb_q.order_by(Video.duration.desc()).first()
+        if isinstance(raw_all, list):
+            if len(raw_all) > 0:
+                candidates = raw_all
+            elif fallback_to_any:
+                fb_q = db.query(Video).filter(
+                    Video.concert_id == concert_id,
+                    Video.is_unavailable == False,
+                )
+                if exclude_video_id is not None:
+                    fb_q = fb_q.filter(Video.id != exclude_video_id)
+                return fb_q.order_by(Video.duration.desc()).first()
+            else:
+                return None
         else:
+            # Support unit test mocks that stub query.order_by(...).first()
+            first_candidate = query.order_by(Video.duration.desc()).first()
+            if first_candidate is not None:
+                return first_candidate
             return None
     else:
         return None
@@ -80,3 +84,38 @@ def elect_master_video(
         return max(candidates, key=lambda v: float(v.duration or 0.0))
 
     return None
+
+
+def get_candidate_master_videos(
+    db: Session,
+    concert_id: Optional[int],
+    min_master_duration: float = 3600.0,
+    exclude_video_id: Optional[int] = None,
+) -> List[Video]:
+    """
+    Returns all full-concert candidate master videos sorted by master priority:
+    1. Explicit `calibration_status == 'master'`
+    2. `sync_offset == 0.0`
+    3. Longest duration descending
+    """
+    if concert_id is None:
+        return []
+    query = db.query(Video).filter(
+        Video.concert_id == concert_id,
+        Video.is_unavailable == False,
+        Video.duration > min_master_duration,
+    )
+    if exclude_video_id is not None:
+        query = query.filter(Video.id != exclude_video_id)
+    candidates = query.all()
+    if not isinstance(candidates, list):
+        return []
+    candidates.sort(
+        key=lambda m: (
+            0 if getattr(m, "calibration_status", None) == "master" else 1,
+            0 if (getattr(m, "sync_offset", None) is not None and abs(float(m.sync_offset)) < 1e-6) else 1,
+            -float(m.duration or 0.0),
+        )
+    )
+    return candidates
+

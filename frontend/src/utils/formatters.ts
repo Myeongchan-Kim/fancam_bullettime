@@ -6,36 +6,55 @@ export interface FormatTimeOptions {
   showDecimals?: boolean;
   decimals?: number;
   forceHours?: boolean;
+  allowNegative?: boolean;
+  padMinutes?: boolean;
 }
 
 /**
  * Formats seconds into MM:SS, HH:MM:SS, or MM:SS.d / MM:SS.dd.
+ * Supports negative timestamps when `allowNegative: true`.
  */
 export function formatTime(seconds: number | null | undefined, options: FormatTimeOptions = {}): string {
-  if (seconds === null || seconds === undefined || isNaN(seconds) || seconds < 0) {
-    return options.showDecimals
-      ? `00:00.${'0'.repeat(options.decimals ?? 1)}`
-      : options.forceHours
+  const {
+    showDecimals = false,
+    decimals = 1,
+    forceHours = false,
+    allowNegative = false,
+    padMinutes = true,
+  } = options;
+
+  if (
+    seconds === null ||
+    seconds === undefined ||
+    isNaN(seconds) ||
+    (!allowNegative && seconds < 0)
+  ) {
+    const zeroMin = padMinutes ? '00' : '0';
+    return showDecimals
+      ? `${zeroMin}:00.${'0'.repeat(decimals)}`
+      : forceHours
         ? '0:00:00'
-        : '00:00';
+        : `${zeroMin}:00`;
   }
 
-  const { showDecimals = false, decimals = 1, forceHours = false } = options;
-
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = Math.floor(seconds % 60);
+  const isNeg = seconds < 0;
+  const absSec = Math.abs(seconds);
+  const h = Math.floor(absSec / 3600);
+  const m = Math.floor((absSec % 3600) / 60);
+  const s = Math.floor(absSec % 60);
+  const prefix = isNeg ? '-' : '';
 
   let base: string;
   if (h > 0 || forceHours) {
-    base = `${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    base = `${prefix}${h}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   } else {
-    base = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+    const minStr = padMinutes ? m.toString().padStart(2, '0') : m.toString();
+    base = `${prefix}${minStr}:${s.toString().padStart(2, '0')}`;
   }
 
   if (showDecimals) {
     const factor = Math.pow(10, decimals);
-    const frac = Math.floor(Math.round((seconds % 1) * factor));
+    const frac = Math.floor(Math.round((absSec % 1) * factor));
     const clampedFrac = Math.min(factor - 1, Math.max(0, frac));
     return `${base}.${clampedFrac.toString().padStart(decimals, '0')}`;
   }

@@ -10,6 +10,7 @@ import MultiAnglePlayer, { MultiAnglePlayerRef } from '../components/MultiAngleP
 import ConcertTimelineModal from '../components/ConcertTimelineModal';
 import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
+import { getStoredAdminKey, setStoredAdminKey, clearStoredAdminKey } from '../context/AuthContext';
 
 const VideoDetailPage = () => {
   const { id } = useParams();
@@ -24,8 +25,8 @@ const VideoDetailPage = () => {
 
   
   // Admin State
-  const [adminKey, setAdminKey] = useState(localStorage.getItem('admin_key') || '');
-  const [isAdminMode, setIsAdminMode] = useState(!!localStorage.getItem('admin_key'));
+  const [adminKey, setAdminKey] = useState(() => getStoredAdminKey());
+  const [isAdminMode, setIsAdminMode] = useState(() => Boolean(getStoredAdminKey()));
   const [showAdminLogin, setShowAdminLogin] = useState(false);
   const [previewContrib, setPreviewContrib] = useState<Contribution | null>(null);
   const [showTimelineInfo, setShowTimelineInfo] = useState(false);
@@ -174,7 +175,7 @@ const VideoDetailPage = () => {
 
   const handleAdminLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem('admin_key', adminKey);
+    setStoredAdminKey(adminKey);
     setIsAdminMode(true);
     setShowAdminLogin(false);
   };
@@ -225,7 +226,7 @@ const VideoDetailPage = () => {
         </button>
         
         <button 
-          onClick={() => isAdminMode ? (localStorage.removeItem('admin_key'), setIsAdminMode(false)) : setShowAdminLogin(true)}
+          onClick={() => isAdminMode ? (clearStoredAdminKey(), setIsAdminMode(false)) : setShowAdminLogin(true)}
           className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider transition-all ${isAdminMode ? 'bg-indigo-600 text-white' : 'bg-slate-800 text-gray-500 hover:text-gray-300'}`}
         >
           <ShieldCheck className="h-3 w-3" />

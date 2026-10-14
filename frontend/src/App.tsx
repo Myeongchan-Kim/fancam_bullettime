@@ -9,6 +9,7 @@ import SyncVisualizerPage from './pages/SyncVisualizerPage';
 import { Candy, LayoutDashboard } from 'lucide-react';
 import { API_BASE_URL } from './constants';
 import { GlobalAudioProvider } from './context/AudioContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
 import { GlobalAudioButton } from './components/GlobalAudioButton';
 
 function ScrollToTop() {
@@ -43,8 +44,8 @@ function MainContent() {
   );
 }
 
-function App() {
-  const adminKey = localStorage.getItem('admin_key');
+function AppShell() {
+  const { adminKey } = useAuth();
 
   return (
     <GlobalAudioProvider>
@@ -103,6 +104,14 @@ function App() {
       </div>
     </Router>
   </GlobalAudioProvider>
+  );
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AppShell />
+    </AuthProvider>
   );
 }
 

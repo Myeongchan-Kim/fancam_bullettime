@@ -11,6 +11,8 @@ import {
 import { Video } from '../types';
 import { API_BASE_URL } from '../constants';
 import { useGlobalAudio } from '../context/AudioContext';
+import { getStoredAdminKey } from '../context/AuthContext';
+import { formatTime as sharedFormatTime } from '../utils/formatters';
 
 interface PairwiseTimelineCalibratorModalProps {
   currentVideo: Video;
@@ -37,7 +39,7 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
   allConcertVideos,
   onClose,
   onSaved,
-  adminKey = localStorage.getItem('admin_key') || ''
+  adminKey = getStoredAdminKey()
 }) => {
   // Video A: Anchor (Fixed Reference) - can be swapped dynamically
   const [anchorVideo, setAnchorVideo] = useState<Video>(currentVideo);
@@ -406,15 +408,9 @@ export const PairwiseTimelineCalibratorModal: React.FC<PairwiseTimelineCalibrato
     } catch (e) {}
   }, [isMuted, audioTarget, playerA, playerB]);
 
-  // Format mm:ss
-  const formatTime = (secs: number) => {
-    const abs = Math.abs(secs);
-    const m = Math.floor(abs / 60);
-    const s = Math.floor(abs % 60);
-    const ms = Math.floor((abs % 1) * 10);
-    const formatted = `${m}:${s.toString().padStart(2, '0')}.${ms}`;
-    return secs < 0 ? `-${formatted}` : formatted;
-  };
+  // Format m:ss.d (supporting negative offset)
+  const formatTime = (secs: number) =>
+    sharedFormatTime(secs, { allowNegative: true, showDecimals: true, decimals: 1, padMinutes: false });
 
   const formatDuration = (secs: number | null | undefined) => {
     if (!secs) return '0s';

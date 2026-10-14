@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.models.models import Video
 from app.services.calibration import estimate_video_rough_offset, record_video_calibration
-from app.services.sync.master_election import elect_master_video
+from app.services.sync.master_election import elect_master_video, get_candidate_master_videos
 from app.services.sync.precision_calibrator import calibrate_video_2stage_visual_and_audio
 from ...db import get_db
 from .utils import verify_admin
@@ -26,7 +26,11 @@ def _ensure_local_dsp_tools():
 
 
 @router.post("/videos/{video_id}/auto-align-segments")
-def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
+def auto_align_video_segments(
+    video_id: int,
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin),
+):
     """
     양끝 프로브(Boundary Probe) 및 오디오 교차 상관을 이용한 자동 타임라인 세그먼트 정렬
     """
@@ -48,7 +52,8 @@ def auto_align_video_segments(video_id: int, db: Session = Depends(get_db)):
 def trigger_recursive_segment_alignment(
     video_id: int,
     segment_id: Optional[int] = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    admin: bool = Depends(verify_admin),
 ):
     """
     오디오 3-Point 교차 상관 및 재귀 분할(Recursive Piecewise Segmentation) 알고리즘
@@ -81,13 +86,11 @@ def trigger_video_ai_sync(
     if not video:
         raise HTTPException(status_code=404, detail="Video not found")
 
-    candidate_masters = db.query(Video).filter(
-        Video.concert_id == video.concert_id,
-        Video.is_unavailable == False,
-        Video.duration > 3600
-    ).all()
-    candidate_masters.sort(
-        key=lambda m: (0 if m.sync_offset == 0.0 else 1, -(m.duration or 0))
+    candidate_masters = get_candidate_master_videos(
+        db,
+        concert_id=video.concert_id,
+        min_master_duration=3600.0,
+        exclude_video_id=video.id,
     )
 
     if not candidate_masters:

@@ -8,7 +8,7 @@ import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalib
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
 import { useGlobalAudio } from '../context/AudioContext';
 import { getStoredAdminKey, setStoredAdminKey, clearStoredAdminKey } from '../context/AuthContext';
-import { formatTime } from '../utils/formatters';
+import { formatTime as sharedFormatTime } from '../utils/formatters';
 import { useSyncGraphLanes, SyncStatusFilter } from '../hooks/useSyncGraphLanes';
 import { useDualYouTubeSync } from '../hooks/useDualYouTubeSync';
 
@@ -778,6 +778,9 @@ export default function SyncVisualizerPage() {
     }
   };
 
+  const formatTime = (seconds: number) =>
+    sharedFormatTime(seconds, { allowNegative: true, padMinutes: false });
+
   return (
     <div className="space-y-6 pb-20">
       {/* Top Header Card */}
@@ -806,7 +809,7 @@ export default function SyncVisualizerPage() {
             onAdminToggle={async () => {
               if (isAdminMode) {
                 if (window.confirm('Admin 모드를 로그아웃 하시겠습니까?')) {
-                  localStorage.removeItem('admin_key');
+                  clearStoredAdminKey();
                   setIsAdminMode(false);
                 }
               } else {
@@ -819,7 +822,7 @@ export default function SyncVisualizerPage() {
                       {},
                       { headers: { 'x-admin-key': trimmed } }
                     );
-                    localStorage.setItem('admin_key', trimmed);
+                    setStoredAdminKey(trimmed);
                     setIsAdminMode(true);
                     alert('Admin 인증에 성공했습니다!');
                   } catch (err) {
