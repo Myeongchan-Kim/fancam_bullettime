@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.models.models import Video
 from app.services.calibration import estimate_video_rough_offset, record_video_calibration
 from app.services.sync.master_election import elect_master_video, get_candidate_master_videos
-from app.services.sync.precision_calibrator import calibrate_video_2stage_visual_and_audio
 from ...db import get_db
 from .utils import verify_admin
 
@@ -98,6 +97,8 @@ def trigger_video_ai_sync(
 
     prev_offset = video.sync_offset or 0.0
     try:
+        from app.services.sync.precision_calibrator import calibrate_video_2stage_visual_and_audio
+
         success = False
         last_error = None
         for master_video in candidate_masters:

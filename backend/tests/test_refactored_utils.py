@@ -87,3 +87,33 @@ def test_calibration_alignment_routes_require_verify_admin():
         dep_calls = [d.call for d in route.dependant.dependencies]
         assert verify_admin in dep_calls, f"Route {route.path} is missing verify_admin dependency"
 
+
+def test_serverless_cold_start_imports_without_scipy(monkeypatch):
+    """
+    Vercel serverless environment (pyproject.toml) does not install heavy local DSP packages like scipy.
+    Importing app.main or app.api.v1 routers on cold start must NOT eagerly import precision_calibrator / audio_dsp / scipy.
+    """
+    import importlib
+    import sys
+
+    # Block scipy as if not installed in serverless runtime
+    monkeypatch.setitem(sys.modules, "scipy", None)
+    monkeypatch.setitem(sys.modules, "scipy.signal", None)
+    monkeypatch.setitem(sys.modules, "scipy.io", None)
+
+    # Clear cached sync / router modules so top-level imports are re-evaluated
+    for mod_name in list(sys.modules.keys()):
+        if mod_name in (
+            "app.main",
+            "app.api.v1.videos",
+            "app.api.v1.calibration",
+            "app.services.audio_dsp",
+        ) or mod_name.startswith("app.services.sync"):
+            monkeypatch.delitem(sys.modules, mod_name, raising=False)
+
+    # Importing app.main must succeed without importing scipy or audio_dsp
+    main_mod = importlib.import_module("app.main")
+    assert main_mod.app is not None
+    assert "app.services.audio_dsp" not in sys.modules
+
+
