@@ -171,43 +171,21 @@ class WholeConcertArranger:
 
     def _elect_master_video(self, sorted_videos: List[Video]) -> Video:
         """Finds existing canonical master or promotes the longest candidate video."""
-        existing_master = (
-            self.db.query(Video)
-            .filter(
-                Video.concert_id == self.concert_id,
-                Video.calibration_status == "master"
-            )
-            .first()
-        )
-        if existing_master:
+        from app.services.sync.master_election import elect_master_video
+
+        existing_master = elect_master_video(self.db, self.concert_id, videos=sorted_videos)
+        if existing_master and existing_master.calibration_status == "master":
             return existing_master
 
-        # Elect longest video
-        longest = sorted_videos[0]
+        longest = existing_master or sorted_videos[0]
         longest.calibration_status = "master"
         longest.sync_offset = 0.0
         longest.calibration_count = (longest.calibration_count or 0) + 1
         return longest
 
     def _process_long_video(self, video: Video, master_video: Video) -> Dict[str, Any]:
-        """Arranges Tier 1/2 videos (>= 300s). Checks dual-master consensus or two-pass."""
+        """Arranges Tier 1/2 videos (>= 300s) via continuity gate or two-pass calibration."""
         logger.info(f"Processing Tier 1/2 Video #{video.id} ({video.duration}s)...")
-        if video.duration and video.duration >= 8000.0:
-            # Full concert dual-master candidate (Video #1618)
-            record_video_calibration(
-                db=self.db,
-                video=video,
-                sync_offset=114.011,
-                method="dual_master_consensus",
-                status="ai_calibrated",
-                commit=False
-            )
-            return {
-                "success": True,
-                "status": "1to1_locked",
-                "offset": 114.011,
-                "reason": "Dual Master Backbone consensus with Master #64 (0.00s drift)"
-            }
 
         if not self.deep_two_pass:
             res = self._process_short_video(video, master_video)

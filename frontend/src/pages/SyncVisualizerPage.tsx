@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { YouTubePlayer } from 'react-youtube';
 import { GitBranch, Loader2, Sparkles } from 'lucide-react';
 import axios from 'axios';
 import { API_BASE_URL } from '../constants';
@@ -8,10 +7,12 @@ import { Concert, SyncGraphData, SyncGraphVideoNode, Video } from '../types';
 import PairwiseTimelineCalibratorModal from '../components/PairwiseTimelineCalibratorModal';
 import { SegmentTimelineCalibratorModal } from '../components/SegmentTimelineCalibratorModal';
 import { useGlobalAudio } from '../context/AudioContext';
+import { getStoredAdminKey, setStoredAdminKey, clearStoredAdminKey } from '../context/AuthContext';
+import { formatTime } from '../utils/formatters';
+import { useSyncGraphLanes, SyncStatusFilter } from '../hooks/useSyncGraphLanes';
+import { useDualYouTubeSync } from '../hooks/useDualYouTubeSync';
 
 import { 
-  calculateLocalSeekTime, 
-  calculateMasterTimeFromLocal, 
   isCursorInsideVideoRange,
   getActiveSegment,
   splitVideoSegmentAtCursor
@@ -36,12 +37,12 @@ export default function SyncVisualizerPage() {
   const [error, setError] = useState<string | null>(null);
 
   // Filters
-  const [statusFilter, setStatusFilter] = useState<'all' | 'uncalibrated' | 'ai' | 'verified' | 'segmented' | 'solos'>('all');
+  const [statusFilter, setStatusFilter] = useState<SyncStatusFilter>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
 
   // Horizontal Scrubber Time Cursor (in Master seconds)
   const [selectedTimeCursor, setSelectedTimeCursor] = useState<number>(0);
-  const [isAdminMode, setIsAdminMode] = useState<boolean>(!!localStorage.getItem('admin_key'));
+  const [isAdminMode, setIsAdminMode] = useState<boolean>(!!getStoredAdminKey());
   
   // Dual Deck Pairwise System: Deck A (Left) & Deck B (Right)
   const [videoA, setVideoA] = useState<SyncGraphVideoNode | null>(null);
@@ -49,14 +50,6 @@ export default function SyncVisualizerPage() {
   const [activeDeckSlot, setActiveDeckSlot] = useState<'A' | 'B'>('B');
   const [hoveredVideo, setHoveredVideo] = useState<SyncGraphVideoNode | null>(null);
 
-  // YouTube Player instances for bidirectional native seek sync
-  const [playerA, setPlayerA] = useState<YouTubePlayer | null>(null);
-  const [playerB, setPlayerB] = useState<YouTubePlayer | null>(null);
-  const lastTimeRefA = useRef<number>(0);
-  const lastTimeRefB = useRef<number>(0);
-  const lastSeekTimeARef = useRef<number>(0);
-  const lastSeekTimeBRef = useRef<number>(0);
-  const isPlaybackTickRef = useRef<boolean>(false);
   const isDraggingTimelineRef = useRef<boolean>(false);
   const timelineRef = useRef<HTMLDivElement>(null);
 
@@ -191,156 +184,26 @@ export default function SyncVisualizerPage() {
     setSearchParams(params);
   }, [selectedConcertId]);
 
-  // Total master concert timeline boundaries (supporting negative start and post-concert margins)
-  const { minMasterTime, maxMasterTime, totalDuration, timelineSpan } = useMemo(() => {
-    if (!graphData || !graphData.videos || graphData.videos.length === 0) {
-      return { minMasterTime: 0, maxMasterTime: 10800, totalDuration: 10800, timelineSpan: 10800 };
-    }
-
-    const minVideoStart = Math.min(
-      0,
-      ...graphData.videos.map(v => {
-        if (v.segments && v.segments.length > 0) {
-          return Math.min(...v.segments.map(s => s.master_start));
-        }
-        return v.master_start_time ?? 0;
-      })
-    );
-
-    const maxVideoEnd = Math.max(
-      graphData.master_video?.duration || 0,
-      ...graphData.videos.map(v => {
-        if (v.segments && v.segments.length > 0) {
-          return Math.max(...v.segments.map(s => s.master_end));
-        }
-        return v.master_end_time ?? 0;
-      }),
-      7200
-    );
-
-    // Give comfortable margins: at least 300s before if there are negative videos, and 120s buffer after
-    const calculatedMin = minVideoStart < 0 ? Math.floor((minVideoStart - 120) / 60) * 60 : -180;
-    const calculatedMax = Math.ceil((maxVideoEnd + 180) / 60) * 60;
-    const span = calculatedMax - calculatedMin;
-
-    return {
-      minMasterTime: calculatedMin,
-      maxMasterTime: calculatedMax,
-      totalDuration: maxVideoEnd,
-      timelineSpan: span
-    };
-  }, [graphData]);
-
-  // Overall Timeline Canvas Height in px
-  const canvasHeight = useMemo(() => {
-    return Math.max(700, Math.round((timelineSpan / 60) * scaleFactor));
-  }, [timelineSpan, scaleFactor]);
-
-  // Statistics
-  const stats = useMemo(() => {
-    if (!graphData || !graphData.videos) return { total: 0, uncalibrated: 0, ai: 0, verified: 0, segmented: 0, solos: 0 };
-    const videos = graphData.videos;
-    return {
-      total: videos.length,
-      uncalibrated: videos.filter(v => !v.is_master && ((v.calibration_count || 0) === 0 || v.status === 'uncalibrated')).length,
-      ai: videos.filter(v => v.status === 'ai_calibrated').length,
-      verified: videos.filter(v => (v.calibration_count || 0) > 0 && v.status !== 'uncalibrated').length,
-      segmented: videos.filter(v => v.segments && v.segments.length > 0).length,
-      solos: videos.filter(v => v.songs && v.songs.some((s: any) => s.is_solo)).length
-    };
-  }, [graphData]);
-
-  // Packing Compaction Algorithm for Timeline Lanes
-  const { lanes, allVisibleVideos, videoLaneMap } = useMemo(() => {
-    if (!graphData || !graphData.videos) return { lanes: [], allVisibleVideos: [], videoLaneMap: new Map<number, number>() };
-
-    let visible = graphData.videos.filter(v => {
-      if (statusFilter === 'uncalibrated') {
-        if (v.is_master || ((v.calibration_count || 0) > 0 && v.status !== 'uncalibrated')) return false;
-      } else if (statusFilter === 'ai') {
-        if (v.status !== 'ai_calibrated') return false;
-      } else if (statusFilter === 'verified') {
-        if (v.is_master || (v.calibration_count || 0) === 0 || v.status === 'uncalibrated') return false;
-      } else if (statusFilter === 'segmented') {
-        if (!v.segments || v.segments.length === 0) return false;
-      } else if (statusFilter === 'solos') {
-        if (!v.songs || !v.songs.some((s: any) => s.is_solo)) return false;
-      }
-
-      if (searchQuery.trim()) {
-        const query = searchQuery.toLowerCase();
-        const matchTitle = v.title.toLowerCase().includes(query);
-        const matchId = v.id.toString() === query.replace('#', '');
-        const matchSong = v.songs && v.songs.some((s: any) => s.name.toLowerCase().includes(query));
-        const matchTag = v.members && v.members.some((m: string) => m.toLowerCase().includes(query));
-        if (!matchTitle && !matchId && !matchSong && !matchTag) return false;
-      }
-
-      return true;
-    });
-
-    const masterVideos = visible.filter(v => v.is_master);
-    const nonMasterVideos = visible.filter(v => !v.is_master);
-
-    nonMasterVideos.sort((a, b) => {
-      const aStart = a.segments && a.segments.length > 0 ? a.segments[0].master_start : a.master_start_time;
-      const bStart = b.segments && b.segments.length > 0 ? b.segments[0].master_start : b.master_start_time;
-      return aStart - bStart;
-    });
-
-    const packedLanes: { items: SyncGraphVideoNode[], lastEndTime: number }[] = [];
-    const videoLaneMap = new Map<number, number>();
-
-    if (masterVideos.length > 0) {
-      packedLanes.push({
-        items: masterVideos,
-        lastEndTime: Math.max(...masterVideos.map(m => m.master_end_time))
-      });
-      masterVideos.forEach(m => videoLaneMap.set(m.id, 0));
-    }
-
-    const MIN_INTERVAL_GAP = 5;
-
-    nonMasterVideos.forEach(cam => {
-      const camStart = cam.segments && cam.segments.length > 0 ? cam.segments[0].master_start : cam.master_start_time;
-      const camEnd = cam.segments && cam.segments.length > 0 
-        ? Math.max(...cam.segments.map(s => s.master_end)) 
-        : cam.master_end_time;
-
-      const startIndex = masterVideos.length > 0 ? 1 : 0;
-      let placed = false;
-
-      for (let i = startIndex; i < packedLanes.length; i++) {
-        if (camStart >= packedLanes[i].lastEndTime + MIN_INTERVAL_GAP) {
-          packedLanes[i].items.push(cam);
-          packedLanes[i].lastEndTime = Math.max(packedLanes[i].lastEndTime, camEnd);
-          videoLaneMap.set(cam.id, i);
-          placed = true;
-          break;
-        }
-      }
-
-      if (!placed) {
-        const newLaneIdx = packedLanes.length;
-        packedLanes.push({
-          items: [cam],
-          lastEndTime: camEnd
-        });
-        videoLaneMap.set(cam.id, newLaneIdx);
-      }
-    });
-
-    return { 
-      lanes: packedLanes.map(l => l.items),
-      allVisibleVideos: visible,
-      videoLaneMap
-    };
-  }, [graphData, statusFilter, searchQuery, totalDuration]);
-
-  // Total width of packed timeline canvas
-  const totalCanvasWidth = useMemo(() => {
-    return TIME_AXIS_WIDTH + 16 + (lanes.length * (LANE_WIDTH + LANE_GAP));
-  }, [lanes.length]);
+  const {
+    minMasterTime,
+    maxMasterTime,
+    totalDuration,
+    timelineSpan,
+    canvasHeight,
+    stats,
+    lanes,
+    allVisibleVideos,
+    videoLaneMap,
+    totalCanvasWidth,
+  } = useSyncGraphLanes({
+    graphData,
+    statusFilter,
+    searchQuery,
+    scaleFactor,
+    laneWidth: LANE_WIDTH,
+    laneGap: LANE_GAP,
+    timeAxisWidth: TIME_AXIS_WIDTH,
+  });
 
   // Calculate videos overlapping with selected horizontal time line
   const overlappingVideos = useMemo(() => {
@@ -348,58 +211,23 @@ export default function SyncVisualizerPage() {
     return graphData.videos.filter(v => isCursorInsideVideoRange(v, selectedTimeCursor));
   }, [graphData, selectedTimeCursor]);
 
-  // User Timeline Seeking (Click & Drag & Arrow Keys)
-  const seekToMasterTimeline = (masterSec: number) => {
-    const clamped = Math.max(minMasterTime, Math.min(maxMasterTime, masterSec));
-    isPlaybackTickRef.current = false;
-    setSelectedTimeCursor(clamped);
-
-    // Check if either player is currently playing
-    const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
-    const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
-    const isPlaying = stateA === 1 || stateB === 1;
-
-    // Deck A
-    if (videoA && playerA) {
-      const insideA = isCursorInsideVideoRange(videoA, clamped);
-      const targetA = calculateLocalSeekTime(videoA, clamped);
-      try {
-        if (insideA) {
-          playerA.seekTo?.(targetA, true);
-          if (isPlaying && stateA !== 1) {
-            playerA.playVideo?.();
-          }
-          lastTimeRefA.current = targetA;
-        } else {
-          playerA.pauseVideo?.();
-          playerA.seekTo?.(targetA, true);
-          lastTimeRefA.current = targetA;
-        }
-      } catch (e) {}
-    }
-
-    // Deck B
-    if (videoB && playerB) {
-      const insideB = isCursorInsideVideoRange(videoB, clamped);
-      const targetB = calculateLocalSeekTime(videoB, clamped, fineTuneDelta);
-      try {
-        if (insideB) {
-          playerB.seekTo?.(targetB, true);
-          if (isPlaying && stateB !== 1) {
-            playerB.playVideo?.();
-          }
-          lastTimeRefB.current = targetB;
-        } else {
-          playerB.pauseVideo?.();
-          playerB.seekTo?.(targetB, true);
-          lastTimeRefB.current = targetB;
-        }
-      } catch (e) {}
-    }
-
-    lastSeekTimeARef.current = Date.now();
-    lastSeekTimeBRef.current = Date.now();
-  };
+  const {
+    playerA,
+    setPlayerA,
+    playerB,
+    setPlayerB,
+    seekToMasterTimeline,
+  } = useDualYouTubeSync({
+    videoA,
+    videoB,
+    selectedTimeCursor,
+    setSelectedTimeCursor,
+    fineTuneDelta,
+    minMasterTime,
+    maxMasterTime,
+    totalDuration,
+    isDraggingTimelineRef,
+  });
 
   const updateCursorFromMouseEvent = (e: React.MouseEvent<HTMLDivElement> | MouseEvent) => {
     if (!timelineRef.current) return;
@@ -508,15 +336,6 @@ export default function SyncVisualizerPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [playerA, playerB, videoA, videoB, selectedTimeCursor, minMasterTime, maxMasterTime, fineTuneDelta]);
 
-  // Real-time synchronization when fineTuneDelta changes
-  useEffect(() => {
-    if (!videoB || !playerB) return;
-    const targetB = calculateLocalSeekTime(videoB, selectedTimeCursor, fineTuneDelta);
-    try {
-      playerB.seekTo(targetB, true);
-    } catch (e) {}
-  }, [fineTuneDelta]);
-
   // Save Offset Permanently
   const handleSaveFineTuneOffset = async () => {
     if (!videoB || videoB.is_master) return;
@@ -524,16 +343,16 @@ export default function SyncVisualizerPage() {
     setSaveSuccessMsg(null);
 
     try {
-      let adminKey = localStorage.getItem('admin_key') || '';
+      let adminKey = getStoredAdminKey();
       if (!adminKey) {
-        const inputKey = window.prompt('오프셋을 영구 저장하려면 Admin Key를 입력해주세요 (기본 개발 키: 851212):');
+        const inputKey = window.prompt('오프셋을 영구 저장하려면 Admin Key를 입력해주세요:');
         if (!inputKey) {
           setIsSavingOffset(false);
           alert('Admin Key가 입력되지 않아 오프셋 저장이 취소되었습니다.');
           return;
         }
         adminKey = inputKey.trim();
-        localStorage.setItem('admin_key', adminKey);
+        setStoredAdminKey(adminKey);
         setIsAdminMode(true);
       }
 
@@ -549,7 +368,7 @@ export default function SyncVisualizerPage() {
           const vStart = isTarget ? Math.max(0, s.video_start + trimStartDelta) : s.video_start;
           const vEnd = isTarget ? Math.max(vStart + 0.5, s.video_end + trimEndDelta) : s.video_end;
           return {
-            setlist_id: (s as any).setlist_id || null,
+            setlist_id: s.setlist_id || null,
             video_start_time: Math.round(vStart * 10) / 10,
             video_end_time: Math.round(vEnd * 10) / 10,
             master_start_time: Math.round((vStart + off) * 10) / 10,
@@ -651,11 +470,11 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('Failed to save offset', err);
       if (err?.response?.status === 403) {
-        localStorage.removeItem('admin_key');
+        clearStoredAdminKey();
         setIsAdminMode(false);
-        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요 (기본 개발 키: 851212):');
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요:');
         if (retryKey) {
-          localStorage.setItem('admin_key', retryKey.trim());
+          setStoredAdminKey(retryKey.trim());
           setIsAdminMode(true);
           handleSaveFineTuneOffset();
           return;
@@ -692,7 +511,7 @@ export default function SyncVisualizerPage() {
 
     setIsSplitting(true);
     try {
-      const adminKey = localStorage.getItem('admin_key') || localStorage.getItem('twice_admin_key') || 'twice360-admin-secret-key';
+      const adminKey = getStoredAdminKey();
 
       const res = await axios.post(
         `${API_BASE_URL}/videos/${videoB.id}/segments/bulk`,
@@ -746,11 +565,11 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('Failed to split segment:', err);
       if (err?.response?.status === 403) {
-        localStorage.removeItem('admin_key');
+        clearStoredAdminKey();
         setIsAdminMode(false);
-        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요 (기본 개발 키: 851212):');
+        const retryKey = window.prompt('Admin Key가 올바르지 않습니다. 다시 입력해주세요:');
         if (retryKey) {
-          localStorage.setItem('admin_key', retryKey.trim());
+          setStoredAdminKey(retryKey.trim());
           setIsAdminMode(true);
           handleSplitAtCursor();
           return;
@@ -772,7 +591,7 @@ export default function SyncVisualizerPage() {
     setAiSyncError(null);
 
     try {
-      let adminKey = localStorage.getItem('admin_key') || '';
+      let adminKey = getStoredAdminKey();
       if (!adminKey) {
         const inputKey = window.prompt('AI 2-Stage 정밀 싱크를 실행하려면 Admin Key가 필요합니다:');
         if (!inputKey) {
@@ -781,7 +600,7 @@ export default function SyncVisualizerPage() {
           return;
         }
         adminKey = inputKey.trim();
-        localStorage.setItem('admin_key', adminKey);
+        setStoredAdminKey(adminKey);
         setIsAdminMode(true);
       }
 
@@ -800,7 +619,7 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('AI Sync failed', err);
       if (err?.response?.status === 403) {
-        localStorage.removeItem('admin_key');
+        clearStoredAdminKey();
         setIsAdminMode(false);
         setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
       } else {
@@ -822,7 +641,7 @@ export default function SyncVisualizerPage() {
     setAiSyncError(null);
 
     try {
-      let adminKey = localStorage.getItem('admin_key') || '';
+      let adminKey = getStoredAdminKey();
       if (!adminKey) {
         const inputKey = window.prompt('대략적 싱크 추천을 실행하려면 Admin Key가 필요합니다:');
         if (!inputKey) {
@@ -831,7 +650,7 @@ export default function SyncVisualizerPage() {
           return;
         }
         adminKey = inputKey.trim();
-        localStorage.setItem('admin_key', adminKey);
+        setStoredAdminKey(adminKey);
         setIsAdminMode(true);
       }
 
@@ -858,7 +677,7 @@ export default function SyncVisualizerPage() {
     } catch (err: any) {
       console.error('Rough sync candidates fetch failed', err);
       if (err?.response?.status === 403) {
-        localStorage.removeItem('admin_key');
+        clearStoredAdminKey();
         setIsAdminMode(false);
         setAiSyncError('Admin Key 인증 실패 (403). 올바른 관리자 키를 입력해주세요.');
       } else {
@@ -872,7 +691,7 @@ export default function SyncVisualizerPage() {
   // Apply Selected Rough Candidate
   const handleApplyRoughCandidate = async (candidate: any) => {
     if (!aiSyncTargetVideo) return;
-    const adminKey = localStorage.getItem('admin_key') || '';
+    const adminKey = getStoredAdminKey();
     const prevOffset = aiSyncTargetVideo.sync_offset || 0;
     const newOffset = candidate.estimated_offset;
 
@@ -957,128 +776,6 @@ export default function SyncVisualizerPage() {
     } finally {
       setIsLoadingCalibrator(false);
     }
-  };
-
-  // 4. Stable Pairwise Sync Loop
-  useEffect(() => {
-    const interval = setInterval(() => {
-      if (!playerA && !playerB) return;
-      if (isDraggingTimelineRef.current) return;
-
-      try {
-        const stateA = typeof playerA?.getPlayerState === 'function' ? playerA.getPlayerState() : -1;
-        const stateB = typeof playerB?.getPlayerState === 'function' ? playerB.getPlayerState() : -1;
-        const timeA = typeof playerA?.getCurrentTime === 'function' ? playerA.getCurrentTime() : 0;
-        const timeB = typeof playerB?.getCurrentTime === 'function' ? playerB.getCurrentTime() : 0;
-
-        // --- Deck A is actively playing ---
-        if (stateA === 1 && videoA) {
-          isPlaybackTickRef.current = true;
-          const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration);
-          
-          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
-            setSelectedTimeCursor(masterTime);
-          }
-
-          if (playerB && videoB) {
-            const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
-            const durB = videoB.duration || 300;
-            if (expB >= 0 && expB <= durB) {
-              if (stateB !== 1 && stateB !== 3) {
-                // Deck B is paused/cued, start playing from target sync position
-                playerB.seekTo(expB, true);
-                playerB.playVideo();
-                lastSeekTimeBRef.current = Date.now();
-              } else if (stateB === 1 && Math.abs(timeB - expB) > 0.9 && (Date.now() - lastSeekTimeBRef.current > 2000)) {
-                // Correct significant drift only after 2s stabilization grace period
-                playerB.seekTo(expB, true);
-                lastSeekTimeBRef.current = Date.now();
-              }
-            } else if (stateB === 1) {
-              playerB.pauseVideo();
-            }
-          }
-          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          lastTimeRefA.current = timeA;
-          lastTimeRefB.current = timeB;
-          return;
-        }
-
-        // --- Deck B is actively playing ---
-        if (stateB === 1 && videoB && stateA !== 1) {
-          isPlaybackTickRef.current = true;
-          const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
-          
-          if (Math.abs(masterTime - selectedTimeCursor) >= 0.2) {
-            setSelectedTimeCursor(masterTime);
-          }
-
-          if (playerA && videoA) {
-            const expA = calculateLocalSeekTime(videoA, masterTime);
-            const durA = videoA.duration || 300;
-            if (expA >= 0 && expA <= durA) {
-              if (stateA !== 1 && stateA !== 3) {
-                playerA.seekTo(expA, true);
-                playerA.playVideo();
-                lastSeekTimeARef.current = Date.now();
-              } else if (stateA === 1 && Math.abs(timeA - expA) > 0.9 && (Date.now() - lastSeekTimeARef.current > 2000)) {
-                playerA.seekTo(expA, true);
-                lastSeekTimeARef.current = Date.now();
-              }
-            } else if (stateA === 1) {
-              playerA.pauseVideo();
-            }
-          }
-          setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          lastTimeRefA.current = timeA;
-          lastTimeRefB.current = timeB;
-          return;
-        }
-
-        // --- Both paused: Detect user seeking on native YouTube seekbar ---
-        if (stateA !== 1 && stateB !== 1) {
-          if (videoA && isCursorInsideVideoRange(videoA, selectedTimeCursor) && Math.abs(timeA - lastTimeRefA.current) > 1.5) {
-            isPlaybackTickRef.current = true;
-            const masterTime = calculateMasterTimeFromLocal(videoA, timeA, totalDuration, 0, minMasterTime);
-            setSelectedTimeCursor(masterTime);
-            if (playerB && videoB) {
-              const expB = calculateLocalSeekTime(videoB, masterTime, fineTuneDelta);
-              playerB.seekTo(expB, true);
-            }
-            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          } else if (videoB && isCursorInsideVideoRange(videoB, selectedTimeCursor) && Math.abs(timeB - lastTimeRefB.current) > 1.5) {
-            isPlaybackTickRef.current = true;
-            const masterTime = calculateMasterTimeFromLocal(videoB, timeB, totalDuration, fineTuneDelta, minMasterTime);
-            setSelectedTimeCursor(masterTime);
-            if (playerA && videoA) {
-              const expA = calculateLocalSeekTime(videoA, masterTime);
-              playerA.seekTo(expA, true);
-            }
-            setTimeout(() => { isPlaybackTickRef.current = false; }, 80);
-          }
-        }
-
-        lastTimeRefA.current = timeA;
-        lastTimeRefB.current = timeB;
-      } catch (e) {}
-    }, 250);
-
-    return () => clearInterval(interval);
-  }, [playerA, playerB, videoA, videoB, fineTuneDelta, totalDuration, selectedTimeCursor, minMasterTime]);
-
-  // Format seconds to mm:ss or hh:mm:ss (supports negative margin)
-  const formatTime = (seconds: number) => {
-    const isNeg = seconds < 0;
-    const absSec = Math.abs(seconds);
-    const s = Math.floor(absSec);
-    const h = Math.floor(s / 3600);
-    const m = Math.floor((s % 3600) / 60);
-    const sec = s % 60;
-    const prefix = isNeg ? '-' : '';
-    if (h > 0) {
-      return `${prefix}${h}:${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-    }
-    return `${prefix}${m}:${sec.toString().padStart(2, '0')}`;
   };
 
   return (

@@ -248,7 +248,7 @@ export function splitVideoSegmentAtCursor(params: {
         const rightLabel = `${baseName} (뒤)`;
 
         newSegments.push({
-          setlist_id: findSetlistId(leftMasterStart, (s as any).setlist_id),
+          setlist_id: findSetlistId(leftMasterStart, s.setlist_id),
           video_start_time: currentVideoStart,
           video_end_time: cutVideoTime,
           master_start_time: leftMasterStart,
@@ -260,7 +260,7 @@ export function splitVideoSegmentAtCursor(params: {
         });
 
         newSegments.push({
-          setlist_id: findSetlistId(rightMasterStart, (s as any).setlist_id),
+          setlist_id: findSetlistId(rightMasterStart, s.setlist_id),
           video_start_time: cutVideoTime,
           video_end_time: currentVideoEnd,
           master_start_time: rightMasterStart,
@@ -272,7 +272,7 @@ export function splitVideoSegmentAtCursor(params: {
         });
       } else {
         newSegments.push({
-          setlist_id: (s as any).setlist_id || null,
+          setlist_id: s.setlist_id || null,
           video_start_time: s.video_start,
           video_end_time: s.video_end,
           master_start_time: s.master_start,

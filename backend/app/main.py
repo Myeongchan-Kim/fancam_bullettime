@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .db import engine, SessionLocal, get_db
 from .api.v1.videos import router as videos_router
+from .api.v1.calibration import router as calibration_router
 from .api.v1.concerts import router as concerts_router
 from .api.v1.songs import router as songs_router
 from .api.v1.contributions import router as contributions_router
@@ -26,6 +27,7 @@ app.add_middleware(
 
 # --- Register Routers ---
 app.include_router(videos_router)
+app.include_router(calibration_router)
 app.include_router(concerts_router)
 app.include_router(songs_router)
 app.include_router(contributions_router)

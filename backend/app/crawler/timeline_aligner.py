@@ -55,34 +55,15 @@ def download_audio_slice(stream_url: str, start_sec: float, duration_sec: float,
         logger.warning(f"Failed to slice audio at {start_sec}s ({duration_sec}s): {e}")
         return False
 
+from app.services.audio_dsp import cross_correlate
+from app.services.sync.master_election import elect_master_video
+
 def correlate_audio_slices(ref_wav_path: str, tgt_wav_path: str, search_start_sec: float) -> Tuple[float, float]:
     """
     Perform cross-correlation between reference and target audio slices.
-    Returns: (matched_target_sec, confidence_peak)
+    Delegates to `app.services.audio_dsp.cross_correlate`.
     """
-    try:
-        sr_ref, data_ref = wavfile.read(ref_wav_path)
-        sr_tgt, data_tgt = wavfile.read(tgt_wav_path)
-        
-        data_ref = data_ref.astype(np.float32) / 32768.0
-        data_tgt = data_tgt.astype(np.float32) / 32768.0
-        
-        if len(data_tgt) < len(data_ref):
-            return search_start_sec, 0.0
-            
-        corr = scipy.signal.correlate(data_tgt, data_ref, mode="valid")
-        best_lag_samples = np.argmax(corr)
-        norm_ref = np.linalg.norm(data_ref)
-        norm_tgt = np.linalg.norm(data_tgt[best_lag_samples:best_lag_samples + len(data_ref)])
-        
-        peak_val = float(corr[best_lag_samples] / (norm_ref * norm_tgt + 1e-9))
-        best_offset_sec = float(best_lag_samples / sr_tgt)
-        matched_target_sec = search_start_sec + best_offset_sec
-        
-        return matched_target_sec, peak_val
-    except Exception as e:
-        logger.warning(f"Correlation error: {e}")
-        return search_start_sec, 0.0
+    return cross_correlate(ref_wav_path, tgt_wav_path, search_start_sec)
 
 def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, Any]:
     """
@@ -98,13 +79,15 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
     if not video.concert_id:
         return {"success": False, "error": f"Video {video_id} has no concert assigned"}
 
-    # Find reference full concert for this concert (longest available master)
-    ref_video = db.query(Video).filter(
+    # Find reference full concert for this concert using unified master election
+    candidates = db.query(Video).filter(
         Video.concert_id == video.concert_id,
         Video.id != video.id,
-        Video.is_unavailable == False,
-        Video.duration > 3600
-    ).order_by(Video.duration.desc()).first()
+        Video.is_available == True,
+    ).all()
+    ref_video = elect_master_video(db, video.concert_id, videos=candidates)
+    if not ref_video:
+        return {"success": False, "error": f"No reference master video found for concert {video.concert_id}"}
     
     # Fetch setlist landmarks
     setlist_items = db.query(ConcertSetlist).filter(
@@ -117,7 +100,7 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
     first_item = setlist_items[0]
     last_item = setlist_items[-1]
 
-    ref_youtube_id = ref_video.youtube_id if ref_video else "ZBjTY0h1fuc"
+    ref_youtube_id = ref_video.youtube_id
     tgt_youtube_id = video.youtube_id
 
     scratch_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "scratch", "auto_align", str(video.id))

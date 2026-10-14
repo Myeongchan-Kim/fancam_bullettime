@@ -12,6 +12,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
 from app.core.config import settings
+from app.db import SessionLocal
 from app.models.models import Base, Video, Song, Concert, Contribution, ConcertSetlist
 from app.crawler.step1_search import search_youtube, get_video_info, timestamp_to_seconds, get_video_id
 from app.crawler.ai_parser import parse_fancam_metadata
@@ -23,9 +24,6 @@ logger = logging.getLogger(__name__)
 DATABASE_URL = settings.DATABASE_URL
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000/api")
 ADMIN_KEY = settings.ADMIN_KEY
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 def run_full_concert_importer(city_name: str = None, limit: int = 5):
     db = SessionLocal()

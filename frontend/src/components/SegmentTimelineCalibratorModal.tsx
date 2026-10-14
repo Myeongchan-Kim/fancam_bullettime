@@ -4,6 +4,9 @@ import {
   X, Layers, Plus, Trash2, CheckCircle2, Save, Sparkles, AlertCircle, Zap, Loader2, GitBranch
 } from 'lucide-react';
 import { Video, VideoSyncSegment } from '../types';
+import { API_BASE_URL } from '../constants';
+import { formatTime as sharedFormatTime } from '../utils/formatters';
+import { getStoredAdminKey } from '../context/AuthContext';
 
 interface SegmentTimelineCalibratorModalProps {
   video: Video;
@@ -11,8 +14,6 @@ interface SegmentTimelineCalibratorModalProps {
   onClose: () => void;
   onSaveSuccess?: () => void;
 }
-
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || '/api';
 
 export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorModalProps> = ({
   video,
@@ -26,16 +27,10 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
   const [isRecursiveSplitting, setIsRecursiveSplitting] = useState<number | 'all' | null>(null);
   const [statusMessage, setStatusMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
 
-  const adminKey = localStorage.getItem('admin_key') || '';
+  const adminKey = getStoredAdminKey();
 
   // Format seconds to HH:MM:SS
-  const formatTime = (seconds: number) => {
-    if (isNaN(seconds) || seconds < 0) return '00:00:00';
-    const h = Math.floor(seconds / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (seconds: number) => sharedFormatTime(seconds, { forceHours: true });
 
   // Fetch freshest segments
   const fetchSegments = async () => {
@@ -210,7 +205,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
     setStatusMessage({ type: 'info', text: '🎧 AI 오디오 핑거프린트 및 양끝 프로브(Boundary Probe)로 콘서트 타임라인 자동 정렬 중...' });
     try {
       const res = await axios.post(`${API_BASE_URL}/videos/${video.id}/auto-align-segments`, {}, {
-        headers: { 'x-admin-key': 'twice360-admin-secret-key' }
+        headers: { 'x-admin-key': adminKey }
       });
       if (res.data && res.data.success) {
         setStatusMessage({
@@ -249,7 +244,7 @@ export const SegmentTimelineCalibratorModal: React.FC<SegmentTimelineCalibratorM
         : `${API_BASE_URL}/videos/${video.id}/recursive-segment-align`;
       
       const res = await axios.post(url, {}, {
-        headers: { 'x-admin-key': 'twice360-admin-secret-key' }
+        headers: { 'x-admin-key': adminKey }
       });
       if (res.data && res.data.success) {
         setStatusMessage({

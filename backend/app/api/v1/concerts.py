@@ -71,12 +71,8 @@ def get_concert_sync_graph(concert_id: int, db: Session = Depends(get_db)):
         Video.is_unavailable == False
     ).order_by(Video.sync_offset.asc()).all()
     
-    # The Master Video is the video with the longest total concert duration (>= 7200s, e.g. Video 1094 with 10998s)
-    long_videos = [v for v in videos if v.duration and v.duration > 3600]
-    if long_videos:
-        master_video = max(long_videos, key=lambda v: v.duration)
-    else:
-        master_video = videos[0] if videos else None
+    from ...services.sync.master_election import elect_master_video
+    master_video = elect_master_video(db, concert_id, fallback_to_any=True)
         
     setlist_items = []
     sorted_setlist = sorted(concert.setlist, key=lambda x: x.display_order if x.display_order is not None else 999)

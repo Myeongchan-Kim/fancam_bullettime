@@ -6,6 +6,7 @@ import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime, evaluateSlaveSyncAction } from '../utils/timelineSync';
 import { packMobileTiles, isVerticalVideo, getMobileLiveSlaveIds } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
+import { SlaveVideoTile } from './multi-angle/SlaveVideoTile';
 
 export interface MultiAnglePlayerRef {
   getCurrentConcertTime: () => number;
@@ -831,35 +832,14 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 )}
               </div>
               {activeSlaveVideos.slice(0, 2).map(video => (
-                <div 
+                <SlaveVideoTile
                   key={`desktop-slave-trio-${video.id}`}
-                  className="aspect-video relative bg-black w-full cursor-pointer group/tile"
-                  onClick={() => setAsMaster(video.id)}
-                >
-                  <YouTube 
-                    key={`slave-${video.id}`}
-                    videoId={video.youtube_id} 
-                    opts={getSlaveOpts(video)} 
-                    onReady={(e) => handleReady(e, video.id)}
-                    className="w-full h-full absolute inset-0 pointer-events-none"
-                    iframeClassName="w-full h-full block"
-                  />
-                  <div className="absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
-                    <div className="flex justify-end">
-                      <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
-                        <ExternalLink className="h-3.5 w-3.5" />
-                      </Link>
-                    </div>
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 transition-transform scale-95 group-hover/tile:scale-100">
-                        <Maximize2 className="w-3.5 h-3.5" /> SET AS MASTER
-                      </div>
-                    </div>
-                    <div className="text-white text-xs font-bold line-clamp-1 drop-shadow-md">
-                      {video.title}
-                    </div>
-                  </div>
-                </div>
+                  video={video}
+                  opts={getSlaveOpts(video)}
+                  onReady={handleReady}
+                  onSelectMaster={setAsMaster}
+                  aspectClass="aspect-video"
+                />
               ))}
             </div>
           ) : (
@@ -886,102 +866,42 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 <div className="col-span-4 w-full h-full flex flex-col">
                   {activeSlaveVideos.length === 1 ? (
                     /* Exactly 1 Slave: Match Master height */
-                    <div 
-                      className="aspect-video relative bg-black w-full h-full cursor-pointer group/tile"
-                      onClick={() => setAsMaster(activeSlaveVideos[0].id)}
-                    >
-                      <YouTube 
-                        key={`slave-${activeSlaveVideos[0].id}`}
-                        videoId={activeSlaveVideos[0].youtube_id} 
-                        opts={getSlaveOpts(activeSlaveVideos[0])} 
-                        onReady={(e) => handleReady(e, activeSlaveVideos[0].id)}
-                        className="w-full h-full absolute inset-0 pointer-events-none"
-                        iframeClassName="w-full h-full block"
-                      />
-                      <div className="absolute inset-0 z-20 flex flex-col justify-between p-3 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
-                        <div className="flex justify-end">
-                          <Link to={`/video/${activeSlaveVideos[0].id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
-                            <ExternalLink className="h-3.5 w-3.5" />
-                          </Link>
-                        </div>
-                        <div className="flex flex-col items-center gap-2">
-                          <div className="bg-twice-apricot text-black px-3 py-1.5 rounded-lg text-xs font-black shadow-lg flex items-center gap-1.5 transition-transform scale-95 group-hover/tile:scale-100">
-                            <Maximize2 className="w-3.5 h-3.5" /> SET AS MASTER
-                          </div>
-                        </div>
-                        <div className="text-white text-xs font-bold line-clamp-1 drop-shadow-md">
-                          {activeSlaveVideos[0].title}
-                        </div>
-                      </div>
-                    </div>
+                    <SlaveVideoTile
+                      video={activeSlaveVideos[0]}
+                      opts={getSlaveOpts(activeSlaveVideos[0])}
+                      onReady={handleReady}
+                      onSelectMaster={setAsMaster}
+                      aspectClass="aspect-video h-full"
+                    />
                   ) : activeSlaveVideos.slice(0, 2).some(v => isVerticalVideo(v)) ? (
                     /* Vertical Slaves: 2 Vertical side-by-side inside the 4-col width */
                     <div className="grid grid-cols-2 gap-0.5 w-full h-full bg-slate-950">
                       {activeSlaveVideos.slice(0, 2).map(video => (
-                        <div 
+                        <SlaveVideoTile
                           key={`desktop-slave-vert-${video.id}`}
-                          className="aspect-[9/16] relative bg-black w-full cursor-pointer group/tile"
-                          onClick={() => setAsMaster(video.id)}
-                        >
-                          <YouTube 
-                            key={`slave-${video.id}`}
-                            videoId={video.youtube_id} 
-                            opts={getSlaveOpts(video)} 
-                            onReady={(e) => handleReady(e, video.id)}
-                            className="w-full h-full absolute inset-0 pointer-events-none"
-                            iframeClassName="w-full h-full block"
-                          />
-                          <div className="absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
-                            <div className="flex justify-end">
-                              <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
-                                <ExternalLink className="h-3 w-3" />
-                              </Link>
-                            </div>
-                            <div className="flex flex-col items-center gap-1">
-                              <div className="bg-twice-apricot text-black px-2 py-1 rounded text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
-                                <Maximize2 className="w-3 h-3" /> MASTER
-                              </div>
-                            </div>
-                            <div className="text-white text-[10px] font-bold line-clamp-1 drop-shadow-md">
-                              {video.title}
-                            </div>
-                          </div>
-                        </div>
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-[9/16]"
+                          compact
+                          badgeText="MASTER"
+                        />
                       ))}
                     </div>
                   ) : (
                     /* 2 Horizontal Slaves: Stacked vertically (each 16:9) */
                     <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
                       {activeSlaveVideos.slice(0, 2).map(video => (
-                        <div 
+                        <SlaveVideoTile
                           key={`desktop-slave-stack-${video.id}`}
-                          className="aspect-video relative bg-black w-full flex-1 cursor-pointer group/tile"
-                          onClick={() => setAsMaster(video.id)}
-                        >
-                          <YouTube 
-                            key={`slave-${video.id}`}
-                            videoId={video.youtube_id} 
-                            opts={getSlaveOpts(video)} 
-                            onReady={(e) => handleReady(e, video.id)}
-                            className="w-full h-full absolute inset-0 pointer-events-none"
-                            iframeClassName="w-full h-full block"
-                          />
-                          <div className="absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
-                            <div className="flex justify-end">
-                              <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
-                                <ExternalLink className="h-3 w-3" />
-                              </Link>
-                            </div>
-                            <div className="flex flex-col items-center gap-1.5">
-                              <div className="bg-twice-apricot text-black px-2.5 py-1 rounded-md text-[11px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
-                                <Maximize2 className="w-3 h-3" /> SET AS MASTER
-                              </div>
-                            </div>
-                            <div className="text-white text-[11px] font-bold line-clamp-1 drop-shadow-md">
-                              {video.title}
-                            </div>
-                          </div>
-                        </div>
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-video flex-1"
+                          compact
+                        />
                       ))}
                     </div>
                   )}
@@ -994,35 +914,16 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                   {activeSlaveVideos.slice(2).map(video => {
                     const isVert = isVerticalVideo(video);
                     return (
-                      <div 
+                      <SlaveVideoTile
                         key={`desktop-slave-extra-${video.id}`}
-                        className={`relative bg-black w-full cursor-pointer group/tile ${isVert ? 'aspect-[9/16]' : 'aspect-video'}`}
-                        onClick={() => setAsMaster(video.id)}
-                      >
-                        <YouTube 
-                          key={`slave-${video.id}`}
-                          videoId={video.youtube_id} 
-                          opts={getSlaveOpts(video)} 
-                          onReady={(e) => handleReady(e, video.id)}
-                          className="w-full h-full absolute inset-0 pointer-events-none"
-                          iframeClassName="w-full h-full block"
-                        />
-                        <div className="absolute inset-0 z-20 flex flex-col justify-between p-2.5 transition-opacity duration-200 bg-black/40 opacity-0 pointer-events-none group-hover/tile:opacity-100 group-hover/tile:pointer-events-auto">
-                          <div className="flex justify-end">
-                            <Link to={`/video/${video.id}`} onClick={(e) => e.stopPropagation()} className="p-1 hover:text-twice-apricot text-white/80 transition-colors">
-                              <ExternalLink className="h-3 w-3" />
-                            </Link>
-                          </div>
-                          <div className="flex flex-col items-center gap-1">
-                            <div className="bg-twice-apricot text-black px-2.5 py-1 rounded text-[10px] font-black shadow-lg flex items-center gap-1 transition-transform scale-95 group-hover/tile:scale-100">
-                              <Maximize2 className="w-3 h-3" /> SET MASTER
-                            </div>
-                          </div>
-                          <div className="text-white text-[10px] font-bold line-clamp-1 drop-shadow-md">
-                            {video.title}
-                          </div>
-                        </div>
-                      </div>
+                        video={video}
+                        opts={getSlaveOpts(video)}
+                        onReady={handleReady}
+                        onSelectMaster={setAsMaster}
+                        aspectClass={isVert ? 'aspect-[9/16]' : 'aspect-video'}
+                        compact
+                        badgeText="SET MASTER"
+                      />
                     );
                   })}
                 </div>

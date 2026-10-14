@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from ...models.models import Video, Song, ConcertSetlist, Contribution, Tag
 from ...core.config import settings
+from ...core.youtube_utils import get_video_id, timestamp_to_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,33 @@ def ensure_list(data):
             current = json.loads(current)
         except (json.JSONDecodeError, TypeError):
             break
-            
-    if not isinstance(current, list):
-        return []
+
+    return current if isinstance(current, list) else []
+
+def serialize_contribution(r: Contribution, video_title: Optional[str] = None) -> dict:
+    """Unified Contribution model-to-dict serializer."""
+    resolved_title = video_title if video_title is not None else (r.video.title if getattr(r, "video", None) else None)
+    return {
+        "id": r.id,
+        "video_id": r.video_id,
+        "video_title": resolved_title,
+        "suggested_url": r.suggested_url,
+        "suggested_title": r.suggested_title,
+        "suggested_song_ids": ensure_list(r.suggested_song_ids),
+        "suggested_concert_id": r.suggested_concert_id,
+        "suggested_members": ensure_list(r.suggested_members),
+        "suggested_duration": r.suggested_duration,
+        "suggested_is_shorts": r.suggested_is_shorts,
+        "suggested_angle": r.suggested_angle,
+        "suggested_coordinate_x": r.suggested_coordinate_x,
+        "suggested_coordinate_y": r.suggested_coordinate_y,
+        "suggested_sync_offset": r.suggested_sync_offset,
+        "suggested_setlist_id": r.suggested_setlist_id,
+        "suggested_start_time": r.suggested_start_time,
+        "suggested_event_name": r.suggested_event_name,
+        "is_processed": r.is_processed,
+        "created_at": r.created_at,
+    }
 
 def verify_admin(x_admin_key: Optional[str] = Header(None)):
     valid_keys = [
@@ -37,8 +62,6 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
             getattr(settings, 'ADMIN_KEY', None),
             os.getenv('ADMIN_SECRET_KEY'),
             os.getenv('ADMIN_KEY'),
-            '851212',
-            'twice360-admin-secret-key'
         ] if k
     ]
     if not valid_keys:
@@ -46,11 +69,6 @@ def verify_admin(x_admin_key: Optional[str] = Header(None)):
     if not x_admin_key or x_admin_key not in valid_keys:
         raise HTTPException(status_code=403, detail="Invalid admin key")
     return True
-
-def get_video_id(url: str):
-    pattern = r'(?:v=|be\/|v\/|embed\/|shorts\/|live\/|^)([0-9A-Za-z_-]{11})(?:\?|&|$|\/)'
-    match = re.search(pattern, url)
-    return match.group(1) if match else None
 
 def _maybe_auto_approve(db: Session, contribution_id: int):
     auto_approve = getattr(settings, 'AUTO_APPROVE', False)
@@ -106,6 +124,7 @@ def apply_contribution_to_video(db: Session, video: Optional[Video], contrib: Co
             sync_video_tags(db, video, contrib.suggested_members)
         if contrib.suggested_angle is not None: video.angle = contrib.suggested_angle
         if contrib.suggested_coordinate_x is not None: video.coordinate_x = contrib.suggested_coordinate_x
+        if contrib.suggested_coordinate_y is not None: video.coordinate_y = contrib.suggested_coordinate_y
         if contrib.suggested_sync_offset is not None:
             from app.services.calibration import record_video_calibration
             record_video_calibration(db, video, sync_offset=contrib.suggested_sync_offset, method="user_contribution", status="manually_verified", commit=False)

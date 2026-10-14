@@ -16,7 +16,8 @@ from sqlalchemy.orm import Session
 
 from app.models.models import Video, ConcertSetlist, VideoSyncSegment
 from app.services.calibration import record_video_calibration
-from scripts.precision_sync_calibrator import download_audio_slice, cross_correlate
+from app.services.audio_dsp import download_audio_slice, cross_correlate
+from app.services.sync.master_election import elect_master_video
 
 logger = logging.getLogger(__name__)
 
@@ -288,15 +289,7 @@ def calibrate_video_recursive_segments(
     if not video:
         return {"success": False, "error": f"Video #{video_id} not found"}
 
-    # Robust Master Selection:
-    # Must be of the same concert, NOT unavailable/private, NOT self, sorted by duration descending
-    master_video = db.query(Video).filter(
-        Video.concert_id == video.concert_id,
-        Video.id != video.id,
-        Video.is_unavailable == False,
-        Video.duration > 3600
-    ).order_by(Video.duration.desc()).first()
-
+    master_video = elect_master_video(db, video.concert_id, exclude_video_id=video.id)
     if not master_video:
         return {"success": False, "error": f"No Master Full Concert found for concert #{video.concert_id}"}
 

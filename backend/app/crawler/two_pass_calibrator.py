@@ -372,21 +372,8 @@ def calibrate_video_with_two_pass(
     if not video:
         return {"success": False, "error": f"Video #{video_id} not found."}
 
-    # Resolve Master Video (long concert master > 1 hour)
-    master_video = db.query(Video).filter(
-        Video.concert_id == video.concert_id,
-        Video.id != video.id,
-        Video.is_unavailable == False,
-        Video.duration > 3600
-    ).order_by(Video.duration.desc()).first()
-
-    if not master_video:
-        master_video = db.query(Video).filter(
-            Video.concert_id == video.concert_id,
-            Video.id != video.id,
-            Video.is_unavailable == False
-        ).order_by(Video.duration.desc()).first()
-
+    from app.services.sync.master_election import elect_master_video
+    master_video = elect_master_video(db, video.concert_id, exclude_video_id=video.id)
     if not master_video:
         return {"success": False, "error": f"No master video found for concert {video.concert_id}."}
 

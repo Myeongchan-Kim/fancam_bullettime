@@ -136,6 +136,7 @@ export interface SyncGraphVideoNode {
   like_count?: number;
   segments: {
     id: number;
+    setlist_id?: number | null;
     video_start: number;
     video_end: number;
     master_start: number;

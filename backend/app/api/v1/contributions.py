@@ -7,6 +7,7 @@ from ...schemas.schemas import ContributionBase, ContributionCreate, VideoDetail
 from ...db import get_db
 from .utils import (
     ensure_list,
+    serialize_contribution,
     verify_admin,
     get_video_id,
     _maybe_auto_approve,
@@ -31,6 +32,9 @@ def create_general_contribution(contribution: ContributionCreate, request: Reque
         suggested_duration=contribution.suggested_duration,
         suggested_is_shorts=contribution.suggested_is_shorts or False,
         suggested_angle=contribution.suggested_angle or "Unknown",
+        suggested_coordinate_x=contribution.suggested_coordinate_x,
+        suggested_coordinate_y=contribution.suggested_coordinate_y,
+        suggested_sync_offset=contribution.suggested_sync_offset,
         suggested_setlist_id=contribution.suggested_setlist_id,
         suggested_start_time=contribution.suggested_start_time,
         suggested_event_name=contribution.suggested_event_name,
@@ -71,36 +75,12 @@ def create_contribution(video_id: int, contribution: ContributionCreate, request
 @router.get("/videos/{video_id}/contributions", response_model=List[ContributionBase])
 def get_contributions(video_id: int, db: Session = Depends(get_db)):
     results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.video_id == video_id).order_by(Contribution.created_at.desc()).all()
-    output = []
-    for r in results:
-        output.append({
-            "id": r.id, "video_id": r.video_id, "video_title": r.video.title if r.video else None,
-            "suggested_url": r.suggested_url, "suggested_title": r.suggested_title,
-            "suggested_song_ids": ensure_list(r.suggested_song_ids), "suggested_concert_id": r.suggested_concert_id,
-            "suggested_members": ensure_list(r.suggested_members), "suggested_duration": r.suggested_duration,
-            "suggested_angle": r.suggested_angle, "suggested_coordinate_x": r.suggested_coordinate_x,
-            "suggested_coordinate_y": r.suggested_coordinate_y, "suggested_sync_offset": r.suggested_sync_offset,
-            "suggested_setlist_id": r.suggested_setlist_id, "suggested_start_time": r.suggested_start_time,
-            "suggested_event_name": r.suggested_event_name, "is_processed": r.is_processed, "created_at": r.created_at
-        })
-    return output
+    return [serialize_contribution(r) for r in results]
 
 @router.get("/admin/contributions/pending", response_model=List[ContributionBase])
 def get_pending_contributions(db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
     results = db.query(Contribution).options(joinedload(Contribution.video)).filter(Contribution.is_processed == False).order_by(Contribution.created_at.desc()).all()
-    output = []
-    for r in results:
-        output.append({
-            "id": r.id, "video_id": r.video_id, "video_title": r.video.title if r.video else None,
-            "suggested_url": r.suggested_url, "suggested_title": r.suggested_title,
-            "suggested_song_ids": ensure_list(r.suggested_song_ids), "suggested_concert_id": r.suggested_concert_id,
-            "suggested_members": ensure_list(r.suggested_members), "suggested_duration": r.suggested_duration,
-            "suggested_angle": r.suggested_angle, "suggested_coordinate_x": r.suggested_coordinate_x,
-            "suggested_coordinate_y": r.suggested_coordinate_y, "suggested_sync_offset": r.suggested_sync_offset,
-            "suggested_setlist_id": r.suggested_setlist_id, "suggested_start_time": r.suggested_start_time,
-            "suggested_event_name": r.suggested_event_name, "is_processed": r.is_processed, "created_at": r.created_at
-        })
-    return output
+    return [serialize_contribution(r) for r in results]
 
 @router.post("/contributions/{contribution_id}/approve")
 def approve_contribution(contribution_id: int, db: Session = Depends(get_db), admin: bool = Depends(verify_admin)):
