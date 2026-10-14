@@ -23,6 +23,8 @@ Antigravity 시스템에 의해 작업 상황(파일 확장자, 에이전트 판
    - 유튜브 크롤러 중복 방지를 위한 스크립트 인벤토리 확인 및 마스터 타임라인 `sync_offset` 보정 방향 정형화.
 5. **[communication.md](file:///Users/mckim/projects/tmp/twice_concert_crawling/.agents/rules/communication.md) (Always On)**
    - 사용자 칭찬/아부성 감탄사 배제, 기술 분석 및 팩트 중심의 담백한 답변 유지.
+6. **[testing.md](file:///Users/mckim/projects/tmp/twice_concert_crawling/.agents/rules/testing.md) (Always On)**
+   - 버그 수정 시 반드시 버그를 재현하여 실패(Fail)하는 테스트를 먼저 작성(Red-Green TDD)한 후 수정 진행.
 
 
 ---
