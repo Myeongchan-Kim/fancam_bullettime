@@ -373,7 +373,9 @@ def calibrate_video_with_two_pass(
         return {"success": False, "error": f"Video #{video_id} not found."}
 
     from app.services.sync.master_election import elect_master_video
-    master_video = elect_master_video(db, video.concert_id, exclude_video_id=video.id)
+    master_video = elect_master_video(
+        db, video.concert_id, exclude_video_id=video.id, fallback_to_any=True
+    )
     if not master_video:
         return {"success": False, "error": f"No master video found for concert {video.concert_id}."}
 

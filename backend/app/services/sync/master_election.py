@@ -28,28 +28,17 @@ def elect_master_video(
             and (exclude_video_id is None or getattr(v, "id", None) != exclude_video_id)
         ]
     elif db is not None and concert_id is not None:
-        query = db.query(Video).filter(
+        conditions = [
             Video.concert_id == concert_id,
             Video.is_unavailable == False,
-            Video.duration > min_master_duration,
-        )
+        ]
         if exclude_video_id is not None:
-            query = query.filter(Video.id != exclude_video_id)
+            conditions.append(Video.id != exclude_video_id)
 
+        query = db.query(Video).filter(*conditions)
         raw_all = query.all()
         if isinstance(raw_all, list):
-            if len(raw_all) > 0:
-                candidates = raw_all
-            elif fallback_to_any:
-                fb_q = db.query(Video).filter(
-                    Video.concert_id == concert_id,
-                    Video.is_unavailable == False,
-                )
-                if exclude_video_id is not None:
-                    fb_q = fb_q.filter(Video.id != exclude_video_id)
-                return fb_q.order_by(Video.duration.desc()).first()
-            else:
-                return None
+            candidates = raw_all
         else:
             # Support unit test mocks that stub query.order_by(...).first()
             first_candidate = query.order_by(Video.duration.desc()).first()
@@ -100,14 +89,14 @@ def get_candidate_master_videos(
     """
     if concert_id is None:
         return []
-    query = db.query(Video).filter(
+    conditions = [
         Video.concert_id == concert_id,
         Video.is_unavailable == False,
         Video.duration > min_master_duration,
-    )
+    ]
     if exclude_video_id is not None:
-        query = query.filter(Video.id != exclude_video_id)
-    candidates = query.all()
+        conditions.append(Video.id != exclude_video_id)
+    candidates = db.query(Video).filter(*conditions).all()
     if not isinstance(candidates, list):
         return []
     candidates.sort(

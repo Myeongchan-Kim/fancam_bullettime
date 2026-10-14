@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { getStoredAdminKey, setStoredAdminKey, clearStoredAdminKey } from '../api/client';
+import {
+  getStoredAdminKey,
+  setStoredAdminKey,
+  clearStoredAdminKey,
+  ADMIN_KEY_CHANGE_EVENT,
+} from '../api/client';
 
 export { getStoredAdminKey, setStoredAdminKey, clearStoredAdminKey };
 
@@ -45,7 +50,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setAdminKeyState(getStoredAdminKey());
     };
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener(ADMIN_KEY_CHANGE_EVENT, handleStorage);
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener(ADMIN_KEY_CHANGE_EVENT, handleStorage);
+    };
   }, []);
 
   return (

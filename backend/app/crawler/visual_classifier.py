@@ -129,7 +129,17 @@ Analyze the provided YouTube video frame/thumbnail image with extreme visual pre
 """
 
 
-def _call_gemini_vision(model_name: str, contents: list) -> str:
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from google.genai.errors import APIError
+
+
+@retry(
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=2, min=2, max=10),
+    retry=retry_if_exception_type(APIError),
+    reraise=True,
+)
+def _call_gemini_vision(contents: list, model_name: str) -> str:
     res = client.models.generate_content(
         model=model_name,
         contents=contents,
@@ -169,11 +179,14 @@ def classify_fancam_visually(
 
     for model_name in FALLBACK_MODELS:
         try:
-            raw_text = _call_gemini_vision(model_name, contents)
+            raw_text = _call_gemini_vision(contents, model_name)
             cleaned_text = clean_json_response(raw_text)
             return json.loads(cleaned_text)
         except Exception as e:
-            logger.warning(f"Visual classification failed on {model_name}: {e}")
+            if not should_retry(e):
+                logger.warning(f"Visual classification non-retryable error on {model_name}: {e}")
+            else:
+                logger.warning(f"Visual classification failed on {model_name}: {e}")
             continue
 
     return {

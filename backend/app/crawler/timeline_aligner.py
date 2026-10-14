@@ -80,12 +80,7 @@ def probe_video_boundaries_and_align(video_id: int, db: Session) -> Dict[str, An
         return {"success": False, "error": f"Video {video_id} has no concert assigned"}
 
     # Find reference full concert for this concert using unified master election
-    candidates = db.query(Video).filter(
-        Video.concert_id == video.concert_id,
-        Video.id != video.id,
-        Video.is_available == True,
-    ).all()
-    ref_video = elect_master_video(db, video.concert_id, videos=candidates)
+    ref_video = elect_master_video(db, video.concert_id, exclude_video_id=video.id)
     if not ref_video:
         return {"success": False, "error": f"No reference master video found for concert {video.concert_id}"}
     

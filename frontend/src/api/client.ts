@@ -2,6 +2,7 @@ import axios from 'axios';
 import { API_BASE_URL } from '../constants';
 
 export const ADMIN_KEY_STORAGE_KEY = 'admin_key';
+export const ADMIN_KEY_CHANGE_EVENT = 'admin-key-change';
 
 export function getStoredAdminKey(): string {
   return localStorage.getItem(ADMIN_KEY_STORAGE_KEY) || '';
@@ -14,10 +15,16 @@ export function setStoredAdminKey(key: string): void {
   } else {
     localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
   }
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ADMIN_KEY_CHANGE_EVENT));
+  }
 }
 
 export function clearStoredAdminKey(): void {
   localStorage.removeItem(ADMIN_KEY_STORAGE_KEY);
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new Event(ADMIN_KEY_CHANGE_EVENT));
+  }
 }
 
 /**
