@@ -4,7 +4,7 @@ import { Maximize2, ExternalLink, Volume2, VolumeX, Sparkles, Play, Monitor } fr
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { Video } from '../types';
 import { getMasterConcertTime, getLocalVideoTime, isVideoActiveAtConcertTime, evaluateSlaveSyncAction } from '../utils/timelineSync';
-import { packMobileTiles, packMobileLiveAndStandbyTiles, isVerticalVideo, getMobileLiveSlaveIds, getAdaptiveMobileSlaveCap } from '../utils/tilePacker';
+import { packMobileTiles, packMobileLiveAndStandbyTiles, isVerticalVideo, getMobileLiveSlaveIds, getAdaptiveMobileSlaveCap, VideoTile } from '../utils/tilePacker';
 import { useGlobalAudio } from '../context/AudioContext';
 import { SlaveVideoTile } from './multi-angle/SlaveVideoTile';
 
@@ -900,56 +900,15 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
         >
 
           {/* Seamless Mosaic Video Wall */}
-          {activeSlaveVideos.length === 0 ? (
-            /* Standalone Master Full-Width */
-            <div className="aspect-video w-full relative bg-black">
-              {masterVideo && (
-                <YouTube 
-                  key={`master-${masterVideo.id}`}
-                  videoId={masterVideo.youtube_id} 
-                  opts={optsMaster} 
-                  onReady={(e) => handleReady(e, masterVideo.id)}
-                  onPlay={handlePlay}
-                  onPause={handlePause}
-                  className="w-full h-full absolute inset-0"
-                  iframeClassName="w-full h-full block"
-                />
-              )}
-            </div>
-          ) : activeSlaveVideos.length === 2 && !activeSlaveVideos.some(v => isVerticalVideo(v)) && !isVerticalVideo(masterVideo) ? (
-            /* 3-Cam Panorama Mode: 3 horizontal angles side-by-side */
-            <div className="grid grid-cols-3 gap-0.5 w-full bg-slate-950">
-              <div className="aspect-video relative bg-black w-full">
-                {masterVideo && (
-                  <YouTube 
-                    key={`master-${masterVideo.id}`}
-                    videoId={masterVideo.youtube_id} 
-                    opts={optsMaster} 
-                    onReady={(e) => handleReady(e, masterVideo.id)}
-                    onPlay={handlePlay}
-                    onPause={handlePause}
-                    className="w-full h-full absolute inset-0"
-                    iframeClassName="w-full h-full block"
-                  />
-                )}
-              </div>
-              {activeSlaveVideos.slice(0, 2).map(video => (
-                <SlaveVideoTile
-                  key={`desktop-slave-trio-${video.id}`}
-                  video={video}
-                  opts={getSlaveOpts(video)}
-                  onReady={handleReady}
-                  onSelectMaster={setAsMaster}
-                  aspectClass="aspect-video"
-                />
-              ))}
-            </div>
-          ) : (
-            /* Split Video Wall: Master (Left 8 cols) + Side Slaves (Right 4 cols) */
-            <div className="w-full flex flex-col space-y-0.5 bg-slate-950">
-              <div className="grid grid-cols-12 gap-0.5 w-full bg-slate-950">
-                {/* Master Column (8 cols) */}
-                <div className="col-span-8 aspect-video relative bg-black w-full">
+          {(() => {
+            const isMasterVertical = isVerticalVideo(masterVideo);
+            const verticalSlaves = activeSlaveVideos.filter(v => isVerticalVideo(v));
+            const horizontalSlaves = activeSlaveVideos.filter(v => !isVerticalVideo(v));
+
+            if (activeSlaveVideos.length === 0) {
+              return (
+                /* Standalone Master */
+                <div className={`${isMasterVertical ? 'aspect-[9/16] max-h-[75vh] mx-auto' : 'aspect-video w-full'} relative bg-black`}>
                   {masterVideo && (
                     <YouTube 
                       key={`master-${masterVideo.id}`}
@@ -963,24 +922,157 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                     />
                   )}
                 </div>
+              );
+            }
 
-                {/* Right Slaves Column (4 cols) */}
-                <div className="col-span-4 w-full h-full flex flex-col">
-                  {activeSlaveVideos.length === 1 ? (
-                    /* Exactly 1 Slave: Match Master height */
+            if (activeSlaveVideos.length === 2 && verticalSlaves.length === 0 && !isMasterVertical) {
+              return (
+                /* 3-Cam Panorama Mode: 3 horizontal angles side-by-side */
+                <div className="grid grid-cols-3 gap-0.5 w-full bg-slate-950">
+                  <div className="aspect-video relative bg-black w-full">
+                    {masterVideo && (
+                      <YouTube 
+                        key={`master-${masterVideo.id}`}
+                        videoId={masterVideo.youtube_id} 
+                        opts={optsMaster} 
+                        onReady={(e) => handleReady(e, masterVideo.id)}
+                        onPlay={handlePlay}
+                        onPause={handlePause}
+                        className="w-full h-full absolute inset-0"
+                        iframeClassName="w-full h-full block"
+                      />
+                    )}
+                  </div>
+                  {horizontalSlaves.slice(0, 2).map(video => (
                     <SlaveVideoTile
-                      video={activeSlaveVideos[0]}
-                      opts={getSlaveOpts(activeSlaveVideos[0])}
+                      key={`desktop-slave-trio-${video.id}`}
+                      video={video}
+                      opts={getSlaveOpts(video)}
                       onReady={handleReady}
                       onSelectMaster={setAsMaster}
-                      aspectClass="aspect-video h-full"
+                      aspectClass="aspect-video"
                     />
-                  ) : activeSlaveVideos.slice(0, 2).some(v => isVerticalVideo(v)) ? (
-                    /* Vertical Slaves: 2 Vertical side-by-side inside the 4-col width */
-                    <div className="grid grid-cols-2 gap-0.5 w-full h-full bg-slate-950">
-                      {activeSlaveVideos.slice(0, 2).map(video => (
+                  ))}
+                </div>
+              );
+            }
+
+            // When Master itself is Vertical (9:16, 81fr) on Desktop
+            if (isMasterVertical) {
+              let topRowGridClass = 'grid-cols-[81fr_256fr]';
+              let extraVerticals = verticalSlaves;
+              let extraHorizontals: Video[] = [];
+
+              if (horizontalSlaves.length >= 3) {
+                // Master (9:16, 81fr) + 1 Full Horizontal (16:9, 256fr) + 2 Stacked Horizontals (16:9 x 2, 128fr) -> exact 144fr common height
+                topRowGridClass = 'grid-cols-[81fr_256fr_128fr]';
+                extraHorizontals = horizontalSlaves.slice(3);
+              } else if (horizontalSlaves.length === 2) {
+                // Master (9:16, 81fr) + 2 Full Horizontals (256fr + 256fr) -> exact 144fr common height
+                topRowGridClass = 'grid-cols-[81fr_256fr_256fr]';
+                extraHorizontals = [];
+              } else if (horizontalSlaves.length === 1 && verticalSlaves.length >= 1) {
+                topRowGridClass = 'grid-cols-[81fr_81fr_256fr]';
+                extraVerticals = verticalSlaves.slice(1);
+                extraHorizontals = [];
+              } else if (horizontalSlaves.length === 1) {
+                topRowGridClass = 'grid-cols-[81fr_256fr]';
+                extraHorizontals = [];
+              } else if (verticalSlaves.length >= 2) {
+                topRowGridClass = 'grid-cols-3';
+                extraVerticals = verticalSlaves.slice(2);
+              } else {
+                topRowGridClass = 'grid-cols-2';
+                extraVerticals = verticalSlaves.slice(1);
+              }
+
+              return (
+                <div className="w-full flex flex-col space-y-0.5 bg-slate-950">
+                  <div className={`grid ${topRowGridClass} gap-0.5 w-full bg-slate-950`}>
+                    <div className="aspect-[9/16] relative bg-black w-full">
+                      {masterVideo && (
+                        <YouTube
+                          key={`master-${masterVideo.id}`}
+                          videoId={masterVideo.youtube_id}
+                          opts={optsMaster}
+                          onReady={(e) => handleReady(e, masterVideo.id)}
+                          onPlay={handlePlay}
+                          onPause={handlePause}
+                          className="w-full h-full absolute inset-0"
+                          iframeClassName="w-full h-full block"
+                        />
+                      )}
+                    </div>
+
+                    {horizontalSlaves.length >= 3 ? (
+                      <>
                         <SlaveVideoTile
-                          key={`desktop-slave-vert-${video.id}`}
+                          key={`desktop-vmaster-h0-${horizontalSlaves[0].id}`}
+                          video={horizontalSlaves[0]}
+                          opts={getSlaveOpts(horizontalSlaves[0])}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-video"
+                        />
+                        <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
+                          {horizontalSlaves.slice(1, 3).map(video => (
+                            <SlaveVideoTile
+                              key={`desktop-vmaster-hstack-${video.id}`}
+                              video={video}
+                              opts={getSlaveOpts(video)}
+                              onReady={handleReady}
+                              onSelectMaster={setAsMaster}
+                              aspectClass="aspect-video flex-1"
+                              compact
+                            />
+                          ))}
+                        </div>
+                      </>
+                    ) : horizontalSlaves.length === 2 ? (
+                      horizontalSlaves.slice(0, 2).map(video => (
+                        <SlaveVideoTile
+                          key={`desktop-vmaster-hpair-${video.id}`}
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-video"
+                        />
+                      ))
+                    ) : horizontalSlaves.length === 1 && verticalSlaves.length >= 1 ? (
+                      <>
+                        <SlaveVideoTile
+                          key={`desktop-vmaster-v0-${verticalSlaves[0].id}`}
+                          video={verticalSlaves[0]}
+                          opts={getSlaveOpts(verticalSlaves[0])}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-[9/16]"
+                          compact
+                          badgeText="MASTER"
+                        />
+                        <SlaveVideoTile
+                          key={`desktop-vmaster-h0-${horizontalSlaves[0].id}`}
+                          video={horizontalSlaves[0]}
+                          opts={getSlaveOpts(horizontalSlaves[0])}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-video"
+                        />
+                      </>
+                    ) : horizontalSlaves.length === 1 ? (
+                      <SlaveVideoTile
+                        key={`desktop-vmaster-h0-${horizontalSlaves[0].id}`}
+                        video={horizontalSlaves[0]}
+                        opts={getSlaveOpts(horizontalSlaves[0])}
+                        onReady={handleReady}
+                        onSelectMaster={setAsMaster}
+                        aspectClass="aspect-video"
+                      />
+                    ) : (
+                      verticalSlaves.slice(0, 2).map(video => (
+                        <SlaveVideoTile
+                          key={`desktop-vmaster-v-${video.id}`}
                           video={video}
                           opts={getSlaveOpts(video)}
                           onReady={handleReady}
@@ -989,49 +1081,254 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                           compact
                           badgeText="MASTER"
                         />
-                      ))}
-                    </div>
-                  ) : (
-                    /* 2 Horizontal Slaves: Stacked vertically (each 16:9) */
-                    <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
-                      {activeSlaveVideos.slice(0, 2).map(video => (
+                      ))
+                    )}
+                  </div>
+
+                  {extraHorizontals.length > 0 && (
+                    <div className={`grid ${extraHorizontals.length <= 2 ? 'grid-cols-2' : extraHorizontals.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-0.5 w-full bg-slate-950`}>
+                      {extraHorizontals.map(video => (
                         <SlaveVideoTile
-                          key={`desktop-slave-stack-${video.id}`}
+                          key={`desktop-vmaster-extra-h-${video.id}`}
                           video={video}
                           opts={getSlaveOpts(video)}
                           onReady={handleReady}
                           onSelectMaster={setAsMaster}
-                          aspectClass="aspect-video flex-1"
+                          aspectClass="aspect-video"
                           compact
+                          badgeText="SET MASTER"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {extraVerticals.length > 0 && (
+                    <div className={`grid ${extraVerticals.length <= 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-0.5 w-full bg-slate-950`}>
+                      {extraVerticals.map(video => (
+                        <SlaveVideoTile
+                          key={`desktop-vmaster-extra-v-${video.id}`}
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-[9/16]"
+                          compact
+                          badgeText="SET MASTER"
                         />
                       ))}
                     </div>
                   )}
                 </div>
-              </div>
+              );
+            }
 
-              {/* Additional Angles (> 2 slaves) tiled seamlessly below in a bottom row */}
-              {activeSlaveVideos.length > 2 && (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5 w-full bg-slate-950">
-                  {activeSlaveVideos.slice(2).map(video => {
-                    const isVert = isVerticalVideo(video);
-                    return (
+            // Mixed Orientation Desktop Mosaic: When Master is Horizontal (16:9) and vertical side videos exist
+            if (verticalSlaves.length > 0) {
+              let topRowGridClass = 'grid-cols-[256fr_81fr]';
+              let extraVerticals: Video[] = [];
+              let extraHorizontals: Video[] = [];
+
+              if (verticalSlaves.length >= 1 && horizontalSlaves.length >= 2) {
+                // Master (16:9, 256fr) + 1 Vertical (9:16, 81fr) + 2 Stacked Horizontals (16:9 x 2, 128fr) -> exact 144fr common height
+                topRowGridClass = 'grid-cols-[256fr_81fr_128fr]';
+                extraVerticals = verticalSlaves.slice(1);
+                extraHorizontals = horizontalSlaves.slice(2);
+              } else if (verticalSlaves.length >= 2) {
+                // Master (16:9, 256fr) + 2 Verticals (9:16 x 2, 81fr + 81fr) -> exact 144fr common height
+                topRowGridClass = 'grid-cols-[256fr_81fr_81fr]';
+                extraVerticals = verticalSlaves.slice(2);
+                extraHorizontals = horizontalSlaves;
+              } else if (verticalSlaves.length === 1 && horizontalSlaves.length === 1) {
+                // Master (16:9, 256fr) + 1 Vertical (9:16, 81fr) + 1 Horizontal (16:9, 256fr) -> exact 144fr common height
+                topRowGridClass = 'grid-cols-[256fr_81fr_256fr]';
+                extraVerticals = [];
+                extraHorizontals = [];
+              } else {
+                // Master (16:9, 256fr) + 1 Vertical (9:16, 81fr)
+                topRowGridClass = 'grid-cols-[256fr_81fr]';
+                extraVerticals = [];
+                extraHorizontals = [];
+              }
+
+              return (
+                <div className="w-full flex flex-col space-y-0.5 bg-slate-950">
+                  <div className={`grid ${topRowGridClass} gap-0.5 w-full bg-slate-950`}>
+                    {/* Master Column (256fr, 16:9 -> height 144fr) */}
+                    <div className="aspect-video relative bg-black w-full">
+                      {masterVideo && (
+                        <YouTube
+                          key={`master-${masterVideo.id}`}
+                          videoId={masterVideo.youtube_id}
+                          opts={optsMaster}
+                          onReady={(e) => handleReady(e, masterVideo.id)}
+                          onPlay={handlePlay}
+                          onPause={handlePause}
+                          className="w-full h-full absolute inset-0"
+                          iframeClassName="w-full h-full block"
+                        />
+                      )}
+                    </div>
+
+                    {/* First Vertical Slave Column (81fr, 9:16 -> height 144fr) */}
+                    <SlaveVideoTile
+                      key={`desktop-slave-vert-0-${verticalSlaves[0].id}`}
+                      video={verticalSlaves[0]}
+                      opts={getSlaveOpts(verticalSlaves[0])}
+                      onReady={handleReady}
+                      onSelectMaster={setAsMaster}
+                      aspectClass="aspect-[9/16]"
+                      compact
+                      badgeText="MASTER"
+                    />
+
+                    {/* Third Column: 2 Stacked Horizontals (128fr) OR 2nd Vertical (81fr) OR 1 Horizontal (256fr) */}
+                    {horizontalSlaves.length >= 2 ? (
+                      <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
+                        {horizontalSlaves.slice(0, 2).map(video => (
+                          <SlaveVideoTile
+                            key={`desktop-slave-mixed-h-${video.id}`}
+                            video={video}
+                            opts={getSlaveOpts(video)}
+                            onReady={handleReady}
+                            onSelectMaster={setAsMaster}
+                            aspectClass="aspect-video flex-1"
+                            compact
+                          />
+                        ))}
+                      </div>
+                    ) : verticalSlaves.length >= 2 ? (
+                      <SlaveVideoTile
+                        key={`desktop-slave-vert-1-${verticalSlaves[1].id}`}
+                        video={verticalSlaves[1]}
+                        opts={getSlaveOpts(verticalSlaves[1])}
+                        onReady={handleReady}
+                        onSelectMaster={setAsMaster}
+                        aspectClass="aspect-[9/16]"
+                        compact
+                        badgeText="MASTER"
+                      />
+                    ) : horizontalSlaves.length === 1 ? (
+                      <SlaveVideoTile
+                        key={`desktop-slave-mixed-h1-${horizontalSlaves[0].id}`}
+                        video={horizontalSlaves[0]}
+                        opts={getSlaveOpts(horizontalSlaves[0])}
+                        onReady={handleReady}
+                        onSelectMaster={setAsMaster}
+                        aspectClass="aspect-video"
+                        compact
+                      />
+                    ) : null}
+                  </div>
+
+                  {/* Extra Horizontal Slaves below top row */}
+                  {extraHorizontals.length > 0 && (
+                    <div className={`grid ${extraHorizontals.length === 1 ? 'grid-cols-2' : extraHorizontals.length === 2 ? 'grid-cols-2' : extraHorizontals.length === 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-0.5 w-full bg-slate-950`}>
+                      {extraHorizontals.map(video => (
+                        <SlaveVideoTile
+                          key={`desktop-slave-extra-h-${video.id}`}
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-video"
+                          compact
+                          badgeText="SET MASTER"
+                        />
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Extra Vertical Slaves below top row */}
+                  {extraVerticals.length > 0 && (
+                    <div className={`grid ${extraVerticals.length <= 3 ? 'grid-cols-3' : 'grid-cols-4'} gap-0.5 w-full bg-slate-950`}>
+                      {extraVerticals.map(video => (
+                        <SlaveVideoTile
+                          key={`desktop-slave-extra-v-${video.id}`}
+                          video={video}
+                          opts={getSlaveOpts(video)}
+                          onReady={handleReady}
+                          onSelectMaster={setAsMaster}
+                          aspectClass="aspect-[9/16]"
+                          compact
+                          badgeText="SET MASTER"
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            /* Pure Horizontal Split Video Wall: Master (Left 8 cols) + Side Slaves (Right 4 cols) */
+            return (
+              <div className="w-full flex flex-col space-y-0.5 bg-slate-950">
+                <div className="grid grid-cols-12 gap-0.5 w-full bg-slate-950">
+                  {/* Master Column (8 cols) */}
+                  <div className="col-span-8 aspect-video relative bg-black w-full">
+                    {masterVideo && (
+                      <YouTube 
+                        key={`master-${masterVideo.id}`}
+                        videoId={masterVideo.youtube_id} 
+                        opts={optsMaster} 
+                        onReady={(e) => handleReady(e, masterVideo.id)}
+                        onPlay={handlePlay}
+                        onPause={handlePause}
+                        className="w-full h-full absolute inset-0"
+                        iframeClassName="w-full h-full block"
+                      />
+                    )}
+                  </div>
+
+                  {/* Right Slaves Column (4 cols) */}
+                  <div className="col-span-4 w-full h-full flex flex-col">
+                    {activeSlaveVideos.length === 1 ? (
+                      /* Exactly 1 Slave: Match Master height */
+                      <SlaveVideoTile
+                        video={activeSlaveVideos[0]}
+                        opts={getSlaveOpts(activeSlaveVideos[0])}
+                        onReady={handleReady}
+                        onSelectMaster={setAsMaster}
+                        aspectClass="aspect-video h-full"
+                      />
+                    ) : (
+                      /* 2 Horizontal Slaves: Stacked vertically (each 16:9) */
+                      <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
+                        {activeSlaveVideos.slice(0, 2).map(video => (
+                          <SlaveVideoTile
+                            key={`desktop-slave-stack-${video.id}`}
+                            video={video}
+                            opts={getSlaveOpts(video)}
+                            onReady={handleReady}
+                            onSelectMaster={setAsMaster}
+                            aspectClass="aspect-video flex-1"
+                            compact
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Additional Angles (> 2 slaves) tiled seamlessly below in a bottom row */}
+                {activeSlaveVideos.length > 2 && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-0.5 w-full bg-slate-950">
+                    {activeSlaveVideos.slice(2).map(video => (
                       <SlaveVideoTile
                         key={`desktop-slave-extra-${video.id}`}
                         video={video}
                         opts={getSlaveOpts(video)}
                         onReady={handleReady}
                         onSelectMaster={setAsMaster}
-                        aspectClass={isVert ? 'aspect-[9/16]' : 'aspect-video'}
+                        aspectClass="aspect-video"
                         compact
                         badgeText="SET MASTER"
                       />
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          )}
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       ) : (
         /* Mobile / Tablet Smart Tile Mosaic Layout (< 1024px) with Touch HUD */
@@ -1079,7 +1376,138 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                 );
               }
 
-              // Slaves group (Vertical Trio, Vertical Pair, Horizontal Pair, etc.)
+              const renderMobileTile = (tile: VideoTile) => {
+                const video = tile.video;
+                const isVert = tile.isVertical;
+                const isLiveTile = tile.isMaster || mobileLiveSlaveIds.has(video.id);
+
+                if (!isLiveTile) {
+                  // Eco Standby Tile: Tapping tile body or LIVE ON promotes it to the top Live section and starts playing immediately
+                  return (
+                    <div
+                      key={`tile-standby-${video.id}`}
+                      className={`relative bg-slate-950 w-full overflow-hidden select-none cursor-pointer ${
+                        isVert ? 'aspect-[9/16]' : 'aspect-video'
+                      }`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        activateMobileLiveSlave(video.id);
+                      }}
+                    >
+                      <img
+                        src={video.thumbnail_url}
+                        alt={video.title}
+                        loading="lazy"
+                        className="w-full h-full object-cover opacity-50"
+                      />
+                      <div className="absolute inset-0 z-20 flex flex-col justify-between p-2 bg-gradient-to-t from-black/90 via-black/45 to-black/60">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="px-1.5 py-0.5 rounded bg-black/80 border border-white/15 text-[8px] font-black text-twice-apricot uppercase tracking-wider">
+                            STANDBY
+                          </span>
+                          <Link
+                            to={`/video/${video.id}`}
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
+                            title="Open Video Details"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </Link>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-center gap-1.5 my-auto">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              activateMobileLiveSlave(video.id);
+                            }}
+                            className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                            title="Play Live in Grid"
+                          >
+                            <Play className="w-3 h-3 fill-current" /> LIVE ON
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setAsMaster(video.id);
+                            }}
+                            className="bg-slate-900/90 text-white border border-white/25 px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                            title="Promote to Master"
+                          >
+                            <Maximize2 className="w-3 h-3" /> MASTER
+                          </button>
+                        </div>
+
+                        <div className="bg-black/80 backdrop-blur-sm px-1.5 py-1 rounded text-[9px] text-gray-200 font-medium line-clamp-1 truncate">
+                          {video.members && video.members.length > 0 ? `[${video.members.join(', ')}] ` : ''}
+                          {video.title}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div
+                    key={`tile-${video.id}`}
+                    className={`relative bg-black w-full overflow-hidden ${
+                      isVert ? 'aspect-[9/16]' : 'aspect-video'
+                    }`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      triggerOverlay();
+                    }}
+                  >
+                    <YouTube
+                      key={tile.isMaster ? `master-${video.id}` : `slave-${video.id}`}
+                      videoId={video.youtube_id}
+                      opts={tile.isMaster ? optsMaster : getSlaveOpts(video)}
+                      onReady={(e) => handleReady(e, video.id)}
+                      onPlay={tile.isMaster ? handlePlay : undefined}
+                      onPause={tile.isMaster ? handlePause : undefined}
+                      className="w-full h-full absolute inset-0 pointer-events-none"
+                      iframeClassName="w-full h-full block"
+                    />
+
+                    {/* Touch Floating Overlay on each live slave tile */}
+                    <div
+                      className={`absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-300 bg-black/40 ${
+                        showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+                      }`}
+                    >
+                      <div className="flex justify-end">
+                        <Link
+                          to={`/video/${video.id}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
+                          title="Open Video Details"
+                        >
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </Link>
+                      </div>
+                      <div className="flex flex-col items-center gap-1.5 my-auto">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAsMaster(video.id);
+                          }}
+                          className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
+                        >
+                          <Maximize2 className="w-3 h-3" /> SET MASTER
+                        </button>
+                      </div>
+                      <div className="bg-black/80 backdrop-blur-sm p-1 rounded text-[9px] text-white font-medium line-clamp-1 truncate">
+                        {video.title}
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
+              // Slaves group (Vertical Trio, Mixed 9:16 + 16:9, Horizontal Pair, etc.)
               return (
                 <div key={group.id} className="w-full flex flex-col">
                   {showOverlay && group.label && (
@@ -1088,140 +1516,27 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
                       {group.type === 'vertical_trio' && (
                         <span className="text-twice-magenta">3 CAM COMBINED (27:16)</span>
                       )}
+                      {group.type === 'mixed_v1_h2' && (
+                        <span className="text-twice-magenta">1 VERT + 2 HORIZ MOSAIC</span>
+                      )}
+                      {group.type === 'mixed_v1_h1' && (
+                        <span className="text-twice-magenta">1 VERT + 1 HORIZ MOSAIC</span>
+                      )}
                     </div>
                   )}
-                  <div className={`grid ${group.gridColsClass} gap-0.5 w-full bg-slate-950`}>
-                    {group.tiles.map((tile) => {
-                      const video = tile.video;
-                      const isVert = tile.isVertical;
-                      const isLiveTile = tile.isMaster || mobileLiveSlaveIds.has(video.id);
-
-                      if (!isLiveTile) {
-                        // Eco Standby Tile: Tapping tile body or LIVE ON promotes it to the top Live section and starts playing immediately
-                        return (
-                          <div
-                            key={`tile-standby-${video.id}`}
-                            className={`relative bg-slate-950 w-full overflow-hidden select-none cursor-pointer ${
-                              isVert ? 'aspect-[9/16]' : 'aspect-video'
-                            }`}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              activateMobileLiveSlave(video.id);
-                            }}
-                          >
-                            <img
-                              src={video.thumbnail_url}
-                              alt={video.title}
-                              loading="lazy"
-                              className="w-full h-full object-cover opacity-50"
-                            />
-                            <div className="absolute inset-0 z-20 flex flex-col justify-between p-2 bg-gradient-to-t from-black/90 via-black/45 to-black/60">
-                              <div className="flex items-center justify-between gap-1">
-                                <span className="px-1.5 py-0.5 rounded bg-black/80 border border-white/15 text-[8px] font-black text-twice-apricot uppercase tracking-wider">
-                                  STANDBY
-                                </span>
-                                <Link
-                                  to={`/video/${video.id}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
-                                  title="Open Video Details"
-                                >
-                                  <ExternalLink className="w-3.5 h-3.5" />
-                                </Link>
-                              </div>
-
-                              <div className="flex flex-wrap items-center justify-center gap-1.5 my-auto">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    activateMobileLiveSlave(video.id);
-                                  }}
-                                  className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
-                                  title="Play Live in Grid"
-                                >
-                                  <Play className="w-3 h-3 fill-current" /> LIVE ON
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setAsMaster(video.id);
-                                  }}
-                                  className="bg-slate-900/90 text-white border border-white/25 px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
-                                  title="Promote to Master"
-                                >
-                                  <Maximize2 className="w-3 h-3" /> MASTER
-                                </button>
-                              </div>
-
-                              <div className="bg-black/80 backdrop-blur-sm px-1.5 py-1 rounded text-[9px] text-gray-200 font-medium line-clamp-1 truncate">
-                                {video.members && video.members.length > 0 ? `[${video.members.join(', ')}] ` : ''}
-                                {video.title}
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div
-                          key={`tile-${video.id}`}
-                          className={`relative bg-black w-full overflow-hidden ${
-                            isVert ? 'aspect-[9/16]' : 'aspect-video'
-                          }`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            triggerOverlay();
-                          }}
-                        >
-                          <YouTube
-                            key={tile.isMaster ? `master-${video.id}` : `slave-${video.id}`}
-                            videoId={video.youtube_id}
-                            opts={tile.isMaster ? optsMaster : getSlaveOpts(video)}
-                            onReady={(e) => handleReady(e, video.id)}
-                            onPlay={tile.isMaster ? handlePlay : undefined}
-                            onPause={tile.isMaster ? handlePause : undefined}
-                            className="w-full h-full absolute inset-0 pointer-events-none"
-                            iframeClassName="w-full h-full block"
-                          />
-
-                          {/* Touch Floating Overlay on each live slave tile */}
-                          <div
-                            className={`absolute inset-0 z-20 flex flex-col justify-between p-2 transition-opacity duration-300 bg-black/40 ${
-                              showOverlay ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-                            }`}
-                          >
-                            <div className="flex justify-end">
-                              <Link
-                                to={`/video/${video.id}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="p-1.5 bg-black/75 rounded text-gray-200 hover:text-white active:scale-95 transition-transform"
-                                title="Open Video Details"
-                              >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                              </Link>
-                            </div>
-                            <div className="flex flex-col items-center gap-1.5 my-auto">
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setAsMaster(video.id);
-                                }}
-                                className="bg-twice-apricot text-black px-3 py-1.5 rounded-full text-[10px] font-black shadow-lg flex items-center gap-1 active:scale-95 transition-transform cursor-pointer"
-                              >
-                                <Maximize2 className="w-3 h-3" /> SET MASTER
-                              </button>
-                            </div>
-                            <div className="bg-black/80 backdrop-blur-sm p-1 rounded text-[9px] text-white font-medium line-clamp-1 truncate">
-                              {video.title}
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
+                  {group.type === 'mixed_v1_h2' && group.tiles.length === 3 ? (
+                    <div className={`grid ${group.gridColsClass} gap-0.5 w-full bg-slate-950`}>
+                      {renderMobileTile(group.tiles[0])}
+                      <div className="flex flex-col gap-0.5 w-full h-full bg-slate-950">
+                        {renderMobileTile(group.tiles[1])}
+                        {renderMobileTile(group.tiles[2])}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className={`grid ${group.gridColsClass} gap-0.5 w-full bg-slate-950`}>
+                      {group.tiles.map(renderMobileTile)}
+                    </div>
+                  )}
                 </div>
               );
             })}

@@ -12,6 +12,8 @@ export type TileGroupType =
   | 'vertical_trio'
   | 'vertical_pair'
   | 'vertical_single'
+  | 'mixed_v1_h2'
+  | 'mixed_v1_h1'
   | 'horizontal_pair'
   | 'horizontal_single'
   | 'horizontal_trio';
@@ -68,7 +70,7 @@ export function packMobileTiles(
 
   // Scenario: Mobile Landscape (Wide and Short)
   if (isLandscape) {
-    // If we have 3 videos in total (e.g. Master + 2 Slaves) and they are all horizontal or mixed:
+    // If we have 3 videos in total (e.g. Master + 2 Slaves) and they are all horizontal:
     if (masterTile && slaveTiles.length === 2 && !masterTile.isVertical && !slaveTiles.some(t => t.isVertical)) {
       groups.push({
         id: 'landscape-trio-all',
@@ -80,7 +82,7 @@ export function packMobileTiles(
       return groups;
     }
 
-    // Default Landscape: Master on Left (or standalone), Slaves on Right
+    // Default Landscape: Master on Top, Slaves below
     if (masterTile) {
       groups.push({
         id: 'master-landscape',
@@ -95,10 +97,11 @@ export function packMobileTiles(
     const verticalSlaves = slaveTiles.filter((t) => t.isVertical);
     const horizontalSlaves = slaveTiles.filter((t) => !t.isVertical);
 
-    // Group vertical slaves (3 per row or 2 per row)
     let vIdx = 0;
+    let hIdx = 0;
     while (vIdx < verticalSlaves.length) {
       const remaining = verticalSlaves.length - vIdx;
+      const remainingHoriz = horizontalSlaves.length - hIdx;
       if (remaining >= 3) {
         groups.push({
           id: `v-trio-${vIdx}`,
@@ -117,6 +120,26 @@ export function packMobileTiles(
           label: 'VERTICAL ANGLES',
         });
         vIdx += 2;
+      } else if (remainingHoriz >= 2) {
+        groups.push({
+          id: `mixed-v1-h2-${vIdx}-${hIdx}`,
+          type: 'mixed_v1_h2',
+          gridColsClass: 'grid-cols-[81fr_128fr]',
+          tiles: [verticalSlaves[vIdx], horizontalSlaves[hIdx], horizontalSlaves[hIdx + 1]],
+          label: 'MIXED ANGLES (9:16 + 16:9 x 2)',
+        });
+        vIdx += 1;
+        hIdx += 2;
+      } else if (remainingHoriz === 1) {
+        groups.push({
+          id: `mixed-v1-h1-${vIdx}-${hIdx}`,
+          type: 'mixed_v1_h1',
+          gridColsClass: 'grid-cols-[81fr_256fr]',
+          tiles: [verticalSlaves[vIdx], horizontalSlaves[hIdx]],
+          label: 'MIXED ANGLES (9:16 + 16:9)',
+        });
+        vIdx += 1;
+        hIdx += 1;
       } else {
         groups.push({
           id: `v-single-${vIdx}`,
@@ -129,8 +152,7 @@ export function packMobileTiles(
       }
     }
 
-    // Group horizontal slaves (2 per row)
-    let hIdx = 0;
+    // Group remaining horizontal slaves (2 per row)
     while (hIdx < horizontalSlaves.length) {
       const remaining = horizontalSlaves.length - hIdx;
       if (remaining >= 2) {
@@ -171,10 +193,12 @@ export function packMobileTiles(
   const verticalSlaves = slaveTiles.filter((t) => t.isVertical);
   const horizontalSlaves = slaveTiles.filter((t) => !t.isVertical);
 
-  // 1. Pack Vertical Slaves: 3 side-by-side (27:16 composite row), then 2 side-by-side, then 1
+  // 1. Pack Vertical Slaves: 3 side-by-side (27:16 composite row), 2 side-by-side, or combine 1 vertical with 2 stacked (or 1) horizontal for exact height match
   let vIdx = 0;
+  let hIdx = 0;
   while (vIdx < verticalSlaves.length) {
     const remaining = verticalSlaves.length - vIdx;
+    const remainingHoriz = horizontalSlaves.length - hIdx;
     if (remaining >= 3) {
       groups.push({
         id: `v-trio-${vIdx}`,
@@ -193,6 +217,28 @@ export function packMobileTiles(
         label: 'VERTICAL CAM DUO',
       });
       vIdx += 2;
+    } else if (remainingHoriz >= 2) {
+      // 1 Vertical (9:16, 81fr width => 144fr height) + 2 Stacked Horizontals (16:9 x 2, 128fr width => 72fr*2 = 144fr height)
+      groups.push({
+        id: `mixed-v1-h2-${vIdx}-${hIdx}`,
+        type: 'mixed_v1_h2',
+        gridColsClass: 'grid-cols-[81fr_128fr]',
+        tiles: [verticalSlaves[vIdx], horizontalSlaves[hIdx], horizontalSlaves[hIdx + 1]],
+        label: 'MIXED ANGLES (9:16 + 16:9 x 2)',
+      });
+      vIdx += 1;
+      hIdx += 2;
+    } else if (remainingHoriz === 1) {
+      // 1 Vertical (9:16, 81fr width => 144fr height) + 1 Horizontal (16:9, 256fr width => 144fr height)
+      groups.push({
+        id: `mixed-v1-h1-${vIdx}-${hIdx}`,
+        type: 'mixed_v1_h1',
+        gridColsClass: 'grid-cols-[81fr_256fr]',
+        tiles: [verticalSlaves[vIdx], horizontalSlaves[hIdx]],
+        label: 'MIXED ANGLES (9:16 + 16:9)',
+      });
+      vIdx += 1;
+      hIdx += 1;
     } else {
       groups.push({
         id: `v-single-${vIdx}`,
@@ -205,8 +251,7 @@ export function packMobileTiles(
     }
   }
 
-  // 2. Pack Horizontal Slaves: 2 side-by-side in a 16:9 split row
-  let hIdx = 0;
+  // 2. Pack remaining Horizontal Slaves: 2 side-by-side in a 16:9 split row
   while (hIdx < horizontalSlaves.length) {
     const remaining = horizontalSlaves.length - hIdx;
     if (remaining >= 2) {
@@ -244,7 +289,7 @@ export interface MobileDeviceProfile {
  * Computes an adaptive concurrent slave stream budget for mobile/tablet devices.
  *
  * - High-spec mobile/tablet (8+ cores & >=6GB RAM, or tablet screen >=768px with 6+ cores): up to 4 live slaves (5 total with Master)
- * - Mid-spec smartphone (6+ cores, or vertical_trio first row on normal devices): 3 live slaves (4 total with Master)
+ * - Mid-spec smartphone (6+ cores, or vertical_trio / mixed_v1_h2 first row on normal devices): 3 live slaves (4 total with Master)
  * - Low-spec smartphone (<=4 cores or <=4GB RAM): 2 live slaves (3 total with Master)
  * - Dynamically steps down by `stallPenalty` (minimum 1 live slave) when runtime buffering stalls are detected.
  */
@@ -278,7 +323,10 @@ export function getAdaptiveMobileSlaveCap(
   } else if (isHighSpec) {
     baseCap = 4;
   } else {
-    baseCap = firstSlaveGroupType === 'vertical_trio' ? 3 : 2;
+    baseCap =
+      firstSlaveGroupType === 'vertical_trio' || firstSlaveGroupType === 'mixed_v1_h2'
+        ? 3
+        : 2;
   }
 
   return Math.max(1, baseCap - stallPenalty);
@@ -316,7 +364,7 @@ export function getMobileLiveSlaveIds(
   const maxLiveSlaves =
     customCap !== undefined
       ? customCap
-      : firstSlaveGroupType === 'vertical_trio'
+      : firstSlaveGroupType === 'vertical_trio' || firstSlaveGroupType === 'mixed_v1_h2'
       ? 3
       : 2;
 

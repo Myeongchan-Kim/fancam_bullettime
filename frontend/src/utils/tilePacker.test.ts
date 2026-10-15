@@ -119,6 +119,35 @@ describe('tilePacker', () => {
       expect(groups[1].type).toBe('vertical_trio');
       expect(groups[2].type).toBe('horizontal_pair');
     });
+
+    it('combines 1 vertical slave + 2 horizontal slaves into an exact-height mixed_v1_h2 mosaic block (grid-cols-[81fr_128fr])', () => {
+      const master = createMockVideo(1696, { aspect_ratio: 1.7778 });
+      const h1 = createMockVideo(1695, { aspect_ratio: 1.7778 });
+      const v1 = createMockVideo(56, { aspect_ratio: 0.5625 });
+      const h2 = createMockVideo(1630, { aspect_ratio: 1.7778 });
+
+      const groups = packMobileTiles(master, [h1, v1, h2], false);
+
+      expect(groups).toHaveLength(2);
+      expect(groups[0].type).toBe('master');
+      expect(groups[1].type).toBe('mixed_v1_h2');
+      expect(groups[1].gridColsClass).toBe('grid-cols-[81fr_128fr]');
+      expect(groups[1].tiles.map((t) => t.video.id)).toEqual([56, 1695, 1630]);
+    });
+
+    it('combines 1 vertical slave + 1 horizontal slave into an exact-height mixed_v1_h1 mosaic block (grid-cols-[81fr_256fr])', () => {
+      const master = createMockVideo(1, { aspect_ratio: 1.7778 });
+      const v1 = createMockVideo(2, { aspect_ratio: 0.5625 });
+      const h1 = createMockVideo(3, { aspect_ratio: 1.7778 });
+
+      const groups = packMobileTiles(master, [v1, h1], false);
+
+      expect(groups).toHaveLength(2);
+      expect(groups[0].type).toBe('master');
+      expect(groups[1].type).toBe('mixed_v1_h1');
+      expect(groups[1].gridColsClass).toBe('grid-cols-[81fr_256fr]');
+      expect(groups[1].tiles.map((t) => t.video.id)).toEqual([2, 3]);
+    });
   });
 
   describe('packMobileTiles - Landscape Mode', () => {
