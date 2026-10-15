@@ -48,6 +48,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
   // Multi-Angle Barrier Synchronization & Start-on-Click States
   const [readyVideoIds, setReadyVideoIds] = useState<Set<number>>(new Set());
+  const [warmupProgress, setWarmupProgress] = useState<number>(0);
   const [isReadyToPlay, setIsReadyToPlay] = useState(false);
   const [isBarrierReleased, setIsBarrierReleased] = useState(false);
   const isBarrierReleasedRef = useRef(false);
@@ -118,6 +119,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       setIsPlaying(false);
       isPlayingRef.current = false;
       setReadyVideoIds(new Set());
+      setWarmupProgress(0);
       isBarrierReleasedRef.current = false;
       setIsBarrierReleased(false);
       setManualMobileLiveIds([]);
@@ -138,6 +140,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
       setIsReadyToPlay(false);
       hasUserRequestedPlayRef.current = false;
       setReadyVideoIds(new Set());
+      setWarmupProgress(0);
       setManualMobileLiveIds([]);
       setStallPenalty(0);
       bufferingTicksRef.current = {};
@@ -723,16 +726,28 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     };
   }, [slaveOptsMap]);
 
+  // Smoothly animate initial 0% -> 25% progress over ~3.5s while fetching archive & initializing iframes
+  useEffect(() => {
+    if (isReadyToPlay || isBarrierReleased) return;
+    if (!isLoadingData && masterVideo && readyVideoIds.size > 0) return;
+
+    const timer = setInterval(() => {
+      setWarmupProgress(prev => (prev < 25 ? prev + 1 : 25));
+    }, 140);
+
+    return () => clearInterval(timer);
+  }, [isLoadingData, masterVideo, readyVideoIds.size, isReadyToPlay, isBarrierReleased]);
+
   // Unified monotonic progress calculation (0% ~ 100%)
   const loadingProgress = useMemo(() => {
-    if (isLoadingData || !masterVideo) {
-      return 25; // Phase 1: API / Archive fetch (0 ~ 30%)
+    if (isLoadingData || !masterVideo || readyVideoIds.size === 0) {
+      return warmupProgress; // Phase 1: Smoothly fills 0% -> 25% during initial 3~4s fetch & iframe bootstrap
     }
     const totalTargets = Math.max(targetVideoIds.length, 1);
     const streamRatio = readyVideoIds.size / totalTargets;
-    // Phase 2: Streams pre-buffering maps smoothly from 30% to 100%
-    return Math.min(100, Math.round(30 + streamRatio * 70));
-  }, [isLoadingData, masterVideo, targetVideoIds.length, readyVideoIds.size]);
+    // Phase 2: Streams pre-buffering maps smoothly from 25% to 100%
+    return Math.min(100, Math.max(warmupProgress, Math.round(25 + streamRatio * 75)));
+  }, [isLoadingData, masterVideo, targetVideoIds.length, readyVideoIds.size, warmupProgress]);
 
   const loadingStatusText = useMemo(() => {
     if (isLoadingData || !masterVideo) {
