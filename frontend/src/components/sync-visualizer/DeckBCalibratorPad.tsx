@@ -265,7 +265,7 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
           <div className="flex items-center gap-1.5">
             <Sliders className="w-4 h-4 text-twice-magenta" />
             <span className="text-xs font-black text-gray-200 uppercase tracking-wide">
-              Deck B 싱크 캘리브레이터
+              Deck B Sync
             </span>
             <span className="text-xs text-twice-magenta font-mono font-bold truncate max-w-[220px]">
               (#{videoB.id} {videoB.title})
@@ -287,18 +287,6 @@ export const DeckBCalibratorPad: React.FC<DeckBCalibratorPadProps> = ({
                       </span>
                     ))}
                   </div>
-                )}
-                {isCutPointValid && onSplitAtCursor && (
-                  <button
-                    type="button"
-                    onClick={onSplitAtCursor}
-                    disabled={isSplitting}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-white border border-rose-500/40 text-[10px] font-bold transition-all active:scale-95 shadow-sm"
-                    title={`현재 재생 위치(${formatTime(cutVideoTime)}) 기준으로 이 구간을 자릅니다.`}
-                  >
-                    <Scissors className="w-2.5 h-2.5 text-rose-400" />
-                    <span>자르기 ({formatTime(cutVideoTime)})</span>
-                  </button>
                 )}
               </div>
             )}
