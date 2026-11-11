@@ -85,9 +85,15 @@ def increment_video_metrics(
 def estimate_video_rough_offset(db: Session, video: Video) -> tuple[Optional[float], Optional[str], Optional[int]]:
     """
     곡 제목, 설명란 타임스탬프, 콘서트 세트리스트를 기반으로 영상의 대략적인 오프셋(Macro Offset)을 신속하게 추정합니다.
+    Stage 1B 개선:
+    1. 다중 곡 메들리 제목에서 곡이 등장하는 가장 앞선 문자열 위치(Earliest Position) 우선 매칭
+    2. 투어 타이틀('THIS IS FOR')과 실제 오프닝 곡('THIS IS FOR+...')의 문맥 분리
+    3. 'PART 1' 및 오프닝 VCR('FOUR') 감지
+    4. 오타가 포함된 곡 제목('DAT AHH DAH OOH' 등) 퍼지(Fuzzy N-gram) 매칭
     Returns: (rough_offset, reason, matched_parent_id)
     """
     import re
+    from difflib import SequenceMatcher
     import yt_dlp
     from app.models.models import ConcertSetlist
     from app.crawler.ai_parser import parse_fancam_metadata
@@ -97,42 +103,89 @@ def estimate_video_rough_offset(db: Session, video: Video) -> tuple[Optional[flo
     for it in setlists:
         raw_name = (it.song.name if it.song else it.event_name or '').strip().upper()
         if raw_name and it.start_time is not None:
-            setlist_map[raw_name] = it.start_time
+            setlist_map[raw_name] = float(it.start_time)
             base = raw_name.split('(')[0].strip()
             if base and base not in setlist_map:
-                setlist_map[base] = it.start_time
+                setlist_map[base] = float(it.start_time)
+
+    title_upper = (video.title or '').upper()
 
     # 0. 풀 콘서트(Full Ver / Full Concert / 6000s 이상) 감지 -> 마스터 기준점 T=0
-    if video.duration and (video.duration >= 6000.0 or (video.duration >= 3600.0 and any(kw in (video.title or '').lower() for kw in ["full ver", "full concert", "전체", "전곡", "풀버전"]))):
+    if video.duration and (video.duration >= 6000.0 or (video.duration >= 3600.0 and any(kw in title_upper.lower() for kw in ["full ver", "full concert", "전체", "전곡", "풀버전"]))):
         return 0.0, "풀 콘서트 영상 → 마스터 타임라인 시작 기준점 (0.0s)", None
 
-    # 1. 영상 제목 기반 세트리스트 직접 매칭 (투어명 'THIS IS FOR' 제외, 긴 곡명 우선)
-    title_upper = (video.title or '').upper()
-    sorted_setlist_keys = sorted(
-        [k for k in setlist_map.keys() if k != 'THIS IS FOR' and len(k) >= 3],
-        key=len,
-        reverse=True
-    )
-    for s_key in sorted_setlist_keys:
-        if s_key in title_upper:
-            start_t = float(setlist_map[s_key])
-            return start_t, f"영상 제목 검색 [{s_key}] → 세트리스트 시작 시각 ({start_t}s)", None
+    # 0-B. PART 1 분할 콘서트 영상 감지 -> 오프닝 기준점
+    if re.search(r'\bPART\s*\.?\s*1\b', title_upper):
+        opening_t = min(0.0, min(setlist_map.values())) if setlist_map else 0.0
+        return opening_t, f"PART 1 오프닝 영상 감지 → 콘서트 시작 기준점 ({opening_t}s)", None
 
-    # 2. DB에 연결된 Video.songs / Video.song 태그 확인 (풀네임 및 베이스네임)
+    # 1. 영상 제목 기반 세트리스트 순서 보존 매칭 (Earliest Position in Title)
+    this_is_for_list_match = re.search(
+        r'(THIS IS FOR)\s*\+|,\s*(THIS IS FOR)\s*,|\(FOUR,\s*(THIS IS FOR)',
+        title_upper
+    )
+    is_this_is_for_song_list = bool(this_is_for_list_match)
+    title_matches = []
+    for s_key, start_t in setlist_map.items():
+        if len(s_key) < 3:
+            continue
+        if s_key == 'THIS IS FOR':
+            if this_is_for_list_match:
+                grp_idx = next(i for i in range(1, 4) if this_is_for_list_match.group(i) is not None)
+                title_matches.append((this_is_for_list_match.start(grp_idx), -len(s_key), start_t, s_key))
+            continue
+        if s_key == 'FOUR':
+            m = re.search(r'\bFOUR\b', title_upper)
+            if m:
+                title_matches.append((m.start(), -len(s_key), start_t, s_key))
+        else:
+            idx = title_upper.find(s_key)
+            if idx >= 0:
+                title_matches.append((idx, -len(s_key), start_t, s_key))
+
+    if title_matches:
+        title_matches.sort(key=lambda x: (x[0], x[1], x[2]))
+        _, _, best_t, best_key = title_matches[0]
+        return float(best_t), f"영상 제목 선행 곡 매칭 [{best_key}] → 세트리스트 시작 시각 ({best_t}s)", None
+
+    # 1-B. 퍼지(Fuzzy Word N-gram) 매칭 (예: 'DAT AHH DAH OOH' -> 'DAT AHH DAT OOH')
+    words = re.findall(r"[A-Z0-9']+", title_upper)
+    best_fuzzy = None
+    for s_key, start_t in setlist_map.items():
+        if s_key == 'THIS IS FOR' or len(s_key) < 8:
+            continue
+        k_words = re.findall(r"[A-Z0-9']+", s_key)
+        n_w = len(k_words)
+        if n_w < 2 or len(words) < n_w:
+            continue
+        for i in range(len(words) - n_w + 1):
+            cand = " ".join(words[i:i + n_w])
+            ratio = SequenceMatcher(None, cand, " ".join(k_words)).ratio()
+            if ratio >= 0.82:
+                if best_fuzzy is None or ratio > best_fuzzy[0]:
+                    best_fuzzy = (ratio, float(start_t), s_key)
+    if best_fuzzy is not None:
+        return best_fuzzy[1], f"영상 제목 퍼지 매칭 [{best_fuzzy[2]}] (유사도 {best_fuzzy[0]:.2f}) → 세트리스트 시작 시각 ({best_fuzzy[1]}s)", None
+
+    # 2. DB에 연결된 Video.songs / Video.song 태그 확인 (투어명 'THIS IS FOR' 후순위 및 세트리스트 시간순 정렬)
     v_songs = list(video.songs or [])
     if video.song and video.song not in v_songs:
         v_songs.append(video.song)
 
     if v_songs:
+        tag_candidates = []
         for s in v_songs:
             s_upper = s.name.upper().strip()
             s_base = s_upper.split('(')[0].strip()
-            if s_upper in setlist_map:
-                start_t = float(setlist_map[s_upper])
-                return start_t, f"등록된 곡 태그 [{s.name}] → 세트리스트 시작 시각 ({start_t}s)", None
-            if s_base in setlist_map:
-                start_t = float(setlist_map[s_base])
-                return start_t, f"등록된 곡 태그 베이스 [{s_base}] → 세트리스트 시작 시각 ({start_t}s)", None
+            matched_key = s_upper if s_upper in setlist_map else (s_base if s_base in setlist_map else None)
+            if matched_key is not None:
+                is_tour_title = (matched_key == 'THIS IS FOR' and not is_this_is_for_song_list)
+                tag_candidates.append((1 if is_tour_title else 0, float(setlist_map[matched_key]), s.name))
+        if tag_candidates:
+            tag_candidates.sort(key=lambda x: (x[0], x[1]))
+            _, start_t, s_name = tag_candidates[0]
+            return start_t, f"등록된 곡 태그 [{s_name}] → 세트리스트 시작 시각 ({start_t}s)", None
+
 
     # 3. DB에 저장된 설명란(description) 우선 활용, 없을 때만 yt-dlp 추출
     desc = video.description or ''
