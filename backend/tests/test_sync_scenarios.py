@@ -269,3 +269,106 @@ def test_sync_case_video_1661_corrected_duration():
             assert v1661.duration < 300.0
     finally:
         db.close()
+
+
+def test_stage1b_rough_offset_multi_song_and_typo_and_part1():
+    """
+    Test Case: Stage 1B Metadata / Setlist Rough Offset Estimation on 0720 (Concert 2).
+    Verifies:
+    1. Multi-song title ordering by earliest appearance in title (#1714 'FOUR, THIS IS FOR, Strategy' -> <= 5.0s, not Strategy 384s).
+    2. Tour-title disambiguation in explicit multi-song lists (#1681 'THIS IS FOR+Strategy+SET ME FREE+I CAN'T STOP ME' -> ~220s, not I CAN'T STOP ME 957s).
+    3. Fuzzy typo matching (#1640 'DAT AHH DAH OOH' -> ~5160s, not BATTITUDE 5323s).
+    4. PART 1 opening detection (#1713 'PART 1' -> <= 5.0s, not 220s).
+    """
+    from app.services.calibration import estimate_video_rough_offset
+    db = SessionLocal()
+    try:
+        v1714 = db.query(Video).filter(Video.id == 1714).first()
+        v1681 = db.query(Video).filter(Video.id == 1681).first()
+        v1640 = db.query(Video).filter(Video.id == 1640).first()
+        v1713 = db.query(Video).filter(Video.id == 1713).first()
+
+        assert v1714 and v1681 and v1640 and v1713
+
+        est_1714, _, _ = estimate_video_rough_offset(db, v1714)
+        assert est_1714 is not None and -5.0 <= est_1714 <= 5.0, (
+            f"#1714 rough offset should anchor to FOUR (~0s), got {est_1714}"
+        )
+
+        est_1681, _, _ = estimate_video_rough_offset(db, v1681)
+        assert est_1681 is not None and 210.0 <= est_1681 <= 230.0, (
+            f"#1681 rough offset should anchor to THIS IS FOR (~220s), got {est_1681}"
+        )
+
+        est_1640, _, _ = estimate_video_rough_offset(db, v1640)
+        assert est_1640 is not None and 5150.0 <= est_1640 <= 5175.0, (
+            f"#1640 rough offset should fuzzy-match DAT AHH DAT OOH (~5160s), got {est_1640}"
+        )
+
+        est_1713, _, _ = estimate_video_rough_offset(db, v1713)
+        assert est_1713 is not None and -5.0 <= est_1713 <= 5.0, (
+            f"#1713 PART 1 rough offset should anchor to opening (~0s), got {est_1713}"
+        )
+    finally:
+        db.close()
+
+
+def test_100bpm_beat_aliasing_prevention_and_1s_guardrail(tmp_path):
+    """
+    Test Case: 100 BPM periodic beat aliasing prevention via 1-second Harmonic+Chroma Pyramid
+    followed by a strict <= 1.0s fine raw-audio alignment guardrail.
+    """
+    import numpy as np
+    from scipy.io import wavfile
+    from app.services.audio_dsp import (
+        match_harmonic_pyramid_1s_and_fine_align,
+        fine_align_within_1s,
+    )
+
+    sr = 16000
+    dur_ref = 30.0
+    t_ref = np.arange(int(dur_ref * sr)) / sr
+
+    # Construct a 100 BPM (0.6s beat, 2.4s 4-beat bar) signal with evolving harmonic chord progression
+    beat_env = 0.5 + 0.5 * np.cos(2 * np.pi * (100.0 / 60.0) * t_ref) ** 8
+    # Unique harmonic chord modulation over time so each 10s window has a distinct harmonic trajectory
+    f1 = 220.0 + 110.0 * np.sin(2 * np.pi * t_ref / 17.0)
+    f2 = 330.0 + 165.0 * np.cos(2 * np.pi * t_ref / 13.0)
+    harmonic = 0.35 * np.sin(2 * np.pi * np.cumsum(f1) / sr) + 0.35 * np.sin(2 * np.pi * np.cumsum(f2) / sr)
+    ref_sig = harmonic * beat_env
+
+    # True offset = 10.35s (duration 10s)
+    true_offset = 10.35
+    start_idx = int(true_offset * sr)
+    end_idx = start_idx + int(10.0 * sr)
+    tgt_sig = ref_sig[start_idx:end_idx].copy()
+
+    # Inject a loud 100-BPM phase-aligned percussive burst at +2.4s (12.75s) in ref_sig
+    # to fool wide-window raw waveform correlation while preserving harmonic structure
+    burst_start = int((true_offset + 2.4) * sr)
+    burst_end = burst_start + int(10.0 * sr)
+    ref_sig_corrupted = ref_sig.copy()
+    ref_sig_corrupted[burst_start:burst_end] += 1.8 * beat_env[burst_start:burst_end] * np.sin(2 * np.pi * 80.0 * t_ref[burst_start:burst_end])
+
+    # Normalize to int16 WAV
+    ref_wav = str(tmp_path / "ref_100bpm.wav")
+    tgt_wav = str(tmp_path / "tgt_100bpm.wav")
+    wavfile.write(ref_wav, sr, np.clip(ref_sig_corrupted * 12000, -32767, 32767).astype(np.int16))
+    wavfile.write(tgt_wav, sr, np.clip(tgt_sig * 12000, -32767, 32767).astype(np.int16))
+
+    res = match_harmonic_pyramid_1s_and_fine_align(
+        tgt_wav=tgt_wav,
+        ref_wav=ref_wav,
+        ref_window_start=0.0,
+        max_fine_radius_s=1.0,
+    )
+    assert abs(res["pre_audio_1s_sec"] - round(true_offset)) <= 1.0, (
+        f"1s pre-audio grid lock should be within 1s of {true_offset}, got {res['pre_audio_1s_sec']}"
+    )
+    assert abs(res["fine_sec"] - true_offset) <= 0.05, (
+        f"Fine aligned offset should be within 0.05s of {true_offset}, got {res['fine_sec']}"
+    )
+    assert abs(res["fine_sec"] - res["pre_audio_subgrid_sec"]) <= 1.0, (
+        "Fine audio shift must strictly obey the +-1.0s guardrail"
+    )
+

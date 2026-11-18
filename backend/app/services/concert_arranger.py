@@ -91,7 +91,7 @@ class WholeConcertArranger:
         # Step 4: Tier 1 & 2 Multi-Cut Decomposition
         for v in tier_long:
             old_off = v.sync_offset
-            if v.calibration_status == "manually_verified" and v.sync_offset is not None:
+            if v.calibration_status in ("manually_verified", "manual_calibrated") and v.sync_offset is not None:
                 video_results.append({
                     "video_id": v.id,
                     "title": v.title,
@@ -122,7 +122,7 @@ class WholeConcertArranger:
         # Step 5: Tier 3 Short Leaf Snapping
         for v in tier_short:
             old_off = v.sync_offset
-            if v.calibration_status == "manually_verified" and v.sync_offset is not None:
+            if v.calibration_status in ("manually_verified", "manual_calibrated") and v.sync_offset is not None:
                 video_results.append({
                     "video_id": v.id,
                     "title": v.title,
