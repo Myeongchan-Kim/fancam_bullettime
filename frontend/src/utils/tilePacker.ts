@@ -26,7 +26,8 @@ export interface TileLayoutGroup {
   label?: string;
 }
 
-export function isVerticalVideo(video: Video): boolean {
+export function isVerticalVideo(video?: Video | null): boolean {
+  if (!video) return false;
   if (video.aspect_ratio && video.aspect_ratio > 0) {
     return video.aspect_ratio < 0.9;
   }
@@ -38,7 +39,8 @@ export function isVerticalVideo(video: Video): boolean {
   return title.includes('세로') || title.includes('vertical') || title.includes('shorts');
 }
 
-export function getVideoAspectRatio(video: Video): number {
+export function getVideoAspectRatio(video?: Video | null): number {
+  if (!video) return 1.7778;
   if (video.aspect_ratio && video.aspect_ratio > 0) {
     return video.aspect_ratio;
   }
@@ -46,7 +48,7 @@ export function getVideoAspectRatio(video: Video): number {
 }
 
 export function packMobileTiles(
-  masterVideo: Video | null,
+  masterVideo: Video | null | undefined,
   slaveVideos: Video[],
   isLandscape: boolean
 ): TileLayoutGroup[] {
@@ -61,7 +63,7 @@ export function packMobileTiles(
       }
     : null;
 
-  const slaveTiles: VideoTile[] = slaveVideos.map((v) => ({
+  const slaveTiles: VideoTile[] = slaveVideos.filter((v): v is Video => Boolean(v)).map((v) => ({
     video: v,
     isMaster: false,
     aspectRatio: getVideoAspectRatio(v),
