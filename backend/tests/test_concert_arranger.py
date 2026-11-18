@@ -98,3 +98,83 @@ def test_arrange_whole_concert_pipeline(
     # In dry-run, DB should be rolled back
     v103 = db_session.query(Video).filter(Video.id == 103).first()
     assert v103.calibration_status == "raw"
+
+
+def test_cascade_update_children_offsets_handles_parent_cycle(db_session):
+    """
+    Regression Test: Cyclic parent_video_id links (e.g. A -> B -> A) must NOT raise
+    RecursionError during record_video_calibration / cascade_update_children_offsets,
+    and each node must be updated at most once.
+    """
+    from app.services.calibration import record_video_calibration
+
+    v_a = Video(
+        id=201, concert_id=999, youtube_id="yt_cycle_a",
+        title="Cycle Node A", duration=90.0,
+        sync_offset=100.0, parent_video_id=202, calibration_status="ai_calibrated"
+    )
+    v_b = Video(
+        id=202, concert_id=999, youtube_id="yt_cycle_b",
+        title="Cycle Node B", duration=90.0,
+        sync_offset=105.0, parent_video_id=201, calibration_status="ai_calibrated"
+    )
+    v_leaf = Video(
+        id=203, concert_id=999, youtube_id="yt_cycle_leaf",
+        title="Cycle Leaf C", duration=90.0,
+        sync_offset=110.0, parent_video_id=202, calibration_status="ai_calibrated"
+    )
+    db_session.add_all([v_a, v_b, v_leaf])
+    db_session.commit()
+
+    # Move v_a by +10.0s -> v_b and v_leaf should each shift by +10.0s exactly once without RecursionError
+    record_video_calibration(db_session, v_a, sync_offset=110.0, commit=True)
+
+    db_session.refresh(v_a)
+    db_session.refresh(v_b)
+    db_session.refresh(v_leaf)
+    assert v_a.sync_offset == 110.0
+    assert v_b.sync_offset == 115.0
+    assert v_leaf.sync_offset == 120.0
+
+
+@patch("app.services.concert_arranger.estimate_video_rough_offset")
+@patch("app.services.concert_arranger.evaluate_3point_continuity")
+def test_arrange_whole_concert_skips_manual_calibrated_ground_truth(
+    mock_gate,
+    mock_estimate,
+    db_session
+):
+    """
+    Regression Test (Pass 0 Ground Truth Isolation):
+    Videos with calibration_status == 'manual_calibrated' must be preserved and skipped
+    by WholeConcertArranger just like 'manually_verified' videos.
+    """
+    v_gt_long = Video(
+        id=301, concert_id=999, youtube_id="yt_gt_long",
+        title="Manual GT Part 1", duration=2100.0,
+        sync_offset=-9.1, calibration_status="manual_calibrated"
+    )
+    v_gt_short = Video(
+        id=302, concert_id=999, youtube_id="yt_gt_short",
+        title="Manual GT Solo", duration=91.0,
+        sync_offset=5626.5, calibration_status="manual_calibrated"
+    )
+    db_session.add_all([v_gt_long, v_gt_short])
+    db_session.commit()
+
+    mock_estimate.return_value = (5323.0, "Mock", None)
+    mock_gate.return_value = {
+        "is_continuous": True,
+        "verdict": "continuous_one_take",
+        "mean_offset": 5323.0,
+        "recommended_split_window": None
+    }
+
+    res = arrange_whole_concert(db_session, concert_id=999, dry_run=True)
+    by_id = {r["video_id"]: r for r in res["video_results"]}
+
+    assert by_id[301]["status"] == "manually_verified_skipped"
+    assert by_id[301]["new_offset"] == -9.1
+    assert by_id[302]["status"] == "manually_verified_skipped"
+    assert by_id[302]["new_offset"] == 5626.5
+

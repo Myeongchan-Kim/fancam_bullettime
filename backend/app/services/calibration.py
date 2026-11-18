@@ -8,15 +8,43 @@ import datetime
 from sqlalchemy.orm import Session
 from app.models.models import Video, VideoSyncSegment
 
-def cascade_update_children_offsets(db: Session, parent_id: int, delta: float):
-    """Recursively cascade delta offset change to all descendant children in the sync tree."""
+def _would_create_parent_cycle(db: Session, video_id: int, candidate_parent_id: int) -> bool:
+    """Returns True if setting video_id.parent_video_id = candidate_parent_id would form a cycle."""
+    if video_id == candidate_parent_id:
+        return True
+    visited = {video_id}
+    cur_id: Optional[int] = candidate_parent_id
+    while cur_id is not None:
+        if cur_id in visited:
+            return True
+        visited.add(cur_id)
+        node = db.query(Video).filter(Video.id == cur_id).first()
+        cur_id = node.parent_video_id if node else None
+    return False
+
+
+def cascade_update_children_offsets(
+    db: Session,
+    parent_id: int,
+    delta: float,
+    visited: Optional[set[int]] = None
+):
+    """Recursively cascade delta offset change to all descendant children in the sync tree (cycle-safe)."""
     if abs(delta) < 0.0001:
         return
+    if visited is None:
+        visited = {parent_id}
+    else:
+        visited.add(parent_id)
+
     children = db.query(Video).filter(Video.parent_video_id == parent_id).all()
     for child in children:
+        if child.id in visited:
+            continue
+        visited.add(child.id)
         child.sync_offset = round((child.sync_offset or 0.0) + delta, 3)
         # Recurse down descendants
-        cascade_update_children_offsets(db, child.id, delta)
+        cascade_update_children_offsets(db, child.id, delta, visited)
 
 def record_video_calibration(
     db: Session,
@@ -43,7 +71,7 @@ def record_video_calibration(
         # Propagate offset shift to dependent child videos
         cascade_update_children_offsets(db, video.id, delta)
         
-    if parent_video_id is not None:
+    if parent_video_id is not None and not _would_create_parent_cycle(db, video.id, parent_video_id):
         video.parent_video_id = parent_video_id
     if relative_offset is not None:
         video.relative_offset = float(relative_offset)
@@ -264,8 +292,8 @@ def audit_concert_discrepancies(db: Session, concert_id: int, threshold_seconds:
         if v.sync_offset is None or (v.duration and v.duration > 3600):
             continue
 
-        # 사람이 직접 검증/저장했거나(manually_verified), 비주얼 매칭으로 이미 보정된 영상은 절대 어긋남으로 간주하거나 덮어쓰지 않음
-        if v.calibration_status == "manually_verified" or v.calibration_method in ["manual_studio", "visual_group_match"]:
+        # 사람이 직접 검증/저장했거나(manually_verified / manual_calibrated), 비주얼 매칭으로 이미 보정된 영상은 절대 어긋남으로 간주하거나 덮어쓰지 않음
+        if v.calibration_status in ("manually_verified", "manual_calibrated") or v.calibration_method in ["manual_studio", "visual_group_match"]:
             continue
 
         v_song_names = [s.name.upper().strip() for s in v.songs]
