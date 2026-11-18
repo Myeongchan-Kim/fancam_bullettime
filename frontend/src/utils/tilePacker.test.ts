@@ -57,6 +57,13 @@ describe('tilePacker', () => {
       const v = createMockVideo(5, { title: 'TWICE 세로직캠 4K' });
       expect(isVerticalVideo(v)).toBe(true);
     });
+
+    it('safely handles undefined or null video without throwing', () => {
+      expect(isVerticalVideo(undefined)).toBe(false);
+      expect(isVerticalVideo(null)).toBe(false);
+      expect(getVideoAspectRatio(undefined)).toBe(1.7778);
+      expect(getVideoAspectRatio(null)).toBe(1.7778);
+    });
   });
 
   describe('packMobileTiles - Portrait Mode', () => {

@@ -163,7 +163,10 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
     }
   }, [videos, masterId, initialTime, isPlaying]);
 
-  const masterVideo = videos.find(v => v.id === masterId && !v.is_unavailable) || videos.find(v => !v.is_unavailable) || videos[0];
+  const masterVideo: Video | undefined =
+    videos.find(v => v.id === masterId && !v.is_unavailable) ||
+    videos.find(v => !v.is_unavailable) ||
+    videos[0];
   
   // Slave videos that cover the current timeframe
   const slaveVideos = useMemo(() => {
@@ -901,7 +904,7 @@ const MultiAnglePlayer = forwardRef<MultiAnglePlayerRef, MultiAnglePlayerProps>(
 
           {/* Seamless Mosaic Video Wall */}
           {(() => {
-            const isMasterVertical = isVerticalVideo(masterVideo);
+            const isMasterVertical = masterVideo ? isVerticalVideo(masterVideo) : false;
             const verticalSlaves = activeSlaveVideos.filter(v => isVerticalVideo(v));
             const horizontalSlaves = activeSlaveVideos.filter(v => !isVerticalVideo(v));
 
