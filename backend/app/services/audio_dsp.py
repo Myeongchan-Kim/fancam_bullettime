@@ -37,51 +37,82 @@ def ensure_cache_dir():
     os.makedirs(AUDIO_CACHE_DIR, exist_ok=True)
 
 
+def _is_valid_cached_slice(wav_path: str, expected_dur_s: float, max_excess_s: float = 0.5) -> bool:
+    """
+    Validates that a cached WAV file exists, is non-empty, and is not bloated
+    beyond expected_dur_s + max_excess_s (which indicates untrimmed keyframe-snapped audio).
+    """
+    if not os.path.exists(wav_path) or os.path.getsize(wav_path) <= 1000:
+        return False
+    try:
+        sr, data = wavfile.read(wav_path)
+        if sr <= 0 or len(data) == 0:
+            return False
+        actual_dur = len(data) / float(sr)
+        if actual_dur < 0.1 or actual_dur > float(expected_dur_s) + max_excess_s:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str) -> str:
     """
     Retrieves a 16kHz mono WAV slice for a given YouTube ID and timestamp range.
-    Uses local full audio cache if available (~0.05s), otherwise falls back to remote yt-dlp slice.
+    Uses local full audio cache if available (~0.05s), otherwise falls back to remote yt-dlp slice
+    with exact PTS cut enforcement (--force-keyframes-at-cuts -f bestaudio/best).
     """
     ensure_cache_dir()
     out_wav = os.path.join(AUDIO_CACHE_DIR, f"{out_name}.wav")
-    if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
+    if _is_valid_cached_slice(out_wav, dur_s):
         return out_wav
+    if os.path.exists(out_wav):
+        try:
+            os.remove(out_wav)
+        except Exception:
+            pass
 
     # 1. Fast Path: Local full audio cache
-    cached_candidates = [
-        f"scratch/audio_cache/{yt_id}.opus",
-        f"scratch/audio_cache/{yt_id}.webm",
-        f"scratch/audio_cache/{yt_id}.m4a",
-        f"scratch/audio_cache/{yt_id}.mp4",
-        f"scratch/audio_cache/master_64_{yt_id}.opus",
-        f"scratch/audio_cache/master_64_{yt_id}.webm",
-        f"scratch/audio_cache/master_1094_{yt_id}.webm",
-        f"scratch/audio_cache/v63_{yt_id}.webm",
-    ]
+    cached_candidates = []
+    for cache_dir in FULL_AUDIO_CACHE_DIRS:
+        cached_candidates.extend([
+            os.path.join(cache_dir, f"{yt_id}.opus"),
+            os.path.join(cache_dir, f"{yt_id}.webm"),
+            os.path.join(cache_dir, f"{yt_id}.m4a"),
+            os.path.join(cache_dir, f"{yt_id}.mp4"),
+            os.path.join(cache_dir, f"master_64_{yt_id}.opus"),
+            os.path.join(cache_dir, f"master_64_{yt_id}.webm"),
+            os.path.join(cache_dir, f"master_1094_{yt_id}.webm"),
+            os.path.join(cache_dir, f"v63_{yt_id}.webm"),
+        ])
     for c in cached_candidates:
         if os.path.exists(c) and os.path.getsize(c) > 10000:
             cmd = [
                 "ffmpeg", "-y",
-                "-ss", f"{max(0, start_s):.2f}",
-                "-t", f"{dur_s:.2f}",
+                "-ss", f"{max(0.0, float(start_s)):.2f}",
+                "-t", f"{float(dur_s):.2f}",
                 "-i", c,
                 "-ar", "16000", "-ac", "1",
                 out_wav
             ]
             try:
                 subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-                if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
+                if _is_valid_cached_slice(out_wav, dur_s):
                     return out_wav
             except Exception:
                 pass
 
-    # 2. Remote Fallback: Stream slice via yt-dlp
+    # 2. Remote Fallback: Stream exact PTS audio slice via yt-dlp
+    s_clamped = max(0.0, float(start_s))
+    e_clamped = s_clamped + float(dur_s)
     cmd = [
         YT_DLP_EXE,
+        "-f", "bestaudio/best",
+        "--force-keyframes-at-cuts",
         "--socket-timeout", "15",
         "--retries", "3",
         "--downloader-args", "ffmpeg_i:-timeout 15000000",
-        "--download-sections", f"*{max(0, start_s):.1f}-{start_s+dur_s:.1f}",
+        "--download-sections", f"*{s_clamped:.2f}-{e_clamped:.2f}",
         "-x", "--audio-format", "wav",
         "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
         "-o", os.path.join(AUDIO_CACHE_DIR, f"{out_name}.%(ext)s"),
@@ -89,7 +120,7 @@ def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str
     ]
     for _ in range(2):
         try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=40)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
             if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
                 return out_wav
         except subprocess.TimeoutExpired:
@@ -436,8 +467,12 @@ def probe_acoustic_match(
     ref_start = max(0.0, est_ref_t - search_radius)
     ref_dur = search_radius * 2.0 + dur
 
-    tgt_name = f"{prefix}_tgt_{yt_tgt}_{int(t_tgt)}_{int(dur)}"
-    ref_name = f"{prefix}_ref_{yt_ref}_{int(ref_start)}_{int(ref_dur)}"
+    t_tag = f"{float(t_tgt):.2f}".replace(".", "_")
+    dur_tag = f"{float(dur):.2f}".replace(".", "_")
+    rs_tag = f"{float(ref_start):.2f}".replace(".", "_")
+    rd_tag = f"{float(ref_dur):.2f}".replace(".", "_")
+    tgt_name = f"{prefix}_tgt_{yt_tgt}_{t_tag}_{dur_tag}"
+    ref_name = f"{prefix}_ref_{yt_ref}_{rs_tag}_{rd_tag}"
 
     tgt_w = download_audio_slice(yt_tgt, t_tgt, dur, tgt_name)
     ref_w = download_audio_slice(yt_ref, ref_start, ref_dur, ref_name)
