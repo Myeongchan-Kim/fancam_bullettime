@@ -235,12 +235,15 @@ def update_video(video_id: int, video_update: VideoUpdate, db: Session = Depends
     
     db.commit()
     db.refresh(db_video)
-    return db.query(Video).options(
+    updated = db.query(Video).options(
         selectinload(Video.songs),
         selectinload(Video.tags),
         joinedload(Video.concert),
         selectinload(Video.sync_segments).joinedload(VideoSyncSegment.setlist).joinedload(ConcertSetlist.song)
     ).filter(Video.id == video_id).first()
+    if updated:
+        updated.members = ensure_list(updated.members)
+    return updated
 
 @router.get("/videos/{video_id}/full", response_model=VideoFullDetail)
 def get_video_full_detail(video_id: int, db: Session = Depends(get_db)):
