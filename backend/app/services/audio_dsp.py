@@ -29,8 +29,12 @@ YT_DLP_EXE = (
     or "yt-dlp"
 )
 
+_BACKEND_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 AUDIO_CACHE_DIR = "scratch/precision_sync"
-FULL_AUDIO_CACHE_DIRS = ["scratch/audio_cache"]
+FULL_AUDIO_CACHE_DIRS = [
+    "scratch/audio_cache",
+    os.path.join(_BACKEND_ROOT, "scratch", "audio_cache"),
+]
 
 
 def ensure_cache_dir():
@@ -72,19 +76,25 @@ def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str
         except Exception:
             pass
 
-    # 1. Fast Path: Local full audio cache
+    # 1. Fast Path: Local full audio cache (exact or prefixed master/peer files)
+    valid_exts = (".opus", ".webm", ".m4a", ".mp4", ".wav", ".mkv")
     cached_candidates = []
+    seen_paths = set()
     for cache_dir in FULL_AUDIO_CACHE_DIRS:
-        cached_candidates.extend([
-            os.path.join(cache_dir, f"{yt_id}.opus"),
-            os.path.join(cache_dir, f"{yt_id}.webm"),
-            os.path.join(cache_dir, f"{yt_id}.m4a"),
-            os.path.join(cache_dir, f"{yt_id}.mp4"),
-            os.path.join(cache_dir, f"master_64_{yt_id}.opus"),
-            os.path.join(cache_dir, f"master_64_{yt_id}.webm"),
-            os.path.join(cache_dir, f"master_1094_{yt_id}.webm"),
-            os.path.join(cache_dir, f"v63_{yt_id}.webm"),
-        ])
+        if not os.path.isdir(cache_dir):
+            continue
+        direct = [os.path.join(cache_dir, f"{yt_id}{ext}") for ext in valid_exts]
+        globbed = [
+            p for p in sorted(glob.glob(os.path.join(cache_dir, f"*{yt_id}*")))
+            if p.lower().endswith(valid_exts)
+        ]
+        for cand in direct + globbed:
+            ap = os.path.abspath(cand)
+            if ap not in seen_paths:
+                seen_paths.add(ap)
+                cached_candidates.append(cand)
+
+    local_timeout = max(15, int(float(dur_s) * 0.15) + 10)
     for c in cached_candidates:
         if os.path.exists(c) and os.path.getsize(c) > 10000:
             cmd = [
@@ -96,7 +106,7 @@ def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str
                 out_wav
             ]
             try:
-                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+                subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=local_timeout)
                 if _is_valid_cached_slice(out_wav, dur_s):
                     return out_wav
             except Exception:
@@ -105,6 +115,7 @@ def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str
     # 2. Remote Fallback: Stream exact PTS audio slice via yt-dlp
     s_clamped = max(0.0, float(start_s))
     e_clamped = s_clamped + float(dur_s)
+    remote_timeout = max(45, int(float(dur_s) * 1.2) + 30)
     cmd = [
         YT_DLP_EXE,
         "-f", "bestaudio/best",
@@ -120,7 +131,7 @@ def download_audio_slice(yt_id: str, start_s: float, dur_s: float, out_name: str
     ]
     for _ in range(2):
         try:
-            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=45)
+            subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=remote_timeout)
             if os.path.exists(out_wav) and os.path.getsize(out_wav) > 1000:
                 return out_wav
         except subprocess.TimeoutExpired:

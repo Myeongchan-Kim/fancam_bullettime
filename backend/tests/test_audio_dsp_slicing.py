@@ -81,3 +81,69 @@ def test_probe_acoustic_match_preserves_fractional_timestamp_in_cache_key(monkey
     assert "9.70" in tgt_call[3] or "9_70" in tgt_call[3], (
         f"Cache filename '{tgt_call[3]}' truncated fractional timestamp 9.7s to integer"
     )
+
+
+def test_download_audio_slice_scales_timeout_for_long_remote_windows(tmp_path, monkeypatch):
+    """
+    Regression test: YouTube progressive audio streams (itag 251) throttle ffmpeg HTTP reads
+    to ~1.5x real-time, causing 130s~220s reference windows to deterministically exceed a
+    fixed 45s timeout. Timeout must scale with dur_s.
+    """
+    monkeypatch.setattr(audio_dsp, "AUDIO_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(audio_dsp, "FULL_AUDIO_CACHE_DIRS", [])
+
+    sr = 16000
+    out_name = "gate_start_ref_1QyILPFQ1Xo_4450_00_158_00"
+    out_wav = tmp_path / f"{out_name}.wav"
+    captured_timeouts = []
+
+    def fake_run(cmd, *args, **kwargs):
+        captured_timeouts.append(kwargs.get("timeout"))
+        exact_samples = (np.sin(np.linspace(0, 100, int(158.0 * sr))) * 10000).astype(np.int16)
+        wavfile.write(str(out_wav), sr, exact_samples)
+        return MagicMock(returncode=0)
+
+    with patch.object(audio_dsp.subprocess, "run", side_effect=fake_run):
+        audio_dsp.download_audio_slice("1QyILPFQ1Xo", 4450.0, 158.0, out_name)
+
+    assert len(captured_timeouts) == 1
+    assert captured_timeouts[0] is not None and captured_timeouts[0] >= 180, (
+        f"Expected scaled timeout >= 180s for a 158s remote window, got {captured_timeouts[0]}"
+    )
+
+
+def test_download_audio_slice_discovers_prefixed_full_audio_cache(tmp_path, monkeypatch):
+    """
+    Regression test: Any cached full concert file containing yt_id (e.g. master_1755_1QyILPFQ1Xo.webm)
+    in FULL_AUDIO_CACHE_DIRS must be discovered via glob without hardcoding video IDs.
+    """
+    slice_dir = tmp_path / "slices"
+    full_dir = tmp_path / "full_cache"
+    slice_dir.mkdir()
+    full_dir.mkdir()
+
+    cached_master = full_dir / "master_1755_1QyILPFQ1Xo.webm"
+    cached_master.write_bytes(b"x" * 20000)
+
+    monkeypatch.setattr(audio_dsp, "AUDIO_CACHE_DIR", str(slice_dir))
+    monkeypatch.setattr(audio_dsp, "FULL_AUDIO_CACHE_DIRS", [str(full_dir)])
+
+    sr = 16000
+    out_name = "gate_start_ref_1QyILPFQ1Xo_30_00_128_00"
+    out_wav = slice_dir / f"{out_name}.wav"
+    captured_cmds = []
+
+    def fake_run(cmd, *args, **kwargs):
+        captured_cmds.append(cmd)
+        exact_samples = (np.sin(np.linspace(0, 100, int(128.0 * sr))) * 10000).astype(np.int16)
+        wavfile.write(str(out_wav), sr, exact_samples)
+        return MagicMock(returncode=0)
+
+    with patch.object(audio_dsp.subprocess, "run", side_effect=fake_run):
+        res = audio_dsp.download_audio_slice("1QyILPFQ1Xo", 30.0, 128.0, out_name)
+
+    assert len(captured_cmds) == 1
+    assert captured_cmds[0][0] == "ffmpeg", f"Expected local ffmpeg cache extraction, got {captured_cmds[0]}"
+    assert str(cached_master) in captured_cmds[0]
+    assert res == str(out_wav)
+
